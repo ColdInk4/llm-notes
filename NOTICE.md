@@ -11,8 +11,9 @@ This repository is a personal, non-commercial study-note adaptation based on:
 
 Major changes in this repository:
 
-- Reorganized the material as notes rather than a course-and-assignment project.
-- Removed site-specific files and coursework-oriented navigation.
+- Reorganized the material as notes rather than a course workflow project.
+- Removed site-specific files and practice-oriented navigation from the source
+  project.
 - Added repository-level attribution, maintenance notes, and source conventions.
 - Reserved `frontier/` for fast-moving model, systems, hardware, and benchmark
   notes.

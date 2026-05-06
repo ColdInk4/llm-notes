@@ -1109,7 +1109,7 @@ total_memory = 4 * (num_parameters + num_activations + num_gradients + num_optim
 flops = 6 * B * num_parameters
 ```
 
-Transformer 的处理会更加复杂，但原理相同，在作业 1 中我们会要求你去完成对其的内存和计算量的分析。下面两篇博客文章会帮到你：
+Transformer 的处理会更加复杂，但原理相同。做完整模型的内存和计算量分析时，下面两篇博客文章会帮到你：
 - [Transformer训练的内存使用情况](https://shjwudp.github.io/blog/2023/gpt-training-memory-estimation-nemo-training-practice/)
 - [Transformer的FLOPs](https://www.adamcasson.com/posts/transformer-flops)
 
