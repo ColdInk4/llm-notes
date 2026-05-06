@@ -756,13 +756,13 @@ DSA通过**先筛选后计算**来优化这个场景，扫描历史token，计�
 
 最难能可贵的是，DSA是一个可以灵活使用的插件，可以使用简单的训练让那些未使用DSA训练的也使用DSA。
 
-#### 7.  Deepseek V4 中的 CSA和 HCA 混合注意力架构
+#### 7.  DeepSeek V4 中的 CSA和 HCA 混合注意力架构
 
 **CSA的全称是Compressed Sparse Attention，压缩稀疏注意力，HCA的全称是Heavily Compressed Attention，重度压缩注意力**。
 
 <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter4/images/4-32-Deepseekv4的评测和资源占用.png" width="800" alt="4-32-Deepseekv4的评测和资源占用">
 
-我们从上图中可以看到，deepseek-V4-Pro 效果基本追平顶尖的闭源模型，但是参数量为1.6T左右的Deepseek V4 pro的KV cache和每个token的用到算力比Deepseek V3.2低的多。一个是MOE架构本身的结构优势，V4 Pro的一个重大改进就是注意力架构的优化。 DeeoseekV4利用CSA和HCA的混合交替架构来减少KV Cache 和 计算量。
+我们从上图中可以看到，DeepSeek-V4-Pro 效果基本追平顶尖的闭源模型，但是参数量为1.6T左右的DeepSeek V4 pro的KV cache和每个token的用到算力比DeepSeek V3.2低的多。一个是MOE架构本身的结构优势，V4 Pro的一个重大改进就是注意力架构的优化。 DeepSeek V4利用CSA和HCA的混合交替架构来减少KV Cache 和 计算量。
 
 CSA和 HCA 混合注意力架构是以MQA为基底的设计，核心逻辑是利用CSA和HCA的交替结构来进行**分工合作**，用 CSA 保留处理精细信息的能力，用 HCA 实现极低成本的全局长时记忆，再结合滑动窗口捕捉最临时的局部信息。
 

@@ -749,7 +749,7 @@ MiniCPM 团队选择了两种方法进行分析：“下包络法(lower envelope
 这证明了他们使用 WSD 调度器进行高效实验的方法是可靠的，收集到的数据具有很高的质量
 
 
-### 9.6.3 Deepseek
+### 9.6.3 DeepSeek
 
 作为 DeepSeek 基座模型的开篇工作[DeepSeek LLM: Scaling Open-Source Language Models with Longtermism](https://arxiv.org/abs/2401.02954)，正式开源了 DeepSeek-V1 ，似然 V1 的性能不像 V3 那么亮眼，但是在当时在同等规模上也达到了和 LLaMA 2 相当。
 

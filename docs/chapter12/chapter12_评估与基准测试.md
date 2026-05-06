@@ -12,11 +12,11 @@
 这是最直观、最普遍的评估形式。各大模型发布时，都会在一系列标准化基准上报告其得分。例如：
 
 <div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-1-Deepseek-R1的基准性能.png" />
-   <p>图12.1 Deepseek-R1的基准性能</p>
+   <img src="images/12-1-Deepseek-R1的基准性能.png" />
+   <p>图12.1 DeepSeek-R1的基准性能</p>
  </div>
 
-[Deepseek-R1论文 Figure 1 报告的基准性能](https://arxiv.org/pdf/2501.12948)，展示了 Deepseek-R1 在AIME 2024、Codeforces、GPQA Diamond、MATH 500等基准上的性能
+[DeepSeek-R1论文 Figure 1 报告的基准性能](https://arxiv.org/pdf/2501.12948)，展示了 DeepSeek-R1 在AIME 2024、Codeforces、GPQA Diamond、MATH 500等基准上的性能
 
 <div align="center">
    <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-2-llama4的基准性能.png" />
@@ -74,7 +74,7 @@
 
 ###  用户选择与市场反馈 
 
-另一种“评估”是看用户实际选择了谁。[OpenRouter](https://openrouter.ai/rankings) 网站通过路由流量到不同的模型，积累了大量关于用户偏好的数据。根据发送到每个模型的 token 数量，可以生成一个“使用量”排行榜。这个榜单显示，OpenAI、Anthropic、Google 以及国内的 Deepseek 和 Qwen 模型目前占据主导地位。这表明，在真实世界中，“被广泛使用”本身就是一个强有力的“好”的指标。
+另一种“评估”是看用户实际选择了谁。[OpenRouter](https://openrouter.ai/rankings) 网站通过路由流量到不同的模型，积累了大量关于用户偏好的数据。根据发送到每个模型的 token 数量，可以生成一个“使用量”排行榜。这个榜单显示，OpenAI、Anthropic、Google 以及国内的 DeepSeek 和 Qwen 模型目前占据主导地位。这表明，在真实世界中，“被广泛使用”本身就是一个强有力的“好”的指标。
 
 <div align="center">
    <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-9-不同厂商token使用排行榜.png" />
@@ -463,7 +463,7 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
    <p>图12.28 不同模型在CyBench的排行榜</p>
  </div>
 
-### MLEBenc:
+### MLEBench:
 
 [MLEBench](https://arxiv.org/abs/2410.07095) 自动化参与 75 个 Kaggle 机器学习竞赛，包括数据处理、模型训练、超参调优和结果提交。当前最佳模型获得任何奖牌的准确率也低于20%。
 
@@ -644,4 +644,3 @@ ARC-AGI-1:
 - 现在：我们更多评估的是模型/系统（model/system），即“端到端”的最终产品，开发者可以使用任何数据、任何技巧。
 
 这两种范式各有价值：评估方法能促进算法创新；评估系统对下游用户更有意义。但必须清晰界定评估的“游戏规则”，否则比较将失去意义。
-

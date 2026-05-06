@@ -8,7 +8,7 @@
 2. [掌握基准测试（Benchmarking）与性能分析（Profiling）的方法，学会使用PyTorch内置分析器及Nsight Systems等专业工具定位性能瓶颈](#72-性能分析方法)
 3. [深入理解内核融合（Kernel Fusion）的原理，并通过手写CUDA内核与Triton实现对比，体验从手动优化到高级抽象的性能提升](#74-内核融合kernel-fusion)
 4. [学习使用Triton编写高效GPU内核，理解其以块为中心的编程模型，并与PyTorch原生实现、手写CUDA进行性能对比](#75-triton)
-5. [了解`torch.compile`的自动优化能力及其适用场景，明确何时值得手写底层内核、何时依赖编译器](#76-torchcompil)
+5. [了解`torch.compile`的自动优化能力及其适用场景，明确何时值得手写底层内核、何时依赖编译器](#76-torchcompile)
 
 完成本章学习后，你将能够：系统掌握GPU性能分析与优化的完整工作流，了解基准测试、性能剖析到内核融合与Triton编程，能够针对简单的算子自主实现高效的GPU内核，并合理权衡手写优化与编译器自动优化的使用场景，从而在实际大模型训练与推理任务中显著提升计算效率。
 
@@ -149,13 +149,13 @@ def benchmark(description: str, run: Callable, num_warmups: int = 1, num_trials:
     '''
 
     benchmark("sleep", lambda : time.sleep(50 / 1000)) #在上面实现的的基准测试函数
-    
+
     if torch.cuda.is_available():
         dims = (1024, 2048, 4096, 8192, 16384)  # 不同维度
     else:
         dims = (1024, 2048)  # @inspect dims
-    
-    matmul_results = [] 
+
+    matmul_results = []
     for dim in dims:
         # @ inspect dim
         result = benchmark(f"matmul(dim={dim})", run_operation2(dim=dim, operation=lambda a, b: a @ b))
@@ -171,15 +171,15 @@ def benchmark(description: str, run: Callable, num_warmups: int = 1, num_trials:
 
 ```python
 def benchmarking():
-    
+
     # 测试我们的MLP
 
     dim = 256  # @inspect dim
-    num_layers = 4  # @inspect num_layers 
+    num_layers = 4  # @inspect num_layers
     batch_size = 256  # @inspect batch_size
     num_steps = 2  # @inspect num_steps
     mlp_base = benchmark("run_mlp", run_mlp(dim=dim, num_layers=num_layers, batch_size=batch_size, num_steps=num_steps)) # @inspect mlp_base
-    
+
 
     #以下是基础扩展测试
 
@@ -188,32 +188,32 @@ def benchmarking():
     step_results = []
 
     for scale in (2, 3, 4, 5):
-        result = benchmark(f"run_mlp({scale}x num_steps)", 
-                         run_mlp(dim=dim, num_layers=num_layers, 
+        result = benchmark(f"run_mlp({scale}x num_steps)",
+                         run_mlp(dim=dim, num_layers=num_layers,
                                 batch_size=batch_size, num_steps=scale * num_steps)) # @inspect result, @inspect scale, @inspect num_steps
         step_results.append((scale, result))  # @inspect step_results
-    
+
     # 增加层数
     layer_results = []
     for scale in (2, 3, 4, 5):
-        result = benchmark(f"run_mlp({scale}x num_layers)", 
-                         run_mlp(dim=dim, num_layers=scale * num_layers, 
+        result = benchmark(f"run_mlp({scale}x num_layers)",
+                         run_mlp(dim=dim, num_layers=scale * num_layers,
                                 batch_size=batch_size, num_steps=num_steps)) # @inspect result, @inspect scale, @inspect num_layers, @inspect num_steps
         layer_results.append((scale, result))  # @inspect layer_results
-    
+
     # 增加批次大小
     batch_results = []
     for scale in (2, 3, 4, 5):
-        result = benchmark(f"run_mlp({scale}x batch_size)", 
-                         run_mlp(dim=dim, num_layers=num_layers, 
+        result = benchmark(f"run_mlp({scale}x batch_size)",
+                         run_mlp(dim=dim, num_layers=num_layers,
                                 batch_size=scale * batch_size, num_steps=num_steps)) # @inspect result, @inspect scale, @inspect num_layers, @inspect num_steps
         batch_results.append((scale, result))  # @inspect batch_results
-    
+
     # 对维度进行缩放
     dim_results = []
     for scale in (2, 3, 4, 5):
-        result = benchmark(f"run_mlp({scale}x dim)", 
-                         run_mlp(dim=scale * dim, num_layers=num_layers, 
+        result = benchmark(f"run_mlp({scale}x dim)",
+                         run_mlp(dim=scale * dim, num_layers=num_layers,
                                 batch_size=batch_size, num_steps=num_steps)) # @inspect result, @inspect scale, @inspect num_layers, @inspect num_steps
         dim_results.append((scale, result))  # @inspect dim_results
 
@@ -240,9 +240,9 @@ def profile(description: str, run: Callable, num_warmups: int = 1, with_stack: b
         run()
     if torch.cuda.is_available():
         torch.cuda.synchronize()  # 等待CUDA线程结束
-    
+
     # 使用性能分析器运行代码
-    
+
     with torch.profiler.profile(
             activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
             # 输出堆栈跟踪以进行可视化
@@ -272,11 +272,11 @@ def profile(description: str, run: Callable, num_warmups: int = 1, with_stack: b
 
 使用这个sleep函数示例，就是那个休眠函数。
 
-```python 
+```python
 
 def profiling():
     sleep_function = lambda : time.sleep(50 / 1000)
-    sleep_profile = profile("sleep", sleep_function) 
+    sleep_profile = profile("sleep", sleep_function)
 ```
 
 <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter7/images/7-3-sheep的性能分析.png" width="800" alt="7-3-加法的性能分析">
@@ -341,7 +341,7 @@ def run_operation2(dim: int, operation: Callable) -> Callable:
 
 def profiling():
     matmul_function_128 = lambda a, b: a @ b
-    matmul_profile_128 = profile("matmul(dim=128)", run_operation2(dim=128, operation=matmul_function_128))   
+    matmul_profile_128 = profile("matmul(dim=128)", run_operation2(dim=128, operation=matmul_function_128))
 ```
 
 在这里乘以128维矩阵。128乘以128，比上面这个小得多。
@@ -350,7 +350,7 @@ def profiling():
 
 你会看到现在它实际上直接执行这个不同的命令，从 `sm80_xmma_gemm_f32f32_f32f32_f32_nn_n_tilesize32x32x8_stage3_warpsize1x2x1_ff` 这一行可以看到和上面的矩阵乘法的不同，它执行的是 `xmma_gemm` 。GEMM是一种矩阵乘法类型。后面跟着f32，即float32。从该内核的命名可以看出实际发生的情况，即这是一种瓦片（分块）的矩阵乘法。它没有经过 `Cutlass` ，而是直接执行这个特定命令。
 
-**对于小矩阵乘法，我们会看到它现在分派到不同的内核**。由此可见矩阵乘法的复杂性。当我们在这种高度抽象层面操作时，我们只把矩阵乘法视为单一事物，比如我们调用A乘以B就完成了。但在底层程序会根据你拥有的维度和硬件，它实际上会分派到**完全不同的矩阵乘法原语**。这会表现为截然不同的性能特征。一个有趣的技巧是`Torch.compile`（我们后面会讲到） ，它**实际上有一个选项可以在你的硬件上对矩阵乘法性能进行宏观基准测试，然后它会为你的模型选择性能最高的矩阵乘法子程序**，过去我发现这能免费带来10%的速度提升。优化这些内容能在现实中带来免费增益。
+**对于小矩阵乘法，我们会看到它现在分派到不同的内核**。由此可见矩阵乘法的复杂性。当我们在这种高度抽象层面操作时，我们只把矩阵乘法视为单一事物，比如我们调用A乘以B就完成了。但在底层程序会根据你拥有的维度和硬件，它实际上会分派到**完全不同的矩阵乘法原语**。这会表现为截然不同的性能特征。一个有趣的技巧是`torch.compile`（我们后面会讲到） ，它**实际上有一个选项可以在你的硬件上对矩阵乘法性能进行宏观基准测试，然后它会为你的模型选择性能最高的矩阵乘法子程序**，过去我发现这能免费带来10%的速度提升。优化这些内容能在现实中带来免费增益。
 
 性能分析器相比原始基准测试的高级之处在于，我们现在可以看到正在调用哪些CUDA内核。我们可以看到不同大小的矩阵会导致不同的CUDA内核。我们看到 `cutlass_80simtt_sgemm` ，来自`Cutlass`线性代数库，它告诉我们分块大小等信息。
 
@@ -382,7 +382,7 @@ def profiling():
 
 由此我们可以知道应该把优化时间花在哪里，比如我们可以优化矩阵乘法，因为它占GPU70%以上的时间。
 
-### 7.3.5 gelu 和 softmax 
+### 7.3.5 gelu 和 softmax
 
 ```python
 def run_operation2(dim: int, operation: Callable) -> Callable:
@@ -575,7 +575,7 @@ torch::Tensor gelu(torch::Tensor x) {
     int num_elements = x.numel();
     int block_size = 1024;
     int num_blocks = cdiv(num_elements, block_size);
-    
+
     //启动内核
     gelu_kernel<<<num_blocks, block_size>>>(x.data_ptr<float>(), y.data_ptr<float>(), num_elements);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
@@ -643,8 +643,8 @@ def create_cuda_gelu():
     ensure_directory_exists("var/cuda_gelu")
     if not torch.cuda.is_available():
         return None
-    
-    # ` load_inline ` 函数使得编写 CUDA 代码并将其绑定到 Python 模块以立即使用变得方便。  
+
+    # ` load_inline ` 函数使得编写 CUDA 代码并将其绑定到 Python 模块以立即使用变得方便。
     module = load_inline(
         cuda_sources=[cuda_gelu_src],
         cpp_sources=[cpp_gelu_src],
@@ -668,7 +668,7 @@ def create_cuda_gelu():
 
 ```python
 if cuda_gelu is not None:
-    cuda_time = benchmark("cuda_gelu", run_operation1(dim=16384, operation=cuda_gelu)) # @inspect cuda_time 
+    cuda_time = benchmark("cuda_gelu", run_operation1(dim=16384, operation=cuda_gelu)) # @inspect cuda_time
     cuda_gelu_profile = profile("cuda_gelu", run_operation1(dim=16384, operation=cuda_gelu))
 ```
 
@@ -793,7 +793,7 @@ offsets = block_start + tl.arange(0, BLOCK_SIZE)
 
 性能分析再次显示，单个内核启动消耗了所有GPU时间，这正是我们想要的。
 
-## 7.6 torch.compil
+## 7.6 torch.compile
 
 ```python
 def pytorch_compilation():
@@ -803,7 +803,7 @@ def pytorch_compilation():
         return
 ```
 
-编写CUDA内核很好，但或许我们并不需要这么做，因为使用工具`torch.compil`就能实现自动优化，我们做的就是将立方和指数运算塞进单个CUDA内核（`compiled_gelu = torch.compile(manual_gelu)`）。`torch.compile`它**能够接收未优化的PyTorch代码并生成优化版本。它会尝试自动进行内核融合等优化。这个编译后的gelu在输出结果上与之前等效**。它实质上是利用PyTorch现有的JIT编译器自动优化代码。
+编写CUDA内核很好，但或许我们并不需要这么做，因为使用工具`torch.compile`就能实现自动优化，我们做的就是将立方和指数运算塞进单个CUDA内核（`compiled_gelu = torch.compile(manual_gelu)`）。`torch.compile`它**能够接收未优化的PyTorch代码并生成优化版本。它会尝试自动进行内核融合等优化。这个编译后的gelu在输出结果上与之前等效**。它实质上是利用PyTorch现有的JIT编译器自动优化代码。
 
 <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter7/images/7-21-compile的的时间消耗.png" width="800" alt="7-21-compile的的时间消耗">
 

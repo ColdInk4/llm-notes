@@ -44,7 +44,7 @@ RLVR 聚焦于一类特殊任务：**输出可被程序自动判分**。典型�
 在这些场景中，奖励函数 $R(z)$ 可定义为：
 
 $$
-R(z) = 
+R(z) =
 \begin{cases}
 1 & \text{若 } z \text{ 正确} \\
 0 & \text{否则}
@@ -74,7 +74,7 @@ $$
 
 从原始的策略梯度（Policy Gradient） → 到更稳定的TRPO（Trust Region Policy Optimization） → 再到更实用的PPO（Proximal Policy Optimization）
 
-在强化学习中，我们有一个**策略**（policy）$\pi_\theta(a|s)$，它用参数 $\theta$ 控制智能体如何根据状态 $s$ 选择动作 $a$。  
+在强化学习中，我们有一个**策略**（policy）$\pi_\theta(a|s)$，它用参数 $\theta$ 控制智能体如何根据状态 $s$ 选择动作 $a$。
 目标是：**最大化期望回报**（expected return）：
 
 $$
@@ -210,9 +210,9 @@ $$
 **PPO-clip Loss** 是 PPO 的核心损失函数，目标是在保证策略更新稳定的前提下，最大化期望回报（即 Reward Model 给出的分数）。
 
 $$
-\mathcal{L}^{\text{CLIP}}(\theta) = \mathbb{E}_t \left[ \min\left( 
-r_t(\theta) \cdot \hat{A}_t,\ 
-\text{clip}\big(r_t(\theta), 1-\epsilon, 1+\epsilon\big) \cdot \hat{A}_t 
+\mathcal{L}^{\text{CLIP}}(\theta) = \mathbb{E}_t \left[ \min\left(
+r_t(\theta) \cdot \hat{A}_t,\
+\text{clip}\big(r_t(\theta), 1-\epsilon, 1+\epsilon\big) \cdot \hat{A}_t
 \right) \right]
 $$
 
@@ -437,7 +437,7 @@ DPO（Direct Preference Optimization）是近年来兴起的一种替代方案�
 
 ### 14.2.3 GRPO：去掉了价值函数的 PPO
 
-**GRPO (Group Relative Policy Optimization)** 是在 [DeepSeekMath](https://arxiv.org/pdf/2402.03300) 论文中提出并在 [Deepseek-R1](https://arxiv.org/abs/2501.12948) 中发扬光大的算法。GRPO 在 PPO 的基础上，移除了价值函数（Value Function）和优势计算（Advantage Computation）。这是对 PPO 最大的改动，也是其轻量化的根本原因。并且采用了一种全新的方式来估算“优势”——即 “组内 z-score”（z-score within group）。
+**GRPO (Group Relative Policy Optimization)** 是在 [DeepSeekMath](https://arxiv.org/pdf/2402.03300) 论文中提出并在 [DeepSeek-R1](https://arxiv.org/abs/2501.12948) 中发扬光大的算法。GRPO 在 PPO 的基础上，移除了价值函数（Value Function）和优势计算（Advantage Computation）。这是对 PPO 最大的改动，也是其轻量化的根本原因。并且采用了一种全新的方式来估算“优势”——即 “组内 z-score”（z-score within group）。
 
 <div align="center">
    <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter14/images/14-4-ppo与grpo的对比.png" />
@@ -564,7 +564,7 @@ def compute_pg_loss(
 
     # 4. 对齐 mask 并计算 KL 惩罚项
     labels_mask = labels_mask[..., 1:].to(logps.dtype)  # 将 labels_mask 也右移一位，与 logps 对齐，只保留 response token 的 mask，输出形状是 [batch_size, seq_len-1]，
-    
+
     # 直接计算 KL 需要对整个词汇表求和（sum(p * log(p/q))），计算量极大。使用了 Bregman divergence 的一种近似，而这个近似只依赖于 logps 和 ref_logps（即 token-level 的 log-prob），非常高效。
     ref_logratio = ref_logps - logps
     kl_penalty = torch.exp(ref_logratio) - 1 - ref_logratio  # [batch_size, seq_len-1]
@@ -716,8 +716,8 @@ GRPO的目标函数中，针对单个响应 \(o_i\) 在时间步 \(t\) 的梯度
 ## 14.3 案例研究
 
 这里我们介绍三个关于 RLVR 的工作：
-- Deepseek R1：是许多近期 RLVR 工作的核心，包含许多有趣的细节。 
-- Kimi K1.5：与 R1 同时期，RLVR 提供了与 R1 互补的细节。 
+- DeepSeek R1：是许多近期 RLVR 工作的核心，包含许多有趣的细节。
+- Kimi K1.5：与 R1 同时期，RLVR 提供了与 R1 互补的细节。
 - Qwen 3：最新的开源推理模型尝试，低数据量 RLVR
 
 ### 14.3.1 DeepSeek R1
@@ -725,15 +725,15 @@ GRPO的目标函数中，针对单个响应 \(o_i\) 在时间步 \(t\) 的梯度
 [DeepSeek R1](https://arxiv.org/pdf/2501.12948)这篇论文引起了不小的轰动。
 
 <div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter14/images/14-7-DeepSeek-R1引起广泛的关注.png" />
+   <img src="images/14-7-DeepSeek-R1引起广泛的关注.png" />
    <p>图14.7 DeepSeek-R1引起广泛的关注</p>
  </div>
 
 R1 有何特别之处？
 
-- 性能超越 OpenAI O1 
-- 开放的 RL 配方（且相当简单） 
-    - 终结了关于 MCTS/PRM 必要性的猜测 
+- 性能超越 OpenAI O1
+- 开放的 RL 配方（且相当简单）
+    - 终结了关于 MCTS/PRM 必要性的猜测
 - SFT 见解（包括 R1-zero 和 distil-r1）
 
 他们沿用来自 DeepSeekMath 这篇论文里的 GRPO 成果。
@@ -755,20 +755,20 @@ DeepSeek R1 的成功证明了**纯强化学习**在推理任务上的巨大潜�
     - 数据：未公开
 
 <div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter14/images/14-9-Deepseek-R1-Zero和OpenAI-o1在相关推理基准上的性能对比.png" />
-   <p>图14.9 Deepseek-R1-Zero和OpenAI-o1在相关推理基准上的性能对比</p>
+   <img src="images/14-9-Deepseek-R1-Zero和OpenAI-o1在相关推理基准上的性能对比.png" />
+   <p>图14.9 DeepSeek-R1-Zero和OpenAI-o1在相关推理基准上的性能对比</p>
 </div>
 
 在大多数情况下，DeepSeek-R1 与 o1-mini 的表现相当或更好，并且在几个任务上与 o1-0912 的表现相当。但在代码领域 DeepSeek-R1 的表现不如 o1 模型。
 
-**Deepseek-R1-Zero 产生了有趣的现象** **Aha Moment (顿悟时刻)**: 模型在训练中期开始学会自我反思（Self-correction），例如“等等，我算错了，应该重新尝试...”。
-    
+**DeepSeek-R1-Zero 产生了有趣的现象** **Aha Moment (顿悟时刻)**: 模型在训练中期开始学会自我反思（Self-correction），例如“等等，我算错了，应该重新尝试...”。
+
 <div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter14/images/14-10-DeepSeek-R1-Zero在训练期间的AIME准确率和在训练集上的平均响应长度.png" />
+   <img src="images/14-10-DeepSeek-R1-Zero在训练期间的AIME准确率和在训练集上的平均响应长度.png" />
    <p>图14.10 DeepSeek-R1-Zero在训练期间的AIME准确率和在训练集上的平均响应长度</p>
 </div>
 
-思维时间的增加促进了复杂行为的自主发展。 具体而言，DeepSeek-R1-Zero 越来越多地展现出高级推理策略，例如反思性推理和系统性地探索替代解决方案，显著提升了其在数学和编码等可验证任务上的表现。 
+思维时间的增加促进了复杂行为的自主发展。 具体而言，DeepSeek-R1-Zero 越来越多地展现出高级推理策略，例如反思性推理和系统性地探索替代解决方案，显著提升了其在数学和编码等可验证任务上的表现。
 
 <div align="center">
    <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter14/images/14-11-aha-moment的发现.png" />
@@ -789,17 +789,17 @@ GRPO 使用的是有偏的优化目标，当优化目标（无论是奖励模型
 基础模型早已表现出“aha moment”：
 
 <div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter14/images/14-12-DeepSeek-V3-Base早已展现出aha-moment现象案例.png" />
+   <img src="images/14-12-DeepSeek-V3-Base早已展现出aha-moment现象案例.png" />
    <p>图14.12 DeepSeek-V3-Base早已展现出aha-moment现象案例</p>
 </div>
 
 ####  DeepSeek-R1
 
-尽管 DeepSeek-R1-Zero 展现出强大的推理能力，但它也面临一些问题。DeepSeek-R1-Zero 在可读性差和语言混合等方面存在挑战，因为 DeepSeek-V3-Base 是在多种语言上进行训练的，特别是英语和中文。为解决这些问题，Deepseek 团队开发了 DeepSeek-R1，其流程如图 2 所示。
+尽管 DeepSeek-R1-Zero 展现出强大的推理能力，但它也面临一些问题。DeepSeek-R1-Zero 在可读性差和语言混合等方面存在挑战，因为 DeepSeek-V3-Base 是在多种语言上进行训练的，特别是英语和中文。为解决这些问题，DeepSeek 团队开发了 DeepSeek-R1，其流程如图 2 所示。
 
 <div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter14/images/14-13-Deepseek-R1开发流程.png" />
-   <p>图14.13 Deepseek-R1开发流程</p>
+   <img src="images/14-13-Deepseek-R1开发流程.png" />
+   <p>图14.13 DeepSeek-R1开发流程</p>
 </div>
 
 ##### 阶段 1：DeepSeek-R1-Zero
@@ -832,7 +832,7 @@ DeepSeek-V3-Base 作为基座模型，使用**冷启动长思维链数据**进�
 ##### DeepSeek-R1 效果如何呢？
 
 <div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter14/images/14-15-DeepSeek-R1和其他模型的比较.png" />
+   <img src="images/14-15-DeepSeek-R1和其他模型的比较.png" />
    <p>图14.15 DeepSeek-R1和其他模型的比较</p>
 </div>
 
@@ -841,13 +841,13 @@ DeepSeek-V3-Base 作为基座模型，使用**冷启动长思维链数据**进�
 R1 的另一个巨大贡献是证明了**大模型的推理能力可以蒸馏给小模型**。使用 R1 生成的 800k 条数据微调 Qwen2.5，让学生模型（Qwen2.5）学会教师模型（R1）的推理能力！
 
 <div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter14/images/14-16-Deepseek-R1蒸馏模型和其他模型的比较.png" />
-   <p>图14.16 Deepseek-R1蒸馏模型和其他模型的比较</p>
+   <img src="images/14-16-Deepseek-R1蒸馏模型和其他模型的比较.png" />
+   <p>图14.16 DeepSeek-R1蒸馏模型和其他模型的比较</p>
 </div>
 
 ##### 使用少量高质量 SFT 样本提升数学推理能力
 
-除了 Deepseek-R1 这种范式可以得到一个强大的推理模型外，我们直接使用 Base+SFT 也可以得到一个性能不错的推理模型。
+除了 DeepSeek-R1 这种范式可以得到一个强大的推理模型外，我们直接使用 Base+SFT 也可以得到一个性能不错的推理模型。
 
 <div align="center">
    <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter14/images/14-17-s1使用1k高质量样本提高数学推理能力.png" />
@@ -867,7 +867,7 @@ R1 的另一个巨大贡献是证明了**大模型的推理能力可以蒸馏给
 
 ##### 使用少量高质量样本进行 RL提升数学推理能力
 
-通过 Base+RL 这种路线同样可以获得推理模型，除了 Deepseek-R1-Zero外，[LIMR](https://arxiv.org/abs/2502.11886)（Qwen2.5-Math-7B+PPO）和[Less is More: Improving LLM Alignment via Preference Data Selection](https://arxiv.org/abs/2502.14560)（llama3-8B+DPO）两篇工作也证明了这条路线的可行性。
+通过 Base+RL 这种路线同样可以获得推理模型，除了 DeepSeek-R1-Zero外，[LIMR](https://arxiv.org/abs/2502.11886)（Qwen2.5-Math-7B+PPO）和[Less is More: Improving LLM Alignment via Preference Data Selection](https://arxiv.org/abs/2502.14560)（llama3-8B+DPO）两篇工作也证明了这条路线的可行性。
 
 <div align="center">
    <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter14/images/14-19-limr与其他模型的性能比较.png" />
@@ -876,7 +876,7 @@ R1 的另一个巨大贡献是证明了**大模型的推理能力可以蒸馏给
 
 ##### 不成功的尝试
 
-Deepseek-R1 团队也分享了他们在 DeepSeek-R1 开发的早期阶段，做的一些失败的尝试：
+DeepSeek-R1 团队也分享了他们在 DeepSeek-R1 开发的早期阶段，做的一些失败的尝试：
 
 **过程奖励模型（Process Reward Model, PRM）**：PRM试图通过对中间推理步骤进行评估来 rerank、引导搜索或改进思路，但在实际应用中存在若干问题。
 - 难以明确界定细粒度的中间步骤。很难给出一个通用、可自动化评估的“正确中间步骤”定义，导致对中间过程的逐步注释和评估困难。
@@ -886,8 +886,8 @@ Deepseek-R1 团队也分享了他们在 DeepSeek-R1 开发的早期阶段，做�
 
  **蒙特卡洛树搜索（MCTS）**：受 AlphaGo 和 AlphaZero 的启发，他们探索了使用蒙特卡洛树搜索（MCTS）来增强测试时计算的可扩展性。 这种方法涉及将答案分解成更小的部分，以允许模型系统地探索解空间。 为了实现这一点，提示模型生成多个标签，这些标签对应于搜索所需的特定推理步骤。
 
-- 与搜索空间相对明确的国际象棋不同，token 生成呈现出指数级更大的搜索空间。 为了解决这个问题，我们为每个节点设置了最大扩展限制，但这可能导致模型陷入局部最优。 
-- 其次，价值模型直接影响生成质量，因为它指导着搜索过程的每一步。 训练一个细粒度的价值模型本身就很困难，这使得模型难以进行迭代改进。 虽然 AlphaGo 的核心成功依赖于训练一个价值模型来逐步提升其性能，但由于 token 生成的复杂性，这一原理在我们当前的设置中难以复制。 
+- 与搜索空间相对明确的国际象棋不同，token 生成呈现出指数级更大的搜索空间。 为了解决这个问题，我们为每个节点设置了最大扩展限制，但这可能导致模型陷入局部最优。
+- 其次，价值模型直接影响生成质量，因为它指导着搜索过程的每一步。 训练一个细粒度的价值模型本身就很困难，这使得模型难以进行迭代改进。 虽然 AlphaGo 的核心成功依赖于训练一个价值模型来逐步提升其性能，但由于 token 生成的复杂性，这一原理在我们当前的设置中难以复制。
 
 总之，虽然 MCTS 在与预训练的价值模型配对时可以在推理过程中提高性能，但通过自我搜索迭代地提升模型性能仍然是一个重大挑战。
 
@@ -970,11 +970,11 @@ Kimi 团队观察到一个“过度思考”现象，即模型响应的长度在
 
 采样策略：
 - 为数据集分配难度标签，从易到难
-- 问题的采样比例与(1-success_rate)成正比，以避免重复已解决的问题 
+- 问题的采样比例与(1-success_rate)成正比，以避免重复已解决的问题
 
 奖励：
-- 对于代码——采用具有 ground truth 解的问题，生成新的测试用例 
-- 对于数学——使用800k个样本来训练一个CoT奖励模型，用于答案等价性检查 
+- 对于代码——采用具有 ground truth 解的问题，生成新的测试用例
+- 对于数学——使用800k个样本来训练一个CoT奖励模型，用于答案等价性检查
 
 #### Scaling 结果
 
@@ -1004,7 +1004,7 @@ Kimi-k1.5 在性能上与“o1”大致相当，甚至可能更优:
 
 ### 14.3.3 Qwen 3：思维模式融合
 
-Qwen3 家族最大型号的模型 Qwen3-235B-A22B 性能超过了 OpenAI-o1 和 Deepseek-R1，哪怕是 Qwen3-32B 也与 o1 性能相当。
+Qwen3 家族最大型号的模型 Qwen3-235B-A22B 性能超过了 OpenAI-o1 和 DeepSeek-R1，哪怕是 Qwen3-32B 也与 o1 性能相当。
 
 <div align="center">
    <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter14/images/14-24-Qwen3和其他模型的性能比较.png" />
@@ -1021,14 +1021,14 @@ Qwen3 的后训练流程精心设计了两个核心目标：
 - **思考控制**：这涉及两种不同模式的集成，即“非思考”模式和“思考”模式，使用户能够灵活选择模型是否进行推理，并通过指定思考过程的 token 预算来控制思考的深度
 - **强到弱蒸馏**：这旨在简化和优化轻量级模型的训练后流程。 通过利用大型模型的知识，大大降低了构建小型模型所需的计算成本和开发工作量。
 
-#### SFT + 推理强化学习 
+#### SFT + 推理强化学习
 
-我们现在都知道这个套路了，Qwen 也用了很多。 
+我们现在都知道这个套路了，Qwen 也用了很多。
 
-- 按难度过滤（通过 best-of-n，例如 kimi） 
-    - 移除模型在没有 CoT 的情况下就能正确回答的问题 
-    - 移除与验证数据过于相似的内容 
-- 手动过滤 CoT 的质量（猜测 vs 正确回答） 
+- 按难度过滤（通过 best-of-n，例如 kimi）
+    - 移除模型在没有 CoT 的情况下就能正确回答的问题
+    - 移除与验证数据过于相似的内容
+- 手动过滤 CoT 的质量（猜测 vs 正确回答）
 - 使用 GRPO 在仅 3995 个示例上进行强化学习
 
 #### Qwen 3 特有的新内容
@@ -1055,7 +1055,7 @@ Qwen3 的后训练流程精心设计了两个核心目标：
    <p>图14.27 Qwen3-235B-A22B随thinking budget的性能表现</p>
 </div>
 
-#### 不同阶段的组成 
+#### 不同阶段的组成
 
 下图展示了 Qwen3-32B 模型在不同后训练阶段（Post-training）的性能变化：
 
@@ -1071,4 +1071,3 @@ Qwen 3 提出了 **Thinking Mode Fusion**，试图在一个模型中融合“思
 *   **训练**: 混合使用带 `<think>` 的数据和直接输出答案的数据。
 *   **效果**: 用户可以通过 Prompt 控制模型是否进行长推理。
 *   **测试时计算 (Test-time Compute)**: 可以在推理阶段通过截断 `<think>` 过程来动态调整计算量和性能的平衡。
-
