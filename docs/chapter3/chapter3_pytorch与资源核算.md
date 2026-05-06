@@ -33,29 +33,25 @@ $$6 \times (70 \times 10^9) \times (15 \times 10^{12}) \approx 6.3 \times 10^{24
 
 查阅 [NVIDIA H100 的白皮书](https://www.nvidia.com/en-sg/data-center/h100/)，其 FP16/BF16 的峰值算力约为 **1979 TFLOPS**（每秒万亿次浮点运算）。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-1-H100数值细览.png" />
-   <p>图3.1 H100 数值细览</p>
- </div>
+![图3.1 H100 数值细览](images/3-1-H100数值细览.png)
+
+*图3.1 H100 数值细览*
 
 但是要注意，这个值是 NVIDIA H100 GPU 在使用 FP16 或 BF16 数据类型、且启用结构化稀疏（Structured Sparsity）时可达到的理论最大计算吞吐量。对于我们训练普通的稠密模型（如标准的 LLaMA-1到LLaMA-3系列、Qwen3-0.6B/1.7B/4B/8B/14B/32B等），理论峰值减半，约 990 TFLOPS。
 
-<!-- <div align="center">
-   <img width="800" height="500"alt="1" src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-2-H100性能明细.png" />
-   <p>图3.2 H100 性能明细</p>
- </div> -->
+![图3.2 H100 性能明细](images/3-2-H100性能明细.png)
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-2-H100性能明细.png" />
-   <p>图3.2 H100 性能明细</p>
- </div>
+*图3.2 H100 性能明细*
+
+![图3.2 H100 性能明细](images/3-2-H100性能明细.png)
+
+*图3.2 H100 性能明细*
 
 > 结构化稀疏，是一种模型压缩的方法，通常是对稠密模型按照50%的稀疏度进行剪枝（稀疏形式为n:m，即m个连续权重里必须剪掉n个，类型有 2:4、4:8、8:16)。还有一种灵活度更高的非结构化剪枝方法，可以按照百分比进行剪枝，但通常相对于结构化剪枝性能更差。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-3-剪枝方法介绍.png" />
-   <p>图3.3 剪枝方法介绍</p>
- </div>
+![图3.3 剪枝方法介绍](images/3-3-剪枝方法介绍.png)
+
+*图3.3 剪枝方法介绍*
 
 上述 990 TFLOPS 是 H100 的理论峰值，但实际运行模型时，由于各种软硬件开销，你几乎不可能达到 100% **模型算力利用率 (MFU, Model FLOPs Utilization)**，通常按 30%–60% 的利用率估算更现实。这里取 50% 用作后续估计。
 
@@ -206,10 +202,9 @@ assert y.size() == torch.Size([16, 2])
 
 在实际应用中，我们很少只处理单个数据样本。为了提高效率，我们会将多个样本打包成一个“批次”（batch），并对整个批次同时进行计算。下图展示了批量处理的操作：
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-4-矩阵乘法.png" />
-   <p>图3.4 矩阵乘法</p>
- </div>
+![图3.4 矩阵乘法](images/3-4-矩阵乘法.png)
+
+*图3.4 矩阵乘法*
 
 - `batch` 标签指向堆叠起来的多个矩形，代表一个批次中包含的多个样本。
 - `sequence` 标签指向每个矩形内部，代表每个样本可能包含的序列长度（例如，一个句子中的词元数量）。
@@ -351,10 +346,9 @@ x = rearrange(x, "... heads hidden2 -> ... (heads hidden2)")
 
 1. Float32 (FP32 / 单精度浮点数)
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-5-fp32.png" />
-   <p>图3.5 单精度浮点数</p>
- </div>
+![图3.5 单精度浮点数](images/3-5-fp32.png)
+
+*图3.5 单精度浮点数*
 
 *   **规格**：占用 **4 字节** (32 bits)。结构为：1位符号位 + **8位指数位** + 23位尾数位。
 *   **地位**：PyTorch 的默认数据类型，也是科学计算领域的“黄金标准”。
@@ -366,10 +360,9 @@ x = rearrange(x, "... heads hidden2 -> ... (heads hidden2)")
 
 2. Float16 (FP16 / 半精度浮点数)
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-6-fp16.png" />
-   <p>图3.6 半精度浮点数</p>
- </div>
+![图3.6 半精度浮点数](images/3-6-fp16.png)
+
+*图3.6 半精度浮点数*
 
 
 *   **规格**：占用 **2 字节** (16 bits)。结构为：1位符号位 + **5位指数位** + 10位尾数位。
@@ -381,10 +374,9 @@ x = rearrange(x, "... heads hidden2 -> ... (heads hidden2)")
 
 3. BFloat16 (BF16 / Brain Floating Point)
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-7-bf16.png" />
-   <p>图3.7 BF16</p>
- </div>
+![图3.7 BF16](images/3-7-bf16.png)
+
+*图3.7 BF16*
 
 *   **规格**：占用 **2 字节** (16 bits)。结构为：1位符号位 + **8位指数位** + 7位尾数位。
 *   **来源**：由 Google Brain 专为深度学习设计。
@@ -399,10 +391,9 @@ x = rearrange(x, "... heads hidden2 -> ... (heads hidden2)")
 
 4. FP8 (8位浮点数)
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-8-fp8.png" />
-   <p>图3.8 8位浮点数</p>
- </div>
+![图3.8 8位浮点数](images/3-8-fp8.png)
+
+*图3.8 8位浮点数*
 
 *   **规格**：占用 **1 字节** (8 bits)。
 *   **变体**：
@@ -433,10 +424,9 @@ x = torch.tensor([
 ```
 张量在底层可以是按行存储也可以是按列存储。Numpy 和 Pytorch 都采用了**按行存储**的方式，任何维度的张量在底层存储都占据着内存中连续的空间，那么问题来了，我们如何访问到我们想要的位置的数据？
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-9-tensor-memory.png" />
-   <p>图3.9 张量内存</p>
- </div>
+![图3.9 张量内存](images/3-9-tensor-memory.png)
+
+*图3.9 张量内存*
 
 
 答案就是**步长（Strides）**！步长是一个元组，定义了在每个**维度**上移动一个单位时，在底层存储中需要“跳过”的元素数量。
@@ -479,10 +469,9 @@ assert x.device == torch.device("cpu")
 
 但是，为了利用 GPU 的大规模并行性计加速计算，我们需要将它们移至 GPU 内存中。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-10-cpu与gpu之间的通信.png" />
-   <p>图3.10 CPU与GPU之间的通信</p>
- </div>
+![图3.10 CPU与GPU之间的通信](images/3-10-cpu与gpu之间的通信.png)
+
+*图3.10 CPU与GPU之间的通信*
 
 上图左侧包含中央处理器（CPU）和系统内存（RAM），右侧包含图形处理器（GPU）及其专用的高速显存（DRAM），GPU内部由多个“流式多处理器”（streaming multiprocessor）组成，这是其并行计算能力的来源。CPU和GPU通过“PCI BUS”（PCI总线）相连，数据在CPU和GPU之间传输需要经过这条总线，这通常是一个性能瓶颈，因为它的带宽远小于GPU内部的内存带宽。因此，在实际应用中，我们应尽量减少CPU和GPU之间的数据传输
 
@@ -735,11 +724,9 @@ $$
 
 将这个过程[可视化](https://medium.com/@dzmitrybahdanau/the-flops-calculus-of-language-model-training-3b19c1f025e4)：
 
-![](https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-4-back-grad.gif)
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter3/images/3-11-反向梯度传播.png" />
-   <p>图3.11 反向梯度传播</p>
- </div>
+![图3.11 反向梯度传播](images/3-11-反向梯度传播.png)
+
+*图3.11 反向梯度传播*
 
 - 对于 w2：计算 w2.grad 和 h1.grad 总共需要 4 * B * D * K 次 FLOPs。
 - 对于 w1：计算 w1.grad 总共需要 4 * B * D * D 次 FLOPs。

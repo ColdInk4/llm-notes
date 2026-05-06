@@ -27,10 +27,9 @@
 
 
 
-<div align="center">
-   <img width="1000" height="600" alt="1" src="https://github.com/user-attachments/assets/bc838c76-7eff-4479-a760-ef404fc48e89" />
-   <p>图2.1 分词器与LLM</p>
- </div>
+![图2.1 分词器与LLM](images/图2.1.png)
+
+*图2.1 分词器与LLM*
 
 >需要注意的是，这一过程不仅是简单的编码转换，更隐含了一种模型对“世界的切分“策略：模型最终“看到”的基本单位，可能是字符、词，或更常见的子词片段编码。这种表示方式将直接影响序列长度、信息密度以及语义的组合方式，从而进一步影响模型的训练效率、表现能力。
 
@@ -65,12 +64,9 @@
 训练一个用于现代大型语言模型的分词器可以拆成四步：准备语料 → 初始化基础单元(不同的分词算法，可省略) → 统计并迭代合并 → 输出产物并用于编码、解码。
 ```
 
-<div align="center">
-   
-![1](https://github.com/user-attachments/assets/14b349a5-167d-4f66-825b-2951e87d0dc6)
+![图2.2 分词器训练流程](images/图2.2.jpg)
 
-   <p>图2.2 分词器训练流程</p>
- </div>
+*图2.2 分词器训练流程*
  
 ### 2.1.1 准备语料
 
@@ -206,10 +202,9 @@ if __name__ == "__main__":
 
 *📖Tips：词汇表外是当LLM模型在处理新的、实际应用的文本时，如果遇到一个词汇表中没有的Token，那么这个Token就被视为一个OOV。*
 
-<div align="center">
-<img width="1200" height="612" alt="da455deb32b22e4285d51b04dfb9a063" src="https://github.com/user-attachments/assets/97e514fd-5def-405d-95c2-9a9208d6f067" />
-   <p>图2.3 token序列长度对注意力机制的影响</p>
- </div>
+![图2.3 token序列长度对注意力机制的影响](images/图2.3.png)
+
+*图2.3 token序列长度对注意力机制的影响*
 
 根据图2.3可以看出，token数量对注意力机制的影响主要体现在两方面：
 - 计算复杂度呈 $O(N^2)$ 增长；
@@ -324,10 +319,9 @@ $$
 
 **Step1** &emsp;导出核心产物，不管是使用哪一种分词算法，训练完成后都需要导出至少两个关键文件：
    
-<div align="center">
-   <img width="1000" height="500" alt="0fb498f1c19fdae425eb17ad4270c45e" src="https://github.com/user-attachments/assets/1ea639e8-81f9-49a5-b5d7-3df32fe129a2" />
-   <p>图2.4 vocab、merges文件示例</p>
-   </div>
+![图2.4 vocab、merges文件示例](images/图2.4.png)
+
+*图2.4 vocab、merges文件示例*
    
    - **vocab文件**：记录所有token及其对应的id，是编码器和解码器的核心索引。
    - **merges文件**：按顺序记录所有子词合并规则或概率模型。二者共同决定tokenizer的编码与解码逻辑，并确保编码的可逆。
@@ -554,10 +548,9 @@ print(f"IDs:{encoded_ids}")
 
 ### 2.3.3 快速体验DeepSeek分词器
 
-<div align="center">
-   <img width="1788" height="1077" alt="fdfd8c74f27d0832c80a9d4587daeb16" src="https://github.com/user-attachments/assets/7e7b40df-e9c0-43ed-896a-40679a8046c8" />
-   <p>图2.5 DeepSeek分词器</p>
-   </div>
+![图2.5 DeepSeek分词器](images/2.5.png)
+
+*图2.5 DeepSeek分词器*
    
    这里输入文本信息为*你好 ，hello,  world !  🌏 ！*。
    

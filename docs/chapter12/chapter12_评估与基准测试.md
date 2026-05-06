@@ -11,24 +11,21 @@
 
 这是最直观、最普遍的评估形式。各大模型发布时，都会在一系列标准化基准上报告其得分。例如：
 
-<div align="center">
-   <img src="images/12-1-Deepseek-R1的基准性能.png" />
-   <p>图12.1 DeepSeek-R1的基准性能</p>
- </div>
+![图12.1 DeepSeek-R1的基准性能](images/12-1-Deepseek-R1的基准性能.png)
+
+*图12.1 DeepSeek-R1的基准性能*
 
 [DeepSeek-R1论文 Figure 1 报告的基准性能](https://arxiv.org/pdf/2501.12948)，展示了 DeepSeek-R1 在AIME 2024、Codeforces、GPQA Diamond、MATH 500等基准上的性能
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-2-llama4的基准性能.png" />
-   <p>图12.2 llama4的基准性能</p>
- </div>
+![图12.2 llama4的基准性能](images/12-2-llama4的基准性能.png)
+
+*图12.2 llama4的基准性能*
 
 [Llama 4 Behemoth 指令微调版本的基准性能](https://ai.meta.com/blog/llama-4-multimodal-intelligence/)，在其技术报告里展示了其在 MMLU-Pro、MATH500、GPQA 等多个基准上的表现。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-3-OLMo的基准性能.png" />
-   <p>图12.3 OLMo的基准性能</p>
- </div>
+![图12.3 OLMo的基准性能](images/12-3-OLMo的基准性能.png)
+
+*图12.3 OLMo的基准性能*
 
 [Allen AI 团队在技术报告中展示的 OLMo-2-32B 模型的基准性能](https://allenai.org/blog/olmo2-32B)，主要在 MATH、MMLU、DROP 和 GSM8k 等基准上进行评估。
 
@@ -36,57 +33,50 @@
 
 下面是一个来自于 [HELM](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard)网站的例子，他展示了不同模型在多个基准测试上的性能排行：
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-4-HELM-capibities.png" />
-   <p>图12.4 不同模型在 HELM 网站上的性能排行榜</p>
- </div>
+![图12.4 不同模型在 HELM 网站上的性能排行榜](images/12-4-HELM-capibities.png)
+
+*图12.4 不同模型在 HELM 网站上的性能排行榜*
 
  除了上面的介绍之外，国内也有很多类似的大模型榜单。OpenCompass是由上海人工智能实验室（上海AI实验室)于2023年8月正式推出的大模型开放评测体系：
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-5-上海人工智能实验室opencompass.png" />
-   <p>图12.5 不同模型在思南 OpenCompass 网站上的性能排行榜</p>
- </div>
+![图12.5 不同模型在思南 OpenCompass 网站上的性能排行榜](images/12-5-上海人工智能实验室opencompass.png)
+
+*图12.5 不同模型在思南 OpenCompass 网站上的性能排行榜*
 
 [SuperCLUE](https://superclueai.com/homepage) 是国内权威独立第三方 AI 测评分析机构，源于2019年10月发起的中文测评基准 CLUE 开源社区。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-6-SuperCLUE.png" />
-   <p>图12.6 不同模型在 SuperCLUE 网站上的性能排行榜</p>
- </div>
+![图12.6 不同模型在 SuperCLUE 网站上的性能排行榜](images/12-6-SuperCLUE.png)
+
+*图12.6 不同模型在 SuperCLUE 网站上的性能排行榜*
 
 
 ### 成本与性价比
 
 当然，评估不能只看能力，成本和推理速度也是评价的关键维度。另外一个例子是来自于 [Artificial Analysis](https://artificialanalysis.ai/) 网站，从智能、推理速度、价格三个角度测评了不同模型：
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-7-Artificial Analysis.png" />
-   <p>图12.7 不同模型在 Artificial Analysis 网站上的性能排行榜</p>
- </div>
+![图12.7 不同模型在 Artificial Analysis 网站上的性能排行榜](<images/12-7-Artificial Analysis.png>)
+
+*图12.7 不同模型在 Artificial Analysis 网站上的性能排行榜*
 
 像 Artificial Analysis 这样的网站，就将模型的性能与每 token 的成本结合起来，绘制出帕累托前沿（Pareto Frontier）。这揭示了一个现实：顶级模型（如 O3）虽然强大，但价格昂贵；而一些排名稍后的模型，可能在性能和成本之间取得了更好的平衡。智能纵坐标的智能指数包含以下测试： MMLU-Pro、GPQA Diamond、Humanity's Last Exam、LiveCodeBench、SciCode、AIME 2025、IFBench、AA-LCR、Terminal-Bench Hard 和 𝜏²-Bench Telecom 。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-8-Intelligence vs Cost to Run Artificial Analysis Intelligence Index (12 Dec &apos;25) .png" />
-   <p>图12.8 不同模型在 Artificial Analysis 网站上的性能 vs 成本对比</p>
- </div>
+![图12.8 不同模型在 Artificial Analysis 网站上的性能 vs 成本对比](<images/12-8-Intelligence vs Cost to Run Artificial Analysis Intelligence Index (12 Dec '25) .png>)
+
+*图12.8 不同模型在 Artificial Analysis 网站上的性能 vs 成本对比*
 
 ###  用户选择与市场反馈 
 
 另一种“评估”是看用户实际选择了谁。[OpenRouter](https://openrouter.ai/rankings) 网站通过路由流量到不同的模型，积累了大量关于用户偏好的数据。根据发送到每个模型的 token 数量，可以生成一个“使用量”排行榜。这个榜单显示，OpenAI、Anthropic、Google 以及国内的 DeepSeek 和 Qwen 模型目前占据主导地位。这表明，在真实世界中，“被广泛使用”本身就是一个强有力的“好”的指标。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-9-不同厂商token使用排行榜.png" />
-   <p>图12.9 不同厂商token使用排行榜</p>
- </div>
+![图12.9 不同厂商token使用排行榜](images/12-9-不同厂商token使用排行榜.png)
+
+*图12.9 不同厂商token使用排行榜*
 
 除以上之外，还有一个很受欢迎的评测榜单是[Chatbot Arena](https://huggingface.co/spaces/lmarena-ai/lmarena-leaderboard)。它是由国际开放研究组织 LMSYS Org 推出的大模型竞技评测平台，最大特点是采用**匿名盲测**机制随机配对模型，通过**用户投票**结合 Elo 评分系统量化模型能力。该平台由加州大学伯克利分校、圣地亚哥分校和卡内基梅隆大学研究人员联合开发，支持多轮对话与针对性榜单评测。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-10-chatbot-arera.png" />
-   <p>图12.10 不同模型在 SuperCLUE 网站上的性能排行榜</p>
- </div>
+![图12.10 不同模型在 SuperCLUE 网站上的性能排行榜](images/12-10-chatbot-arera.png)
+
+*图12.10 不同模型在 SuperCLUE 网站上的性能排行榜*
 
 ### 主观评价与社区口碑
 
@@ -98,10 +88,9 @@
 
 然而，正如 [Andrej Karpathy](https://x.com/karpathy/status/1896266683301659068?s=20) 所指出的，当前我们正面临一场“评估危机”。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-11-Andrej Karpathy关于当前评估问题的看法.png" />
-   <p>图12.11 Andrej Karpathy关于当前评估问题在x平台上发表的看法</p>
- </div>
+![图12.11 Andrej Karpathy关于当前评估问题在x平台上发表的看法](<images/12-11-Andrej Karpathy关于当前评估问题的看法.png>)
+
+*图12.11 Andrej Karpathy关于当前评估问题在x平台上发表的看法*
 
 > 翻译：我的感受是，当前正面临一场评估危机。我现在真的不知道该看哪些指标了。
 MMLU 在过去几年里是个不错且有用的基准，但那段时期早已结束。
@@ -198,18 +187,16 @@ $$
 
 2016 年，Jozefowicz 等人在[《Exploring the Limits of Language Modeling》](https://arxiv.org/abs/1602.02410) 论文里，用纯 CNN + LSTM 架构，在 十亿（1B） Word Benchmark 上把困惑度从 51.3 降到 30.0 —— 当时是非常大的突破。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-12-CNN+LSTM 架构显著降低困惑度.png" />
-   <p>图12.12 CNN+LSTM 架构显著降低困惑度</p>
- </div>
+![图12.12 CNN+LSTM 架构显著降低困惑度](<images/12-12-CNN+LSTM 架构显著降低困惑度.png>)
+
+*图12.12 CNN+LSTM 架构显著降低困惑度*
 
 OpenAI 在 [《Language Models are Unsupervised Multitask Learners》](https://cdn.openai.com/better-language-models/) 论文中发布的 GPT-2，在 WebText（来自 Reddit 链接的网页文本，约 40GB）上训练，然后直接在标准数据集上做 zero-shot（零样本）评估。
 这属于“分布外评估”（out-of-distribution），因为训练数据和测试数据来源不同。但它表现很好，说明大规模、多样化的训练数据能带来强大的泛化能力。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-13-GPT-2的zero-shot（零样本）评估.png" />
-   <p>图12.13 GPT-2的zero-shot（零样本）评估</p>
- </div>
+![图12.13 GPT-2的zero-shot（零样本）评估](images/12-13-GPT-2的zero-shot（零样本）评估.png)
+
+*图12.13 GPT-2的zero-shot（零样本）评估*
 
 这是 GPT-2 论文中的关键表格，展示了不同规模模型在多个任务上的表现：
 
@@ -256,10 +243,9 @@ OpenAI 在 [《Language Models are Unsupervised Multitask Learners》](https://c
 
 来自 [LAMBADA](https://arxiv.org/abs/1606.06031) 数据集的三个具体例子 
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-14-LAMBADA完形填空任务的三个样例.png" />
-   <p>图12.14 LAMBADA完形填空任务的三个样例</p>
- </div>
+![图12.14 LAMBADA完形填空任务的三个样例](images/12-14-LAMBADA完形填空任务的三个样例.png)
+
+*图12.14 LAMBADA完形填空任务的三个样例*
 
 
 ✅ 案例 1
@@ -294,10 +280,9 @@ OpenAI 在 [《Language Models are Unsupervised Multitask Learners》](https://c
 
 [HellaSwag](https://arxiv.org/pdf/1905.07830)是一个常识推理任务。通常是给定一个视频片段或一段文字描述（premise），然后给出四个选项（A, B, C, D），要求选出最符合常识、最自然、最可能发生的后续动作。它强调的是日常生活的常识推理（commonsense reasoning）和行为合理性判断。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-15-HellaSwag常识推理样例.png" />
-   <p>图12.15 HellaSwag常识推理样例</p>
- </div>
+![图12.15 HellaSwag常识推理样例](images/12-15-HellaSwag常识推理样例.png)
+
+*图12.15 HellaSwag常识推理样例*
 
 ✅ 案例 1：给狗洗澡
 
@@ -333,10 +318,9 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 最初用 GPT-3 的少样本提示进行评估，最大型号的 X-Large 只能取得不到 0.5 的分数，现在最强的 LLM 在 MMLU 上最高分已达90+。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-16-GPT-3在MMLU上的少样本提示.png" />
-   <p>图12.16 GPT-3在MMLU上的少样本提示</p>
- </div>
+![图12.16 GPT-3在MMLU上的少样本提示](images/12-16-GPT-3在MMLU上的少样本提示.png)
+
+*图12.16 GPT-3在MMLU上的少样本提示*
 
 
 当前顶尖模型（如 Geimini 3 Pro Preview）在 [HELM](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/mmlu_pro) 上可以看到，已达到 90.3% 的准确率。
@@ -345,10 +329,9 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 [MMLU-Pro](https://arxiv.org/abs/2406.01574) 是对 MMLU 的改进版，移除了噪声大或过于简单的问题，并将选项从 4 个增加到 10 个。模型准确率显著下降，缓解了饱和问题。通常结合思维链（CoT）进行评估。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-17-MMLU-pro对比MMLU.png" />
-   <p>图12.17 MMLU-pro对比MMLU</p>
- </div>
+![图12.17 MMLU-pro对比MMLU](images/12-17-MMLU-pro对比MMLU.png)
+
+*图12.17 MMLU-pro对比MMLU*
 
 ### GPQA (Graduate-Level Google-Proof Q&A)
 
@@ -358,10 +341,9 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 - 非专家在可访问谷歌的条件下，在 30 分钟内达到了 34% 的accuracy
 - GPT-4 实现了 39%
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-18-MMLU-pro对比MMLU.png" />
-   <p>图12.18 MMLU-pro对比MMLU</p>
- </div>
+![图12.18 MMLU-pro对比MMLU](images/12-18-MMLU-pro对比MMLU.png)
+
+*图12.18 MMLU-pro对比MMLU*
 
 当前顶尖模型（如 Geimini 3 Pro Preview）在 [HELM](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/gpqa) 上可以看到，已达到 80.3% 的准确率，显示出巨大进展。
 
@@ -369,10 +351,9 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 [Humanity's Last Exam](https://arxiv.org/abs/2501.14249) 是一个雄心勃勃的项目，包含 2500 道多模态、多学科的选择题和简答题。通过五十万美元奖金池激励社区贡献，并用前沿 LLM 筛选掉过于简单的问题，再经过多阶段审查。局限在于问题征集过程可能存在严重的选择偏差，且问题类型仍局限于有标准答案的“考试”形式。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-19-Humanity&apos;s Last Exam 收集筛选流程.png" />
-   <p>图12.19 Humanity's Last Exam 收集筛选流程</p>
- </div>
+![图12.19 Humanity's Last Exam 收集筛选流程](<images/12-19-Humanity's Last Exam 收集筛选流程.png>)
+
+*图12.19 Humanity's Last Exam 收集筛选流程*
 
 当前顶尖模型（如 Geimini 3 Pro Preview）在  https://agi.safe.ai/ 上可以看到，已达到 38.3% 的准确率。
 
@@ -386,10 +367,9 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 [Chatbot Arena](https://arxiv.org/abs/2403.04132) 采用“盲测”和 ELO 评分系统。真实用户提交提示，同时收到两个匿名模型的回复，并选择更优者。优点是输入动态、能容纳新模型。问题在于评估者是网站访客，样本可能存在偏差；ELO 分数可能被策略性操纵。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-20-Chatbot Arena 分数排行榜单.png" />
-   <p>图12.20 Chatbot Arena 分数排行榜单</p>
- </div>
+![图12.20 Chatbot Arena 分数排行榜单](<images/12-20-Chatbot Arena 分数排行榜单.png>)
+
+*图12.20 Chatbot Arena 分数排行榜单*
 
 
 在其[排行榜单](https://huggingface.co/spaces/lmarena-ai/chatbot-arena-leaderboard)里我们可以看到，当前表现最好的是 Geimini 3 Pro ，Arena Score 达到了 1492 分。Arena Score 是一个经过统计校准的能力分数，其数值差异直接对应模型在人类偏好盲测中的胜率。
@@ -398,43 +378,38 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 [IFEval](https://arxiv.org/abs/2311.07911) 使用可自动验证的约束（如“回答必须包含至少5句话”）来测试模型。优点是自动化程度高。局限是只评估约束遵守情况，不评估语义质量，且约束本身可能过于人工化。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-21-IFEval包含指令的详细描述.png" />
-   <p>图12.21 IFEval包含指令的详细描述</p>
- </div>
+![图12.21 IFEval包含指令的详细描述](images/12-21-IFEval包含指令的详细描述.png)
+
+*图12.21 IFEval包含指令的详细描述*
 
 在 HELM 的 [Leaderboard IFEval](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/ifeval) 上我们可以看到，当前前沿模型在IFEval 能达到 0.951 的准确度。 
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-22-HELM上不同模型在IFEval的排行榜.png" />
-   <p>图12.22 HELM上不同模型在IFEval的排行榜</p>
- </div>
+![图12.22 HELM上不同模型在IFEval的排行榜](images/12-22-HELM上不同模型在IFEval的排行榜.png)
+
+*图12.22 HELM上不同模型在IFEval的排行榜*
 
 ### AlpacaEval
 
 [AlpacaEval](https://tatsu-lab.github.io/alpaca_eval/) 包括各种来源的 805 条指令。使用一个强大的 LLM（如 GPT-4）作为裁判，判断候选模型的回答是否优于 GPT-4 自身的回答，并计算胜率。优点是自动化程度高，能处理开放域回答。问题在于存在裁判偏见，且早期版本易被回答长度等表面特征欺骗。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-23-不同模型在AlpacaEval上的排行榜.png" />
-   <p>图12.23 不同模型在AlpacaEval上的排行榜</p>
- </div>
+![图12.23 不同模型在AlpacaEval上的排行榜](images/12-23-不同模型在AlpacaEval上的排行榜.png)
+
+*图12.23 不同模型在AlpacaEval上的排行榜*
 
 
 ### WildBench
 
 [WildBench](https://arxiv.org/pdf/2406.04770) 从100多万条真实人机对话中采样构建评估集，并使用 GPT-4-Turbo 作为裁判，配合检查清单确保评估维度的全面性。其结果与 Chatbot Arena 高度相关（相关系数 0.95），被视为新基准有效性的“事实上的”检验标准。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-24-WildBench构建流程.png" />
-   <p>图12.24 WildBench构建流程</p>
- </div>
+![图12.24 WildBench构建流程](images/12-24-WildBench构建流程.png)
+
+*图12.24 WildBench构建流程*
 
 在 HELM 的 [Leaderboard WildBench](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/wildbench) 上我们可以看到，当前前沿模型在IFEval 能达到 0.866 的准确度。 
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-25-HELM上不同模型在WildBench的排行榜.png" />
-   <p>图12.25 HELM上不同模型在WildBench的排行榜</p>
- </div>
+![图12.25 HELM上不同模型在WildBench的排行榜](images/12-25-HELM上不同模型在WildBench的排行榜.png)
+
+*图12.25 HELM上不同模型在WildBench的排行榜*
 
 ## 12.6 智能体基准
 
@@ -444,38 +419,33 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 [SWEBench](https://arxiv.org/abs/2310.06770) 包含 12 个 Python 代码库中的 2294 个任务，根据 GitHub issue 描述，提交一个能通过单元测试的 Pull Request (PR)。评估直接运行单元测试来验证修复是否成功。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-26-SWEBench评测流程示意图.png" />
-   <p>图12.26 SWEBench评测流程示意图</p>
- </div>
+![图12.26 SWEBench评测流程示意图](images/12-26-SWEBench评测流程示意图.png)
+
+*图12.26 SWEBench评测流程示意图*
 
 ### CyBench
 
 [CyBench](https://arxiv.org/abs/2408.08926) 完成 40 个网络安全领域的“夺旗”（CTF）挑战。任务难度通过人类“首次解决时间”来度量，有些任务对人类而言也极具挑战性（耗时可达24小时）。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-27-CyBench评测流程示意图.png" />
-   <p>图12.27 CyBench评测流程示意图</p>
- </div>
+![图12.27 CyBench评测流程示意图](images/12-27-CyBench评测流程示意图.png)
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-28-不同模型在CyBench的排行榜.png" />
-   <p>图12.28 不同模型在CyBench的排行榜</p>
- </div>
+*图12.27 CyBench评测流程示意图*
+
+![图12.28 不同模型在CyBench的排行榜](images/12-28-不同模型在CyBench的排行榜.png)
+
+*图12.28 不同模型在CyBench的排行榜*
 
 ### MLEBench:
 
 [MLEBench](https://arxiv.org/abs/2410.07095) 自动化参与 75 个 Kaggle 机器学习竞赛，包括数据处理、模型训练、超参调优和结果提交。当前最佳模型获得任何奖牌的准确率也低于20%。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-29-MLEBench评测流程示意图.png" />
-   <p>图12.29 MLEBench评测流程示意图</p>
- </div>
+![图12.29 MLEBench评测流程示意图](images/12-29-MLEBench评测流程示意图.png)
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-30-MLEBench.png" />
-   <p>图12.30 不同模型在MLEBench的排行榜</p>
- </div>
+*图12.29 MLEBench评测流程示意图*
+
+![图12.30 不同模型在MLEBench的排行榜](images/12-30-MLEBench.png)
+
+*图12.30 不同模型在MLEBench的排行榜*
 
 这些基准代表了 LLM 能力的最前沿，但当前模型的成功率普遍较低，表明它们距离真正的自主智能体仍有巨大差距。
 
@@ -489,22 +459,19 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ARC-AGI-1:
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-31-ARC-AGI-1评测示意图.png" />
-   <p>图12.31 ARC-AGI-1评测示意图</p>
- </div>
+![图12.31 ARC-AGI-1评测示意图](images/12-31-ARC-AGI-1评测示意图.png)
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-32-不同模型在ARC-AGI-1的得分.png" />
-   <p>图12.32 不同模型在ARC-AGI-1的得分</p>
- </div>
+*图12.31 ARC-AGI-1评测示意图*
+
+![图12.32 不同模型在ARC-AGI-1的得分](images/12-32-不同模型在ARC-AGI-1的得分.png)
+
+*图12.32 不同模型在ARC-AGI-1的得分*
 
 更难的 ARC-AGI-2:
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-33-ARC-AGI-2评测示意图.png" />
-   <p>图12.33 ARC-AGI-2评测示意图</p>
- </div>
+![图12.33 ARC-AGI-2评测示意图](images/12-33-ARC-AGI-2评测示意图.png)
+
+*图12.33 ARC-AGI-2评测示意图*
  
 它捕捉了一种更纯粹的、类似人类的模式识别和泛化能力，是早期 AGI 研究的重要基准。传统 LLM 在此任务上表现极差，但最新模型已展现出一定能力。
 
@@ -512,18 +479,16 @@ ARC-AGI-1:
 
 对于 AI 来说，安全意味着什么？
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-34-什么是安全.png" />
-   <p>图12.34 什么是安全</p>
- </div>
+![图12.34 什么是安全](images/12-34-什么是安全.png)
+
+*图12.34 什么是安全*
 
 
 安全评估旨在衡量模型执行有害行为的倾向。在 HELM 的 [Leaderboard Safety Scenarios](https://crfm.stanford.edu/helm/safety/latest/#/leaderboard) 展示了当前 LLM 在安全领域的排行榜。 
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-35-HELM上LLM在安全领域的排行榜.png" />
-   <p>图12.35 HELM上LLM在安全领域的排行榜</p>
-</div>
+![图12.35 HELM上LLM在安全领域的排行榜](images/12-35-HELM上LLM在安全领域的排行榜.png)
+
+*图12.35 HELM上LLM在安全领域的排行榜*
 
 ### HarmBench
 
@@ -531,36 +496,32 @@ ARC-AGI-1:
 
 在 HELM 的 [Leaderboard armBench](https://crfm.stanford.edu/helm/safety/latest/#/leaderboard) 展示了当前 LLM 在 HarmBench 基准上的排行。 
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-36-HELM上LLM在HarmBench基准上的排行.png" />
-   <p>图12.36 HELM上LLM在HarmBench 基准上的排行</p>
-</div>
+![图12.36 HELM上LLM在HarmBench 基准上的排行](images/12-36-HELM上LLM在HarmBench基准上的排行.png)
+
+*图12.36 HELM上LLM在HarmBench 基准上的排行*
 
 ### AIR-Bench
 
 [AIR-Bench](https://arxiv.org/abs/2407.17436) 基于全球监管框架和公司政策，构建了一个包含 314 个风险类别和 5694 个提示的系统性评测集。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-37-AIR-Bench评测集概览.png" />
-   <p>图12.37 AIR-Bench评测集概览</p>
-</div>
+![图12.37 AIR-Bench评测集概览](images/12-37-AIR-Bench评测集概览.png)
+
+*图12.37 AIR-Bench评测集概览*
 
 在 HELM 的 [Leaderboard AIR-Bench](https://crfm.stanford.edu/helm/air-bench/latest/#/leaderboard) 展示了当前 LLM 在 AIR-Bench 基准上的排行。 
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-38-HELM上LLM在AIR-Bench基准上的排行.png" />
-   <p>图12.38 HELM上LLM在AIR-Bench基准上的排行</p>
-</div>
+![图12.38 HELM上LLM在AIR-Bench基准上的排行](images/12-38-HELM上LLM在AIR-Bench基准上的排行.png)
+
+*图12.38 HELM上LLM在AIR-Bench基准上的排行*
 
 ### 越狱（Jailbreaking）:
 
 
 即使模型被训练为拒绝有害请求，[攻击者也能通过自动优化提示（如 Greedy Coordinate Gradient, GCG）来绕过安全防护](https://arxiv.org/pdf/2307.15043)。这类攻击甚至能从开源模型迁移到闭源模型。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-39-模型越狱案例.png" />
-   <p>图12.39 模型越狱案例</p>
-</div>
+![图12.39 模型越狱案例](images/12-39-模型越狱案例.png)
+
+*图12.39 模型越狱案例*
 
 ### 部署前测试
 
@@ -574,11 +535,10 @@ ARC-AGI-1:
 
 语言模型在实践中被广泛应用：
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-40-OpenAI模型被广泛使用.png" />
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-40-基于LLM构建的Cursor编程工具被广泛应用.png" />
-   <p>图12.40 LLM被广泛使用的两个案例</p>
-</div>
+![图12.40 LLM被广泛使用的两个案例（1）](images/12-40-OpenAI模型被广泛使用.png)
+![图12.40 LLM被广泛使用的两个案例（2）](images/12-40-基于LLM构建的Cursor编程工具被广泛应用.png)
+
+*图12.40 LLM被广泛使用的两个案例*
 
 
 然而，大多数现有的基准测试（如 MMLU）是标准化的“考试”，与现实世界的使用场景相去甚远。真实用户的提示更多是“求助型”（asking）而非“测验型”（quizzing）。
@@ -589,19 +549,17 @@ ARC-AGI-1:
 ](https://arxiv.org/abs/2412.13678) 论文里，提出使用语言模型分析真实用户数据，分享人们提问的一般模式：
 
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-41-Clip使用语言模型分析真实用户数据.png" />
-   <p>图12.41 Clip使用语言模型分析真实用户数据</p>
-</div>
+![图12.41 Clip使用语言模型分析真实用户数据](images/12-41-Clip使用语言模型分析真实用户数据.png)
+
+*图12.41 Clip使用语言模型分析真实用户数据*
 
 ### MedHELM
 
 为解决此问题，出现了如 [MedHELM](https://arxiv.org/abs/2412.13678) 这样的基准，它由 29 名临床医生贡献了 121 个真实的临床任务，更贴近实际医疗应用场景。然而，真实性与隐私之间存在天然矛盾，许多真实数据（如患者病历）无法公开。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-42-MedHELM构建流程.png" />
-   <p>图12.42 Clip使用语言模型分析真实用户数据</p>
-</div>
+![图12.42 Clip使用语言模型分析真实用户数据](images/12-42-MedHELM构建流程.png)
+
+*图12.42 Clip使用语言模型分析真实用户数据*
 
 ## 12.10 有效性 
 
@@ -617,10 +575,9 @@ ARC-AGI-1:
 
 [PROVING TEST SET CONTAMINATION IN BLACK BOX LANGUAGE MODELS](https://arxiv.org/pdf/2310.17623)利用数据点的可交换性尝试从模型中推断训练集和测试集的重叠部分：
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-43-利用数据点的可交换性尝试从模型中推断训练集和测试集的重叠部分.png" />
-   <p>图12.43 利用数据点的可交换性尝试从模型中推断训练集和测试集的重叠部分</p>
-</div>
+![图12.43 利用数据点的可交换性尝试从模型中推断训练集和测试集的重叠部分](images/12-43-利用数据点的可交换性尝试从模型中推断训练集和测试集的重叠部分.png)
+
+*图12.43 利用数据点的可交换性尝试从模型中推断训练集和测试集的重叠部分*
 
 #### 路线 2：鼓励报告规范
 
@@ -630,10 +587,9 @@ ARC-AGI-1:
 
 [许多基准存在标注错误或噪声](https://arxiv.org/abs/2502.03461)。例如，[修正后的 SWE-Bench Verified](https://openai.com/index/introducing-swe-bench-verified/) 版本显示，原始分数可能因错误而被低估。
 
-<div align="center">
-   <img src="https://raw.githubusercontent.com/datawhalechina/diy-llm/main/docs/chapter12/images/12-44-许多基准存在标注错误或噪声.png" />
-   <p>图12.44 许多基准存在标注错误或噪声</p>
-</div>
+![图12.44 许多基准存在标注错误或噪声](images/12-44-许多基准存在标注错误或噪声.png)
+
+*图12.44 许多基准存在标注错误或噪声*
 
 
 ## 12.11 我们到底在评估什么？

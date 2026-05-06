@@ -47,10 +47,9 @@ $$
 
 *📖Tips：可学习路由能否发挥作用的关键——并不在于具体采用何种路由（TC/EC...）形式，**而在于输入表示是否已经具备足够的语义结构，使得样本在表示空间中具有可分性，从而支撑稳定且有意义的专家选择**。*
 
-<div align="center">
-<img width="1000" height="520" alt="c5b3cdd83a238e8a6484d51975277f8a" src="https://github.com/user-attachments/assets/648d1892-b01e-4d40-9c2b-50478d2eeccf" />
-   <p>图5.1 词元选择模式</p>
- </div>
+![图5.1 词元选择模式](images/5.1.png)
+
+*图5.1 词元选择模式*
 
 - `TC`中 $W_g$ ：在打分步骤中，它可以理解为一个 “专家特长档案”。它将token的隐藏特征映射到专家集合的能力空间，并告诉token不同专家分别擅长什么语义，每个token会根据与各个专家“特长档案”的匹配程度，主动挑选最适合处理自己的Top-K专家。
 
@@ -144,10 +143,9 @@ TC_MoE(dim=32, num_experts=10, k=2)，输入文本：
 输出：
 >按照字节级切分文本，得到33个token，专家负载统计从0到9号专家处理token总数统计依次为[13, 13, 16, 14, 9, 6, 20, 19, 18, 4]
 
-<div align="center">
-<img width="1000" height="773" alt="1980610e1c138e069cd6fdcdc3b196a3" src="https://github.com/user-attachments/assets/d665c6bd-88be-4b35-9199-71dbfe74b9ba" />
-   <p>图5.2 专家选择模式</p>
- </div>  
+![图5.2 专家选择模式](images/5.2.png)
+
+*图5.2 专家选择模式*
 
 - `EC`中 $W_g$ ：在打分步骤中，它可以理解为一个 “语义导航器”，将token的隐藏特征映射到每个专家的语义空间，并把这份导航信号提供给所有专家。每个专家会根据这份“导航信息”，主动挑选最符合自己能力范围的Top-K token进行处理。
   
@@ -279,10 +277,9 @@ EC_MoE(dim=32, num_experts=10, k=2)，输入文本：
 - **Hash的局限**：尽管Hash路由在语义灵活性和精细化专家分工上通常不如可学习路由，但在若干基准测试和工程场景中，仍能展现出相当的竞争力。
 
 
-<div align="center">  
-<img width="800" height="480" alt="image" src="https://github.com/user-attachments/assets/e5b160fb-1410-418d-aa48-f790095a5f01" />
-   <p>图5.3 哈希路由</p>
- </div>
+![图5.3 哈希路由](images/5.3.png)
+
+*图5.3 哈希路由*
 
 
  
@@ -463,10 +460,9 @@ if __name__ == "__main__":
 - **Router Z-loss**：为避免路由logits在低精度下产生极端值，引入对logits幅度的惩罚项，减小softmax对极端输入的敏感性，从而提高训练的数值稳定性。
 - **较小的初始化**：考虑到路由器随机初始化困难，于是通过从截断正态分布中抽取元素来初始化权重矩阵，均值为0，适当减小某些线性层、FFN的初始化尺度可以降低训练初期梯度方差，减少早期不稳定现象，提高模型的能力。
      
-<div align="center">  
-<img width="1200" height="600" alt="c7b2879ba70391b9e340c9c062a232b2" src="https://github.com/user-attachments/assets/33892936-0c5c-4743-8047-6e65d9d85401" />
-   <p>图5.6 Switch Transformer</p>
- </div>
+![图5.6 Switch Transformer](images/5.6.png)
+
+*图5.6 Switch Transformer*
 
 
 >Switch Transformer子层顺序采用**自注意力层Self-Attention → 前馈网络FFN、MoE**的结构，是实现高效训练与深度语义建模的关键：
@@ -493,10 +489,9 @@ if __name__ == "__main__":
 
 &emsp;&emsp;MoE相较于传统稠密模型的优势是它可以**扩大模型参数规模的同时保持计算量基本不变**，从而显著提升模型的表示能力与性能；并且由于MoE的专家是**稀疏激活**的，每次仅有少量专家参与计算，因此各专家*通常是前馈网络*可以作为独立模块分布在不同设备上。路由器只需根据输入将对应的token发送到相应设备，计算便在该专家所在设备上独立完成。这种天然的结构切分方式使MoE能实现高效的**专家级并行**，成为构建超大规模模型时必不可少的并行化策略，也是现代大模型在多机多卡环境下突破容量与性能瓶颈的重要基础。
 
-<div align="center">  
-   <img width="1000" height="560" alt="a3148e314b83a88516b3c82b67d4224d" src="https://github.com/user-attachments/assets/b9945e0c-9a88-4127-a267-2f1c0b62d132" />
-   <p>图5.7 混合专家 vs 稠密模型</p>
- </div>
+![图5.7 混合专家 vs 稠密模型](images/5.7.png)
+
+*图5.7 混合专家 vs 稠密模型*
 从上图中我们不难发现，在所示实验设置下 MoE 架构往往比稠密模型收敛更快且表现更好（具体结论依赖数据规模、训练配方与评测任务）。
 
 在MoE研究中，常见两条实践路径：
@@ -894,10 +889,9 @@ class MiniMoELLModel(nn.Module):
 ### 5.3.1 DeepSeek V3的创新关键点
 &emsp;&emsp;DeepSeekMoE一种创新的专家混合模型，其目标是实现**极致的专家专业化**，以解决传统MoE模型中存在的**知识混合**和**知识重复**问题，从而在保持计算成本适中的同时，极大地提升模型性能和参数效率。`DeepSeekMoE`的架构主要通过以下两个策略来实现专家专业化：
    
-<div align="center">
-<img width="1350" height="600" alt="image" src="https://github.com/user-attachments/assets/6aab083e-c9b6-48a2-9f7d-28d833c7860a" />
-   <p>图5.4 DeepSeekMoE结构示意图</p>
- </div>
+![图5.4 DeepSeekMoE结构示意图](images/5.4.png)
+
+*图5.4 DeepSeekMoE结构示意图*
 
 - **细粒度专家分割**：在保持专家参数总量不变的前提下，把原来的“较大”FFN专家按比例缩小例如每个小专家为标准FFN参数量的0.25倍，并将每个原专家分割成若干个更小的专家，从而显著增加总体专家个数即将 $N$ 个专家扩展为 $mN$ 个小专家。这种做法把模型的参数密度从“每个专家更大”转向“更多但更小的专家”，为专家间更细致的分工提供可能。
 
@@ -909,10 +903,9 @@ class MiniMoELLModel(nn.Module):
 
 - **共享专家**：提出保留若干`共享专家`来捕获通用知识，从而降低路由专家之间的冗余并稳定训练，即在路由专家之外保留 $K_s$ 个共享专家作为常驻接收器或补偿通道。该设计与细粒度分割协同，能在提升专业化的同时保持对通用模式的覆盖。
 
-<div align="center">  
-   <img width="1275" height="543" alt="image" src="https://github.com/user-attachments/assets/d4f713ba-e9c5-4d57-95cd-82a914610828" />
-   <p>图5.5 总参数和激活参数的数量相同的对比实验</p>
- </div>
+![图5.5 总参数和激活参数的数量相同的对比实验](images/5.5.png)
+
+*图5.5 总参数和激活参数的数量相同的对比实验*
 
 &emsp;&emsp;在保持总参数量和激活参数量恒定的实验中，逐步把专家拆得更小，确实可以提升模型性能。不过，随着专家越来越细化，性能增益会逐渐减缓，而且通信开销、路由稳定性等工程因素的影响程度会开始变大，也就是说性能提升不是无限的。[论文](https://arxiv.org/pdf/2401.06066)的消融实验也提供了一个经验：**当共享专家和激活的领域化专家保持大约1:3的比例时，在基准任务上效果最好**。
 
