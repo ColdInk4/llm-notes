@@ -1,0 +1,21 @@
+# Notice
+
+This repository is a personal, non-commercial study-note adaptation based on:
+
+- `datawhalechina/diy-llm`
+  - Repository: https://github.com/datawhalechina/diy-llm
+  - License stated by the original project: CC BY-NC-SA 4.0
+- Stanford CS336: Language Modeling from Scratch
+  - Course website: https://cs336.stanford.edu/
+  - Lecture materials: https://github.com/stanford-cs336/lectures
+
+Major changes in this repository:
+
+- Reorganized the material as notes rather than a course-and-assignment project.
+- Removed site-specific files and coursework-oriented navigation.
+- Added repository-level attribution, maintenance notes, and source conventions.
+- Reserved `frontier/` for fast-moving model, systems, hardware, and benchmark
+  notes.
+
+Unless otherwise noted, adapted note content in this repository is distributed
+under CC BY-NC-SA 4.0.
