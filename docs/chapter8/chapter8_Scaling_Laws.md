@@ -100,7 +100,18 @@ Scaling workflow 先在小模型上找到“增大 batch 还划算”的区域�
 - 数据是否发生重复、质量过滤或混合比例变化。
 - optimizer、learning rate scheduler、batch size 和模型宽深比是否随规模一起变化。
 
-这四个问题在 §8.6.8 还会以检查表形式重新出现，先在 §8.1 看到一次，再在读完所有大训练案例后回看。
+把这四个问题展开成完整检查表，公开 scaling report 还可以从下面这些维度追问：
+
+- 横轴是什么资源：compute、tokens、parameters、active parameters，还是 downstream score。
+- 纵轴是什么目标：pretraining loss、terminal loss、accuracy，还是 serving cost proxy。
+- 哪些训练条件固定：tokenizer、数据处理、optimizer、batch、LR、scheduler、context length 是否一致。
+- 哪些变量随规模调整：模型大小、训练 tokens、batch、LR、MoE sparsity、architecture 或 optimizer。
+- 实验点是否覆盖目标规模附近，还是从很小 compute 区间远距离外推。
+- 参数化是否说明清楚：standard parametrization、muP、optimizer-specific scaling 或其他初始化规则是否改变。
+- 若报告使用 hyperparameter transfer，是否说明 proxy model、搜索空间、coordinate check 和中等规模复核。
+- 结论服务哪类决策：模型 / data 分配、batch / LR / scheduler、optimizer、MoE sparsity、architecture choice，还是 deployment cost。
+
+只给最终模型和少量曲线的报告仍然能提供训练思路，但很难直接复用具体超参数。可迁移的信息通常来自完整的实验覆盖、清楚的参数口径、统一的训练条件、参数化规则，以及大训练后对预测误差的回看。这份扩展检查表与 §8.6 各小节的公开报告案例可以同时阅读：先在 §8.1 用它给一张 scaling 图定位，再到 §8.6 看每一份报告怎样应答这些维度。
 
 训练条件没有固定时，曲线会把数据清洗、scheduler、batch、optimizer 和模型结构的变化混在一起。这样的曲线仍然可能好看，但很难指导下一次更大的训练。
 
@@ -108,7 +119,9 @@ Scaling law 不会替你做决定；它把昂贵的大训练决策拆成一组�
 
 ## 8.2 缩放定律的历史与背景
 
-这一节先回答 scaling law 为什么不是 LLM 时代才突然出现的概念。它从 learning curve 和样本复杂度开始，帮助我们理解为什么“用小实验预测大实验”可以成为工程方法。
+这一节回答两个前置问题：scaling law 为什么不是 LLM 时代才突然出现的概念，以及为什么"用小实验预测大实验"可以成为一种工程方法。读完本节应能理解 learning curve、样本复杂度上界和 empirical power law 各自描述什么，以及这一串早期工作如何给后续 LLM scaling 留下共同的坐标系。
+
+本节历史背景对工程决策的价值有两层，需要先点明。第一层是它给出工程直觉：完整实验太贵时，先用便宜实验拟合一条曲线，再外推到更大区间；这个直觉直接服务今天的大模型预训练。第二层，也是这一节与 §8.3 / §8.4 的关系：VC 维、asymptotic value 与 power-law region 描述的是误差下降的速度和不可压低的底线，而 LLM 的 scaling law 在同一组概念上把横轴换成 model size、tokens、compute、batch size 与 learning rate，再去回答哪些横轴下的曲线仍然接近直线、哪些横轴下的曲线在大区间会弯平。早期工作给坐标系，LLM 工作填具体横轴和工程判断。
 
 ### 8.2.1 理论起源：样本复杂度
 
@@ -128,7 +141,7 @@ $$
 
 *图 8.2-1 Bell Labs learning curves paper*
 
-图 8.2-1 对应早期 learning curve 工作的原始问题：完整实验太贵时，能不能先用小数据实验拟合一条曲线，再预测大数据区间？这个问题接近今天的大模型训练。1993 年的主要资源轴是训练样本数；LLM 训练还会叠加模型大小、训练 FLOPs、数据配比、batch size 和 learning rate。
+图 8.2-1 是 Cortes 等人 1993 年论文里的论文页本身：上方是 figure（学习曲线图），下方是 figure caption 和文中对应的文字说明。它把这张图放进原始论文语境里，本身不解释曲线——曲线含义见 §8.2.2 的图 8.2-2 解释。LLM 训练在这条思路上把资源轴从训练样本数扩展到模型大小、训练 FLOPs、数据配比、batch size 和 learning rate。
 
 ![图 8.2-2 Bell Labs learning curves loss](images/8-2-2-bell-labs-learning-curves-loss.png)
 
@@ -136,7 +149,7 @@ $$
 
 Bell Labs 的 Cortes、Jackel、Solla、Vapnik 等人在 1993 年研究过“用小数据学习曲线预测大数据表现”。这已经非常接近现代 data scaling 的工程动机：少跑昂贵实验，用曲线外推更大规模。
 
-图 8.2-2 的训练决策很朴素：先在较小训练集上训练分类器，观察测试误差如何下降，再预测更大训练集上的表现。技术对象早于 LLM，问题形式已经接近今天的大模型训练：完整实验太贵时，先用便宜实验估计昂贵实验。
+图 8.2-2 展示的是 Cortes 等人在 Bell Labs 1993 年那篇 learning curves 工作的拟合结果：横轴是训练样本数，纵轴是测试误差，多条曲线对应不同模型复杂度或不同特征集合。图上能直接读到的是：误差随训练样本数下降，曲线在大样本端趋于水平——这就是 asymptotic value 的可视化版本。它给出的是曲线形状本身，不是脱离曲线的经验结论口号。
 
 这类早期工作还强调了 asymptotic value 和 rate of convergence。前者对应“最终再加数据也降不下去的误差”，后者对应“接近这个极限的速度”。现代 scaling law 也有同样两个问题：曲线能降到哪里，以及要花多少数据或 compute 才能降到那里。
 
@@ -148,7 +161,7 @@ Banko & Brill 2001 在 confusion set disambiguation 上展示了一个经典结�
 
 Confusion set disambiguation 是根据上下文在易混词集合中选正确词。例如混淆集是 `{to, two, too}`，句子是 `I am going ___ the store.`，模型需要根据上下文判断应填 `to`。这个任务很小，但它非常适合解释 learning curve：如果数据继续增加，模型还能不能继续变好；算法 A 在小数据上领先，到了大数据区间是否仍然领先。
 
-图 8.2-3 把训练数据规模和任务表现放在同一张 learning curve 上。随着数据增加，不同算法都可能继续改善，只是起点和改善速度不同。算法 A 在小数据上领先，大数据区间仍需要重新比较；一个简单方法若随数据增长更快，继续收集数据可能比换复杂算法更划算。
+图 8.2-3 把训练数据规模放在横轴、把任务表现（困惑度 / 错误率）放在纵轴，多条曲线对应不同算法在同一任务上的对照。读图时重点看"曲线交叉点"和"斜率排序"：小数据端的领先算法到了大数据端未必领先；一个简单方法若随数据增长更快，到达同一水平所需的样本量反而更小。这张图最早把"加数据"和"改算法"放到同一张坐标系里直接比较。
 
 这也是 scaling law 的第一个工程直觉：资源包括数据、算法研发和训练 compute。Learning curve 给这些选择一个共同坐标系。LLM 训练里同样如此：数据去重、数据过滤、tokens per parameter 和训练 FLOP budget 都是同一张账本里的变量。
 
@@ -162,15 +175,15 @@ Confusion set disambiguation 是根据上下文在易混词集合中选正确词
 
 *图 8.2-5 Kolachina curve families*
 
-Kolachina et al. 2012 问得更直接：如果只有小数据上的几个点，要预测大数据上的 BLEU 或 loss，应该选线性、指数、对数，还是幂律？图 8.2-5 说明，同一批点可以被很多函数族拟合，但它们对未来区间的预测会分开。
+Kolachina et al. 2012 问得更直接：如果只有小数据上的几个点，要预测大数据上的 BLEU 或 loss，应该选线性、指数、对数，还是幂律？图 8.2-5 把同一批 BLEU / loss 观测点用多组函数族同时拟合：线性、指数、对数和幂律，给出未来区间的不同预测曲线。读图重点是"小数据区间拟合差距小、外推区间差距大"这件事：函数形式不同，已观测区间的拟合残差可能都接近，但外推到 10×、100× 数据量时，曲线会朝完全不同方向走。
 
-对这类学习曲线来说，幂律常常更有竞争力，因为很多误差会随着样本数按多项式速度下降。实际做法也很简单：先选一个函数族，再检查它在靠近目标规模的区间里能否稳定外推。具体的 exponent 和截距仍然依赖任务、数据和训练方法，所以还要确认拟合区间落在 power-law region，而且目标规模不要离观测点太远。
+对这类学习曲线来说，幂律常常更有竞争力，因为很多误差会随着样本数按多项式速度下降。具体的 exponent 和截距仍然依赖任务、数据和训练方法，所以还要确认拟合区间落在 power-law region，而且目标规模不要离观测点太远。
 
 ![图 8.2-6 Neural machine translation learning curve](images/8-2-6-neural-machine-translation-learning-curve.png)
 
 *图 8.2-6 Neural machine translation learning curve*
 
-图 8.2-6 展示了神经机器翻译里 performance 随训练数据增加而改善的曲线。这个例子提供了一条工程判断路径：先确认性能提升是否可测、可拟合，再讨论继续增加数据或 compute 是否还有收益。曲线仍在稳定下降时，继续扩大资源仍可能有价值；曲线明显变平时，需要检查是否接近数据噪声、模型容量或任务上限。
+图 8.2-6 展示的是神经机器翻译任务上 BLEU 随训练句对规模增长的曲线。横轴是训练样本数（对数），纵轴是 BLEU 分数。读图时关注曲线拐点：拐点之前仍可测、可拟合，扩大资源仍有可见收益；拐点之后曲线变平，需要先判断瓶颈是数据噪声、模型容量还是任务上限，再决定是否值得继续投入资源。这条判断路径今天仍然适用，只是横轴换成了 tokens 或 compute。
 
 ![图 8.2-7 Power law learning curve](images/8-2-7-power-law-learning-curve.png)
 
@@ -188,9 +201,11 @@ Hestness 的另一个重要贡献是把 scaling、emergence、compute 和 system
 
 ## 8.3 LLM 的 Scaling Behavior
 
-这一节进入 LLM 训练，先把复杂问题拆成几个单变量资源轴。Data、model size、compute、batch size 和 learning rate 都可以形成 scaling behavior，但每个横轴回答的训练问题不同。
+这一节进入 LLM 训练，把复杂问题拆成几个单变量资源轴：data、model size、compute、batch size 和 learning rate。每个横轴对应一种 scaling behavior，但回答的训练问题不同。读完本节应能：识别一张 scaling 图里横轴的资源、纵轴的目标、被固定的训练条件各是什么；判断某个 scaling 结论是否能外推到目标 compute；区分数据配比、数据重复、数据选择三条路径各自回答什么；把架构、optimizer、batch size、learning rate 当成可独立缩放的变量；以及理解 muP 与普通超参搜索在小模型到大模型迁移上的边界。
 
 ### 8.3.1 Data Scaling：数据量与性能
+
+本节回答最基础的单变量 scaling：如果只增加一个资源，loss 会怎么降。Kaplan et al. 2020 系统展示了语言模型 loss 与 compute、parameter count、dataset size 之间的幂律关系（[arXiv:2001.08361](https://arxiv.org/abs/2001.08361) §3–§4）。读完后应能：分别读 data scaling、model scaling、compute scaling 三条曲线；识别 power-law region 与 irreducible error region；理解为什么测试分布改变会让曲线整体平移而非斜率改变。
 
 进入 LLM 后，问题变成：如果只增加一个资源，loss 会怎么降？Kaplan et al. 2020 系统展示了语言模型的 loss 与 compute、parameter count、dataset size 之间的幂律关系。
 
@@ -206,7 +221,7 @@ Hestness 的另一个重要贡献是把 scaling、emergence、compute 和 system
 
 *图 8.3-1 Kaplan language model scaling*
 
-图 8.3-1 把三个资源轴分开：数据量、参数量和训练 compute。Data scaling 看的是“数据加多后 loss 怎么降”；model scaling 看的是“容量够不够”；compute scaling 看的是“预算加大后模型和数据该怎么一起调”。
+图 8.3-1 把 Kaplan 等人 2020 年论文里三条曲线放在同一张图里：横轴分别为 dataset size、parameter count 和 compute，纵轴都是 validation loss，每张子图拟合出一条 power law 直线。读图时先固定一个横轴，再看另一条曲线斜率。三张子图横轴单位、点密度不同，对应不同训练设置下的拟合结果。
 
 这三条曲线服务同一个判断：scaling law 只能回答固定账本下的问题。账本一变，曲线的含义也会变。曲线变平时，先看瓶颈落在哪里：数据不够、模型太小，还是优化设置不合适。
 
@@ -216,7 +231,7 @@ Hestness 的另一个重要贡献是把 scaling、emergence、compute 和 system
 
 *图 8.3-2 Distribution shift scaling*
 
-图 8.3-2 说明训练分布和测试分布不同会让曲线整体上移或下移，也就是同样数据量下 loss 更高或更低。不同分布的曲线若仍大致平行，说明 scaling exponent 没有明显改变。工程上的判断是：分布差异给这条曲线加一个固定惩罚；测试分布若包含训练数据没有覆盖的能力或格式，斜率也可能变化。
+图 8.3-2 把同一批模型在不同测试集上的 loss 放在一起画：横轴可以是 model size 或 dataset size，纵轴是 test loss，不同颜色曲线对应不同 test distribution。读图重点是"平行 vs 交叉"：若几条曲线大致平行，说明分布差异主要改变 offset；若曲线在某段交叉或分离，说明斜率本身随分布变化。
 
 Data scaling law 可以理解为一个把数据量 $n$ 映射到 error 或 loss 的简单函数。更严格地说，很多图里更适合幂律拟合的是 excess error：当前 loss 距离不可约误差或最佳可达 loss 还有多远。若用 $L_\infty$ 表示不可约项，常见直觉形式是：
 
@@ -243,11 +258,13 @@ $$
 > [!TIP]
 > Power law 要看 log-log 图，也就是横轴和纵轴都用对数坐标。只有点在这种坐标里接近直线时，才适合说误差按固定比例衰减。
 
-图 8.3-3 的直线含义是：在当前区间里，数据量每增加 $10$ 倍，误差大约按固定比例下降。比如误差从 `0.20` 变成 `0.16`，再变成 `0.128`，改善按比例缩小，每一档减少的绝对值越来越少。
+图 8.3-3 把多组实测点放在同一张 log-log 图上，每组点的横轴起点和终止点不同，覆盖各自的 data scaling 区间。读图先看斜率绝对值——它就是 scaling exponent 的负号；再看截距——它对应 power law 公式里的 $A$。点偏离直线的部分要么是噪声，要么是已经接近 irreducible error，曲线开始弯平。
 
 这给的是一条可以外推的比例关系，但只在当前观测区间里可靠。图里的直线通常对应扣掉不可约误差后的 excess error；如果看的是原始 loss，且已经接近 $L_\infty$，曲线就会自然弯平。
 
 ### 8.3.2 为什么 log-log plot 上会是直线？
+
+本节解释一个具体的可视化现象：power law 在 log-log plot 上为什么会变成直线，并借此区分 offset 与 slope 两个工程概念。读完本节应能：在看到任意 scaling 曲线时判断它是否落在 power-law region；理解 log-log 直线的斜率等于 scaling exponent；以及在数据质量或任务分布改变时，分辨曲线变化是平移还是斜率变化。
 
 这一节只解释一个现象：为什么 power law 在 log-log plot 上会变成直线。`log-log` 的意思是横轴和纵轴都用对数坐标。
 
@@ -279,7 +296,7 @@ $$
 
 *图 8.3-4 Scaling exponents by task*
 
-图 8.3-4 比较不同任务的学习速度。均值估计这类低维问题可以接近 $1/n$ 的误差下降；语言建模、图像等高维任务通常慢得多，常见 exponent 可能只有 $0.1$ 到 $0.3$ 量级。可观察的结论是：想把 loss 再降一点，通常需要非常多的数据或 compute。
+图 8.3-4 把机器翻译、语言模型、图像分类、围棋等任务的实测点放在同一张 log-log 图上，每条曲线是一类任务在不同样本数下的 error。读图重点是斜率分布：低维参数估计斜率最陡，复杂感知 / 语言任务斜率明显更平。差距直接对应"每多 10× 数据能降多少 loss"这个边际收益。
 
 这里的数据指训练材料数量，例如更多 unique tokens、更多图片或更多样本。Compute 指训练时实际花掉的计算量，通常用 FLOPs 表示。固定模型时，喂更多数据会消耗更多 compute；固定数据时，把模型做大、训练更多 epoch 或扫更多配置，也会消耗更多 compute。所以二者相关，但不是同一个资源轴。
 
@@ -321,6 +338,8 @@ Intrinsic dimension 视角给 scaling exponent 提供了一个解释：斜率不
 
 ### 8.3.3 Data Composition 与 Data Repetition
 
+本节处理三个互相联系但回答不同问题的工程变量：data composition（数据配比）、data repetition（重复数据）、data selection（数据选择）。读完本节应能：把"加数据"和"换数据"分到不同判断路径；在总 token 数受限时区分有效数据与 raw tokens；判断一个 data filtering 阈值在多大 compute 下还能保持最优。
+
 #### Data Composition：数据配比
 
 Data composition 主要回答一个比“数据越多越好吗”更具体的问题：在总 token 数差不多时，应该用什么数据源、什么比例、什么过滤阈值？
@@ -355,7 +374,7 @@ Data repetition 处理的是有限数据集的放大问题。无限新数据的 
 
 *图 8.3-8 Data repetition effective data*
 
-图 8.3-8 左侧回答“重复数据还值不值”的问题。这批曲线来自固定 4.2B 参数的模型，横轴是 raw tokens，括号里的数字是 epoch 数，表示这些 raw tokens 相当于把对应的 unique data 过了多少遍。虚线表示一个理想假设：每次训练都看到 fresh data，重复 token 和新 token 一样有价值。实线表示 data-constrained scaling law：数据会重复，后面的 epoch 收益会打折。
+图 8.3-8 左侧直接回答"重复数据还值不值"。曲线来自固定 4.2B 参数的模型：横轴是 raw tokens（括号数字是 epoch 数），纵轴是 final test loss；虚线对应"每次都是 fresh data"的理想假设，实线对应 data-constrained scaling law。读图时重点看虚实两条线的距离：到约 4 个 epoch 为止两线重合；过 4 epoch 后实线逐渐变平；到约 40 个 epoch 时实线接近水平，重复几乎不再降 loss。
 
 读左图时看虚线和实线的距离。到约 4 个 epoch 为止，两条线基本重合，重复数据几乎像新数据一样有用。再往右实线逐渐变平，和虚线拉开距离；到约 40 个 epoch 时，实线已经接近水平，继续重复几乎不再降低 final test loss。
 
@@ -371,7 +390,7 @@ $$
 
 读这个量时，不必先判断它“比谁大”。它的角色是给重复 token 打折：第一遍 unique tokens 按 $U_D$ 算满；后面重复训练还能加一些等价新数据量，但加得越来越慢。这样算出来的 $D'$ 表示模型实际得到的有效数据信号，raw tokens 表示训练过程实际处理了多少 token。
 
-图 8.3-8 右侧回答“固定 compute 时，模型大小和训练 tokens 怎么分”的问题。图上每个点都是一种训练方案：纵轴是 parameters，横轴是训练 tokens / epochs。蓝色虚线是一条 IsoFLOP 预算线，表示这些方案花费的训练 compute 基本相同。
+图 8.3-8 右侧把同一组训练点画到 (parameters, training tokens) 平面上：纵轴是 parameters，横轴是训练 tokens / epochs，蓝色虚线是一条 IsoFLOP 预算线，表示落在虚线上的方案训练 compute 基本相同。黑色 / 橙 / 红线分别对应不同假设下的 efficient frontier，曲线最低点对应"该 compute 下 N 与 D 的最优配比"。
 
 黑色线和橙 / 红色线分别表示两种假设下的有效前沿（efficient frontier）：在同一 compute 预算附近，不同 token / parameter 配比对应的预期 loss。黑色线对应理想假设，重复 token 和 fresh token 一样有价值；橙色 / 红色线对应 data-constrained 情况，重复 token 的收益要打折。
 
@@ -385,7 +404,7 @@ $$
 
 *图 8.3-9 Compute-unbounded settings*
 
-图 8.3-9 把 repeated-data 推到更极端的问题：给定一批有限 seed tokens，也就是起始数据集里的 unique tokens，如果 compute 很充足，能不能靠重复训练、做大模型或额外技巧继续压低 loss？
+图 8.3-9 把 repeated-data 推到更极端的问题：给定一批有限 seed tokens（起始数据集里的 unique tokens），如果 compute 很充足，靠重复训练 / 做大模型 / 额外技巧还能不能继续压低 loss。图分左中右三栏：左栏扫 epoch count，中栏扫 parameter count，右栏扫 seed token count $D$，纵轴都是 loss。读图按栏比较曲线形状，不必把三栏数据合到一张坐标。
 
 左图扫 epoch count。loss 先降后升，说明重复几遍有用，继续重复很多遍后收益会消失，甚至可能变差。
 
@@ -409,13 +428,13 @@ $$
 
 数据选择也要随 scale 调整。小模型或小预算下，高质量小数据可能更好；大预算下，过度过滤会让 unique tokens 不够，质量稍低的新数据反而更有价值。
 
-图 8.3-10 来自 Goyal et al. 的 data filtering scaling law 工作（[*Scaling Laws for Data Filtering — Data Curation cannot be Compute Agnostic*, arXiv:2404.07177](https://arxiv.org/abs/2404.07177)）。论文把 DataComp 的 web 数据按质量切成 A–F 若干 bucket，`E` 是质量最高的一档，往下依次变差；组合方式用累加池（如 `E only`、`E+D`、`E+D+C`）表示。三档 compute 下的取舍结论写在论文 §6 与 Figure 3（32M、128M、640M 三档）：small compute 下 highly aggressive filtering 最好，medium compute 下 mildly aggressive filtering 最好，compute 继续增大后过滤阈值要进一步放松，让更多但稍差的数据进入训练。
-
-左边 `Lower Quality Data Pools` 这条竖排是在说：这些池子本身有高低质量之分，继续往下质量更低。中间 `Lower Utility of Repeated Data` 在说：同一个池子被重复训练几次后，边际收益会一轮比一轮小，颜色越浅就表示重复后的 utility 越低。
+图 8.3-10 来自 Goyal et al. 的 data filtering scaling law 工作（[*Scaling Laws for Data Filtering — Data Curation cannot be Compute Agnostic*, arXiv:2404.07177](https://arxiv.org/abs/2404.07177)）。图把 DataComp 的 web 数据按质量切成 A–F 若干 bucket（`E` 是质量最高的一档，往下依次变差），组合方式用累加池（`E only`、`E+D`、`E+D+C`）表示；横轴是 compute，纵轴是 optimal filtering 强度。读图重点是阈值随 compute 单调下降：small compute 下最优是 highly aggressive filtering，medium compute 下退到 mildly aggressive filtering，更大 compute 下阈值继续放松，让更多但稍差的数据进入训练。
 
 过滤阈值因此会随 scale 变松。最高质量池可以先用，但随着 compute 增大，继续只重复它会让 effective data 增长变慢，训练会逐渐转向"高质量 + 更多覆盖面"的组合。
 
 ### 8.3.4 Model Scaling 与 Architecture Scaling
+
+本节把规模变量从 data scaling 切换到模型本身：先问参数量要多大，再问架构、optimizer、depth / width、parameter accounting 哪些会改写 scaling 曲线。读完本节应能：在 fixed FLOP budget 下决定模型大小；判断一个架构改动主要影响 offset 还是 slope；识别 parameter accounting 口径变化会怎样重写小实验拟合；以及把 MoE 的 total / active parameters 拆开分析。
 
 `Model scaling` 先问参数量要多大。这里先把规模账本定住：模型要沿宽度、深度还是 total parameters 放大，训练预算大致怎么分。
 
@@ -435,7 +454,7 @@ $$
 
 *图 8.3-11 Transformer-LSTM scaling*
 
-图 8.3-11 回答一个基础架构问题：大预算应该押在 LSTM 还是 Transformer 上。横轴是 non-embedding parameters，纵轴是 test loss。蓝线是 Transformer，红线是不同层数的 LSTM。Scaling law 的做法是先在多个较小 compute range 上比较两类模型的 loss 曲线，避免直接启动一个巨大 LSTM 试错。
+图 8.3-11 把 LSTM 和 Transformer 放在同一张 scaling 图上：横轴是 non-embedding parameters（对数），纵轴是 test loss；蓝线对应 Transformer，红线对应不同层数的 LSTM，每条曲线是一档 compute 范围。读图重点是"曲线是否随参数规模收敛"：同等参数规模下 Transformer 曲线更低；参数变大后，LSTM 里层数更多的版本也没有把差距追平。
 
 同等参数规模下，Transformer 曲线更低；参数变大后，LSTM 里层数更多的版本也没有把差距追平。这个结果说明，在这组实验里，更值得放大的候选是 Transformer。
 
@@ -447,7 +466,7 @@ $$
 
 *图 8.3-12 Compute-performance architectures*
 
-图 8.3-12 先回答两个问题。左图把 FLOPs 固定住，只看同样训练计算下不同架构的 pretraining loss 谁更低；右图再看更好的 loss 是否真的带来更高的 SuperGLUE accuracy。每个点都是一个架构和一个规模，所以这张图是在比较训练效率和下游迁移。
+图 8.3-12 由左右两图组成：左图横轴是 compute，纵轴是 pretraining loss，每条曲线对应一种架构；右图横轴仍是 compute，纵轴换成 SuperGLUE accuracy。同一个架构在两图里被一对点表示，因此可以直接对照"左图低 loss 的架构是否在右图拿到高 accuracy"。每个点都是一个架构在一个规模上，所以这张图是在比较训练效率和下游迁移。
 
 pretraining loss 和 downstream accuracy 往往相关，但不是一一对应。某些架构会先把 loss 压低，accuracy 却涨得慢；也有些架构在中等 compute 区间就已经把 accuracy 拉开。loss 可以当作第一道筛选，downstream 还要单独验。
 
@@ -459,7 +478,7 @@ pretraining loss 和 downstream accuracy 往往相关，但不是一一对应。
 
 *图 8.3-13 Transformer variant scaling*
 
-图 8.3-13 把比较对象换成 Transformer variants。每条曲线对应一种架构改动。曲线在多个 compute 区间稳定低于 baseline，表示这个改动在同等资源下持续降低 loss。
+图 8.3-13 把比较对象换成 Transformer variants：横轴是 compute，纵轴是 loss，每条曲线对应一种架构改动（GLU / Performer / Switch / MoE 等）。曲线在多个 compute 区间稳定低于 baseline，意味着这个改动在同等资源下持续降低 loss；曲线斜率与 baseline 平行则说明改动主要带来 offset。
 
 这组 T5-style scaling 给出几个具体判断。Gated linear unit 的趋势很好，后来进入很多主流模型设计。Performer 这类 efficient attention 在这些实验里 scaling trend 不够好。Switch / MoE 的趋势有吸引力，因为 MoE 每个 token 只激活一部分 experts：active compute 更接近每个 token 的实际计算量，训练和推理都会受它影响；total parameters 更接近容量和存储上限；routing 成本则决定通信和吞吐。MoE 的 routing / load balancing / expert 配置在 [第 4 章 混合专家模型](../chapter4/chapter4_混合专家模型.md) 展开。
 
@@ -473,7 +492,7 @@ pretraining loss 和 downstream accuracy 往往相关，但不是一一对应。
 
 *图 8.3-14 Optimizer comparison*
 
-图 8.3-14 比较同一个 RHN（recurrent highway network，早期循环语言模型）用 SGD 和 Adam 训练时，validation loss 怎样随训练数据规模变化。横轴是训练数据字符数，纵轴是 validation loss，二者都在 log scale。蓝线和绿虚线对应 SGD，橙线和红虚线对应 Adam。
+图 8.3-14 把同一组 RHN（recurrent highway network）实验用两种 optimizer 拟合到同一张 log-log 图上：横轴是训练数据字符数，纵轴是 validation loss；蓝 / 绿虚线对应 SGD，橙 / 红虚线对应 Adam。读图重点是斜率接近、offset 不同——SGD 约是 $m^{-0.094}$，Adam 约是 $m^{-0.095}$，两条拟合线的 exponent 几乎一致，但 Adam 的曲线整体略低。
 
 两条拟合线的指数几乎一样：SGD 约是 $m^{-0.094}$ ，Adam 约是 $m^{-0.095}$ 。两种 optimizer 的 loss 下降速度接近。Adam 的曲线整体略低，在这组设置里，同样数据规模下 Adam 的 validation loss 更低。
 
@@ -487,7 +506,7 @@ Depth / width 和其他 Transformer hyperparameters 沿三步展开：先看层�
 
 *图 8.3-15 Number of layers scaling*
 
-图 8.3-15 先看层数。这里的 layer 指 Transformer block，也就是由 attention、MLP 和 residual 连接组成的一层主干。1 层模型基本没有竞争力；层数增加后，loss 继续下降，但收益开始递减。在这组实验里，同一 compute 水平下更多 layers 通常仍更好，只是优势不像从 1 层升到 2 层时那么大。
+图 8.3-15 先看层数。这里的 layer 指 Transformer block（attention + MLP + residual）。横轴是 compute，纵轴是 loss，每条曲线对应一个 layer 数（1 / 2 / 4 / 8 等）。读图重点是层数增加带来的 loss 收益：1 层模型基本没有竞争力；层数增加后 loss 继续下降，但收益开始递减，曲线在大 compute 区间逐渐靠近。
 
 绝对层数会随模型变大而增加，适合迁移的通常是比例关系。固定层数从小模型搬到大模型，常常会偏离合理结构。Scaling 实验的作用，是判断哪些结构选择随规模变化，哪些结构比例更稳定。
 
@@ -495,7 +514,7 @@ Depth / width 和其他 Transformer hyperparameters 沿三步展开：先看层�
 
 *图 8.3-16 Transformer hyperparameter scaling*
 
-图 8.3-16 同时检查三类 Transformer hyperparameters。左图是 feed-forward ratio $d_{\mathrm{ff}} / d_{\mathrm{model}}$ ，中图是 aspect ratio $d_{\mathrm{model}} / n_{\mathrm{layer}}$ ，右图是 attention head dimension $d_{\mathrm{model}} / n_{\mathrm{head}}$ 。纵轴都是 loss increase，越低越好。
+图 8.3-16 同时检查三类 Transformer hyperparameters。三张子图横轴分别是 feed-forward ratio $d_{\mathrm{ff}}/d_{\mathrm{model}}$、aspect ratio $d_{\mathrm{model}}/n_{\mathrm{layer}}$ 和 attention head dimension $d_{\mathrm{model}}/n_{\mathrm{head}}$，纵轴都是 loss increase（越低越好）。每张子图都有一段低 loss 区域，scaling 时通常先选落在这段里的 hyperparameter，再在更大模型里保持同一比例。
 
 左图横轴是 FFN expansion。蓝线和橙线对应两种固定 attention 配置的方式：固定 head 数，或固定每个 head 的维度（ $d_{\mathrm{model}} / n_{\mathrm{head}} = 64$ ，也就是每个 head 分到的 hidden dimension）。这里重点看共同趋势：两条线都在中间一段较低，右侧快速上升，说明过大的 FFN ratio 会挤压其他部分，最后表现成 loss increase。
 
@@ -509,7 +528,7 @@ Depth / width 和其他 Transformer hyperparameters 沿三步展开：先看层�
 
 *图 8.3-17 Parameter accounting in depth scaling*
 
-图 8.3-17 比较同一批深度实验在两种参数口径下的曲线形状：横轴里的“参数量”怎么数，会改变曲线形状。
+图 8.3-17 比较同一批深度实验在两种参数口径下的曲线形状：横轴里的"参数量"怎么数，会改变曲线形状。左右两图各画一张 scaling 曲线：左图横轴是 total parameters（含 embedding + output head），右图横轴是 non-embedding parameters（仅 block 内部）。
 
 左图的横轴是 total parameters，包括 embedding 和 output head。`0 Layer` 模型虽然没有 Transformer block，但仍然有 token embedding、positional embedding 或 output head，所以左图能画出 `0 Layer` 曲线。
 
@@ -527,11 +546,13 @@ Depth / width 和其他 Transformer hyperparameters 沿三步展开：先看层�
 
 MoE 的麻烦在于总参数和每个 token 实际使用的参数分开了。Dense 模型里，total parameters 和 active parameters 基本是同一件事；MoE 里，total parameters 是所有 experts 的参数，active parameters 是一个 token 被路由到的那些 experts。
 
-图 8.3-18 按左、中、右拆开看。左图横轴是 total parameters，星号标出不同 sparsity 下 loss 最低时总参数量大约落在哪里；中图横轴是 active parameters，星号标出每个 token 实际参与计算的 expert 参数量大约落在哪里。颜色表示 MoE sparsity，每个子图的 colorbar 给出对应数值；sparsity 越高，每个 token 激活的 experts 比例越低。
+图 8.3-18 把 MoE 的 scaling 拆成三张子图：左图横轴是 total parameters，中图横轴是 active parameters，右图把 active parameters 和 sparsity 放在同一张 loss surface 上；颜色都表示 MoE sparsity，sparsity 越高每个 token 激活的 experts 比例越低。读图按子图分别读：左图看总参数下的 loss 最低点，中图看每个 token 实际算的专家参数下的最低点，右图看 sparsity 在 loss 曲面上的走向——三者一起说明 MoE 不能用单一"参数量"轴描述。
 
 高 sparsity 区域更低的直觉是：在相近 active compute 下，更高 sparsity 可以保留更大的 total expert pool，让 token 有更多可选择容量。右图把 active parameters 和 sparsity 放在同一个 loss surface 上，说明 MoE 的 loss 不能只用一个“参数量”解释。最后还要把 routing、expert placement、通信和显存成本算进去。
 
 ### 8.3.5 Critical Batch Size 与 Learning Rate
+
+本节把视角从"loss 怎样随资源变化"切到"训练控制本身怎样随规模变化"：global batch 能放到多大，learning rate 该怎样随模型规模调整。读完本节应能：定义 critical batch size 并估计它的位置；理解 noise-limited / bias-limited 两段行为；用 critical batch size 判断一组 global batch 是否在大训练里仍然合理；以及分辨直接拟合 learning rate 和用 muP 重参数化这两条迁移路线。
 
 Batch size 和 learning rate 是大训练前最敏感的 optimizer 超参数。前面几节主要问 loss 怎样随 data、parameters 或 compute 变化；这一节换成训练控制问题：global batch 能放到多大，learning rate 该怎样随模型规模调整。
 
@@ -547,7 +568,7 @@ Data parallelism 扩到更多 GPU 时，global batch 通常要跟着变大，否
 
 *图 8.3-19 Critical batch size regimes*
 
-图 8.3-19 给这条变化曲线命名。横向放大 batch 时，左侧先进入 noise-limited regime，右侧再进入 bias-limited regime。
+图 8.3-19 把 batch size 和"达到 target loss 所需的 steps / samples"放在同一张图里：横轴是 batch size（对数），纵轴分别画 total samples / steps 与 batch 的关系。读图时按 batch 增长方向看：左侧进入 noise-limited regime，batch 翻倍 steps 接近减半，总 samples 几乎不变；右侧进入 bias-limited regime，steps 下降变慢，总 samples 开始上升。两条 regime 的过渡位置就是 critical batch size。
 
 Noise-limited regime 里，batch 还小，mini-batch gradient 的随机噪声很明显。增加 batch 会平均掉一部分噪声，让每一步方向更可靠。这个区间里，batch 翻倍常常能让达到同一 loss 所需的 steps 接近减半，所以总 tokens 不会明显增加。
 
@@ -563,7 +584,9 @@ Noise scale 指 gradient noise scale。可以把它理解成一个 batch 量级�
 
 *图 8.3-20 Critical batch size definitions*
 
-图 8.3-20 给出更正式的估计方法。先固定一个 target loss，再对多个 batch size 分别训练到这个 loss。对每个 batch $B$ ，记录两个量：
+图 8.3-20 给出更正式的估计方法：先把一组 (E, S) 实验点画出来（横轴是 samples $E$，纵轴是 steps $S$，每个点对应一个 batch size），再用双曲线拟合。图上能直接读的是 $E_{\min}$ 与 $S_{\min}$ 两个极限量，以及从它们推出的 $B_{\mathrm{crit}} = E_{\min}/S_{\min}$。
+
+下面是对每个 batch $B$ 记录的两个量：
 
 - $S(B)$ ：达到 target loss 需要多少 optimizer steps。
 - $E(B)$ ：达到 target loss 总共看过多少 examples / tokens。
@@ -608,7 +631,7 @@ batch size 增大时，达到同一 loss 可能需要更少 steps，但按 $E(B)
 
 *图 8.3-22 Optimal batch size*
 
-图 8.3-22 解释 critical batch size 为什么会随 target loss 变化。目标 loss 越低，训练越接近精细优化区间，梯度噪声的影响相对更重要。此时更大的 batch 更有价值，所以 critical batch size 往往随目标 loss 降低而变大。
+图 8.3-22 解释 critical batch size 为什么会随 target loss 变化。横轴是 target loss，纵轴是 critical batch size（或类似最优 batch 量）。读图时看曲线斜率方向：目标 loss 越低，训练越接近精细优化区间，梯度噪声相对更重要，critical batch size 随目标 loss 降低而单调上升。曲线本身把"压低 loss"和"放大 batch"两件事耦合成一条曲线，两者不能拆开判断。
 
 这解释了为什么大规模 pretraining 往往能使用很大的 global batch。模型更大、目标 loss 更低、并行需求更强，都会把可用 batch 区间推大。实际系统里还要叠加硬件约束：data parallelism 扩吞吐需要足够大的 global batch；如果任务的 critical batch size 不够大，就需要调小并行规模、重新调 learning rate，或者接受一部分样本效率损失。
 
@@ -624,7 +647,7 @@ Learning rate scaling 要回答的问题是：模型做宽、做深、做大之�
 
 *图 8.3-23 muP learning rate stability*
 
-图 8.3-23 展示 learning rate 随 width 放大时的漂移。标准参数化下，宽度变大时最优 learning rate 往往变小。muP 的目标是让不同宽度下的最低点更接近，从而让小模型搜索到的 base learning rate 更容易迁移。
+图 8.3-23 展示 learning rate 随 width 放大时的漂移：横轴是 learning rate，纵轴是 loss，多条曲线对应不同的 width。读图重点是"最低点位置随 width 的漂移"：标准参数化下，宽度变大时最低点整体往左移（最优 learning rate 变小）；muP 把不同 width 的最低点对齐到相近 learning rate，让小模型搜索到的 base learning rate 更容易迁移到大模型。
 
 #### muP：把 width scaling 写进超参规则
 
@@ -642,7 +665,7 @@ muP 的目标是在 width 放大时同时控制初始化尺度和更新尺度：
 
 *图 8.3-24 muP implementation table*
 
-图 8.3-24 把这种对齐落实到具体参数规则：embedding、attention、MLP、output head 等不同参数需要不同初始化和学习率规则。
+图 8.3-24 把 muP 对齐落实到具体参数规则表：行为参数类型（embedding、attention QKV、MLP in / out、output head），列为 base 超参与 target 超参。表中每行给出"宽度从 base 放大到 target 时"应套的 multiplier（learning rate、初始化方差、输出缩放）。这张表直接回答 §8.3.5 里那个迁移问题——base 模型上选的超参按表里的规则乘上对应倍率就能落到 target width。
 
 表头里的 `M' ~ r` 表示把 base model `M` 按宽度倍率 `r` 放大，得到目标模型 `M'`。这里的 `~` 表示宽度缩放关系，可理解为 “scaled by”；右边那一列给出目标宽度上的 muP 超参规则。
 
@@ -678,6 +701,8 @@ $$
 
 ### 8.3.6 下游任务的边界
 
+本节划定 scaling law 的一个边界：pretraining loss / perplexity 的改善能否转成下游 benchmark 的改善。读完本节应能：解释为什么 upstream 与 downstream 排序可能不一致；在小规模和中等规模实验里同时记录两张表（pretraining loss 与下游指标）；判断排序分叉时是否需要把目标任务分数纳入模型选择。
+
 Pretraining loss / perplexity 适合作为 scaling 主指标：数值连续、eval set 大、每个 checkpoint 都能测，随机波动通常较小。它能帮助我们比较数据配比、模型 shape、batch size 和 learning rate 是否让训练曲线稳定改善。
 
 下游 benchmark 回答的是另一类问题：这个 checkpoint 在 SuperGLUE、产品任务或后训练管线里是否更好。Accuracy 等指标更离散，也会受到 prompt、评测格式、fine-tuning、后训练和数据污染影响，所以它和 pretraining loss 通常相关，但模型排序可能改变。
@@ -686,7 +711,7 @@ Pretraining loss / perplexity 适合作为 scaling 主指标：数值连续、ev
 
 *图 8.3-25 Downstream scaling differences*
 
-图 8.3-25 对比同一批模型在 upstream 和 downstream 上的排序。左图横轴是 parameters，纵轴是 negative log-perplexity；点大体随参数量增加而上升，说明 pretraining 指标和模型规模之间有清晰趋势。右图仍用 parameters 作横轴，但纵轴换成 SuperGLUE accuracy；同一批模型的排序明显变散，左图里很强的 `NL12-` 到右图里没有拿到最高分，`NL32-XL` 反而更好。
+图 8.3-25 对比同一批模型在 upstream 和 downstream 上的排序：左右两图横轴都是 parameters，但纵轴分别是 negative log-perplexity 和 SuperGLUE accuracy。左图点大体随参数量上升，趋势清晰；右图同一批点的排序明显变散，pretraining 上很强的模型未必在 SuperGLUE 上拿最高分。读图重点是"两图对应排序的差异"，差异越大说明 downstream 不能用 perplexity 排序直接代替。
 
 因此，大训练前可以把 pretraining loss 当作第一道筛选。Loss 趋势稳定变好，说明数据、模型形状和 optimizer 设置值得继续放大。最终模型选择还要看目标任务，尤其是候选模型的 depth / width 比例、fine-tuning 设置或 prompt 格式不同时，下游排序可能和 perplexity 排序不一致。
 
@@ -697,6 +722,8 @@ Pretraining loss / perplexity 适合作为 scaling 主指标：数值连续、ev
 前面的小节分别看单个资源轴；这一节把模型参数量、训练 tokens 和 compute 放到同一个预算里。固定训练 FLOPs 时，模型越大，每个 token 的训练计算越贵，能训练的 tokens 就越少；模型小一点，同一笔预算可以训练更多 tokens。Joint scaling 要回答的是：给定这笔计算预算，参数量 $N$ 和训练 tokens $D$ 应该怎么配。
 
 ### 8.4.1 Joint Fit：先学 N 和 D 怎么影响 loss
+
+本节回答 §8.3 单变量 scaling 留下的开放问题：真实训练里参数量 $N$ 和训练 tokens $D$ 必须放进同一个函数里。读完应能：写出把 loss 拆成 $N$ 方向和 $D$ 方向两项的可加公式；区分 $L_0$、$A$、$B$、$\alpha$、$\beta$ 在公式里各自的角色；以及在小实验网格上验证拟合出的 $L(N,D)$ 曲面能否外推到没参与拟合的点。
 
 前面分别看了 data scaling 和 model scaling。真实训练时，这两个变量不能分开选。沿用 8.1 的粗略 compute 账本 $C \approx 6ND$ ：总训练计算量 $C$ 固定时，参数量 $N$ 增大，训练 tokens $D$ 就要减少；$N$ 小一点，$D$ 就可以更多。
 
@@ -721,13 +748,15 @@ $$
 
 *图 8.4-1 Joint model-data scaling*
 
-图 8.4-1 展示的是“用小模型、小数据实验预测更大组合”的过程。左图是一个 model size 和 data size 的网格：横轴 `data fraction` 表示用了目标数据量的多大比例，纵轴 `model fraction` 表示用了目标模型大小的多大比例。绿色点用于拟合 scaling law，红色点用于检查外推到更大数据或更大模型时准不准。
+图 8.4-1 展示的是“用小模型、小数据实验预测更大组合”的过程，左图把 (model fraction, data fraction) 网格上的绿色点（用于拟合 scaling law）和红色点（用于检查外推到更大数据或更大模型时准不准）用颜色区分；拟合只用绿色，外推只用红色，避免循环验证。
 
-中图和右图把预测值和真实测量值放在一起比较。横轴是 measured，也就是真实实验结果；纵轴是 estimated，也就是 scaling law 预测结果。蓝色对角线表示预测完全准确。点越贴近对角线，说明用绿色小实验拟合出来的公式越能预测红色外推点。
+中图和右图把预测值和真实测量值放在一起比较。蓝色对角线表示预测完全准确。点越贴近对角线，说明用绿色小实验拟合出来的公式越能预测红色外推点。
 
 中图是 ImageNet 的 top-1 error，右图是 WikiText-103 的 test loss。两边的红点大体靠近对角线，说明在这组实验里，小模型、小数据上的联合 scaling fit 可以预测一部分没参与拟合的模型-数据组合。这个结论依赖实验点覆盖范围和训练条件一致性；如果红点远离对角线，外推就不可信。
 
 ### 8.4.2 Compute Scaling：从训练曲线到 Chinchilla
+
+本节回答 §8.4.1 留下的具体问题：给定训练 FLOPs $C$，$N$ 与 $D$ 怎样配。读完应能：解释 compute scaling 曲线；用 Chinchilla Method 1 / 2 / 3 三种 sweep 互相校验同一组 $N_{\mathrm{opt}}$、$D_{\mathrm{opt}}$；区分 Kaplan 与 Chinchilla 在 $N_{\mathrm{opt}}(C)$、$D_{\mathrm{opt}}(C)$ 指数上的差异；以及在小实验拟合前先对齐参数口径、warmup、batch 和 learning rate。
 
 Joint fit 先把 loss 拆成模型大小 $N$ 和训练 tokens $D$ 两个方向。大训练还要面对第三个变量：总训练计算量 $C$ 。这里的 compute 指训练总 FLOPs，也就是一次训练累计花掉多少次浮点运算；硬件吞吐率 FLOP/s 表示每秒能算多少次。总 FLOPs 除以有效 FLOP/s，才得到训练时间。
 
@@ -739,7 +768,7 @@ Joint fit 先把 loss 拆成模型大小 $N$ 和训练 tokens $D$ 两个方向�
 
 *图 8.4-2 Compute scaling curves*
 
-图 8.4-2 的横轴是累计训练 compute：从训练开始到某个 checkpoint 为止，forward 和 backward 一共做了多少次浮点运算。曲线越往右，表示同一个 run 已经训练得更久，累计消耗的 FLOPs 更多。
+图 8.4-2 把多条不同模型大小的训练曲线画在同一张图上。每条彩色曲线是一次具体 run 的累计 compute vs validation loss：曲线越往右，表示同一个 run 已经训练得更久，累计消耗的 FLOPs 更多。沿同一条曲线走时，模型大小不变；不同颜色之间才对应不同 model size。虚线是把每条曲线最低点串起来形成的 lower envelope，也是 Method 1 的拟合形态。
 
 横轴单位写作 `PetaFLOP/s-days`。这里的连字符不是减号，只是在英文复合单位里把 `FLOP/s` 和 `day` 连在一起，含义是 $(\text{PetaFLOP}/s) \times \text{day}$ 。`Peta` 是 SI 十进制前缀，表示 $10^{15}$ ；1 天是 $24 \times 60 \times 60 = 86400$ 秒。因此 1 个 `PetaFLOP/s-day` 表示以 $10^{15}$ FLOP/s 的有效速度连续运行 1 天产生的计算量：
 
@@ -751,15 +780,13 @@ $$
 
 它是总计算量单位，真实训练耗时还要除以硬件的有效 FLOP/s。
 
-纵轴是 validation loss，颜色表示模型参数量。沿着同一条彩色曲线向右，含义是同一个模型继续训练、累计更多 compute；模型大小没有沿这条曲线变化。不同颜色之间才对应不同 model size。
-
 虚线给出这批训练点拟合出的 compute scaling 趋势：随着训练 compute 增加，可达到的较低 loss 近似按 power law 下降。图上的实际判断来自曲线的相对位置：在某个 compute 位置，loss 最低的那条训练曲线对应当时最划算的 run。把这些低点串起来，就是后面 Method 1 的 lower envelope 思路。
 
 ![图 8.4-3 Loss vs model size by compute](images/8-4-3-loss-vs-model-size-by-compute.png)
 
 *图 8.4-3 Loss vs model size by compute*
 
-图 8.4-3 的横轴是 model size，也就是参数量 $N$ ，纵轴是 loss。每条曲线对应一个训练 compute 区间；沿同一条曲线移动时，参数量在变，训练 tokens 也随预算约束一起变化。
+图 8.4-3 把固定 compute 下的配置取舍放到参数量轴上：每条曲线是一档训练 compute 区间，沿同一条曲线移动时，参数量在变、训练 tokens 也随 $C \approx 6ND$ 预算约束一起变化。
 
 图 8.4-3 把固定 compute 下的配置取舍放到参数量轴上。参数量太小时，模型容量限制 loss；参数量太大时，同一预算下可训练 tokens 变少，loss 也会变差。曲线最低点对应这个 compute 区间里更合适的模型大小。后面的 Chinchilla Method 2 会把这个想法做得更系统：显式固定一组 FLOP budgets，在每个预算内扫参数量 $N$ 和训练 tokens $D$ 的配比。
 
@@ -773,7 +800,7 @@ Chinchilla 是固定 compute 问题上的代表性案例。它的结论是 train
 
 *图 8.4-4 Chinchilla IsoFLOP curves*
 
-图 8.4-4 把 Chinchilla 的 fixed compute 问题画成一组 IsoFLOP 曲线。横轴是模型参数量 $N$ ，纵轴是 validation loss；每条曲线对应一个固定训练 FLOP budget。沿同一条曲线移动时，训练 compute 近似固定，可以用 $C \approx 6ND$ 理解：参数量 $N$ 增大，可训练 tokens $D$ 就要减少；参数量 $N$ 减小，tokens $D$ 可以增加。
+图 8.4-4 把 Chinchilla 的 fixed compute 问题画成一组 IsoFLOP 曲线，每条曲线是一档固定训练 FLOP budget，曲线的最低点用不同颜色的星号标出。沿同一条曲线移动时，训练 compute 近似固定，可以用 $C \approx 6ND$ 理解：参数量 $N$ 增大，可训练 tokens $D$ 就要减少；参数量 $N$ 减小，tokens $D$ 可以增加。
 
 每条曲线的最低点对应这档预算下的 train-optimal 配置。最低点左侧是模型偏小的区域，容量限制 loss 继续下降；最低点右侧是模型偏大的区域，同一预算只能看较少 tokens，参数训练不充分。更大的 FLOP budget 会把可达到的 loss 往下推，同时把最优点推向更大的 $N$ 和更多的 $D$ 。
 
@@ -861,6 +888,8 @@ Method 3 是 joint fit。它假设一个完整的 $L(N,D)$ 函数形式，把不
 
 ### 8.4.3 Train-Optimal 不等于 Inference-Optimal
 
+本节回答 §8.4.2 留下的部署侧问题：train-optimal 比例能否直接用于 serving。读完应能：区分 train-optimal 与 inference-optimal 的目标函数；解释 overtraining 把更多一次性训练投入换成更长期 serving 成本的原因；以及用 tokens per parameter 这一比例大致判断一个模型是接近 train-optimal 还是已经 overtraining。
+
 Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的经验比例。部署时，inference 成本常常占模型生命周期的大头。为了降低延迟和 serving 成本，很多团队会选择更小模型、更多 tokens 的 overtraining 策略。
 
 ![图 8.4-13 Train-optimal vs inference-optimal](images/8-4-13-train-vs-inference-optimal.png)
@@ -897,11 +926,13 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 
 *图 8.5-1 Diffusion IsoFLOP curves*
 
-图 8.5-1 的横轴是 non-embedding parameters，纵轴是 validation NLL（validation negative log-likelihood，验证集负对数似然）。NLL 衡量模型对未参与训练的验证文本预测得有多好。对验证样本 $x$ ，它对应 $-\log p_\theta(x)$ ，实际报告通常还会按 token 平均。直观上，真实 token 的预测概率是 `0.6` 时，NLL 会低于预测概率只有 `0.1` 的情况，因此 NLL 越低越好。
+图 8.5-1 把 diffusion LM 的 IsoFLOP sweep 画在一组 U 形曲线上，每种颜色是一档固定训练 FLOP budget，曲线上不同位置的点是不同模型大小。NLL 衡量模型对未参与训练的验证文本预测得有多好。对验证样本 $x$ ，它对应 $-\log p_\theta(x)$ ，实际报告通常还会按 token 平均。直观上，真实 token 的预测概率是 `0.6` 时，NLL 会低于预测概率只有 `0.1` 的情况，因此 NLL 越低越好。
 
 每种颜色对应一档固定训练 FLOP budget，曲线上的点是不同模型大小。从小模型开始增加参数量时，容量提升会降低 NLL；模型继续变大后，可训练的 tokens 随单 token 成本增加而减少，NLL 又会升高。星号标出该预算下的 compute-optimal 模型大小。
 
 ### 8.5.1 扩散语言模型的 IsoFLOP
+
+本节回答 §8.5 留出的具体问题：把同一套 IsoFLOP 流程搬到 diffusion LM 上，结果有什么差异。读完应能：把每档 FLOP budget 下的最低 NLL 连成 power-law；区分 4× smaller × 4× longer 这一 compute-optimal 形状差异，与 64× 这一追平 AR 同等 NLL 所需额外 compute 的常数因子；以及在工程上判断 diffusion sweep 是否值得扩展到比 §8.4 更大的预算。
 
 扩散语言模型（diffusion LM）可以把同样的 IsoFLOP 流程跑一遍：对每档训练 FLOP budget 扫描模型大小，标出最低点，再拟合 scaling 曲线。与 autoregressive LM 的关键差异是单 token 的训练成本不同，因此 diffusion 达到相近 NLL 通常需要约 64× 的训练 compute（Plaid 论文 [arXiv:2305.18619](https://arxiv.org/abs/2305.18619) §5 报告的常数因子）。该论文同时给出：compute-optimal Plaid 模型约比 compute-optimal AR **小 ~4×、训练长 ~4×**——4× smaller × 4× longer 是 diffusion 在同一 FLOP 预算下的 compute-optimal 前沿形状（与 AR 的 compute-optimal 形状并行），而 64× 是"追平 AR 同等 NLL 所需额外 compute"这一独立常数因子。沿用同一套 IsoFLOP 工作流意味着：先得到每档预算的最优配置，再把这些最优点拟合到 power law。趋势稳定时，小规模 sweep 仍可用于规划更大的训练预算。
 
@@ -921,6 +952,8 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 
 ### 8.5.2 MoE 的 IsoFLOP
 
+本节回答 §8.5 留出的另一个具体问题：把 IsoFLOP 流程扩展到 MoE 时，新增的第三轴 sparsity 怎样参与 sweep。读完应能：在 fixed FLOP budget 下同时扫描 total params、active params、sparsity 三轴网格；解释 active params 边际收益先饱和的现象；以及理解 DeepSeek / Qwen / Kimi K2 在 §8.6 如何复用这一三轴网格选 MoE 配置。
+
 MoE 给 IsoFLOP 加了一个变量：total parameters 与 active parameters 之比。固定 FLOP budget 下，扫描 total params、active params 和 sparsity 三轴网格，比较每种组合的 validation loss。与 dense LM 相比，MoE 的 scaling rule 通常表现为：total params 更大时 loss 更低，但 active params 增加带来的边际收益会先饱和。这一现象在 §8.6 现代报告里被 DeepSeek / Qwen / Kimi K2 反复使用：先确定 FLOP budget，再在 MoE 三轴网格上选 active params 与 sparsity。
 
 ## 8.6 Scaling in Practice：MiniCPM、DeepSeek 与现代报告
@@ -931,13 +964,15 @@ MoE 给 IsoFLOP 加了一个变量：total parameters 与 active parameters 之�
 
 ### 8.6.1 MiniCPM：muP、WSD 与逐级放大的小模型预实验
 
-MiniCPM 先回答一个训练前问题：目标模型已经大到不能反复试错时，哪些选择可以先在更小模型上定下来。这里的选择包括 initialization、learning rate、batch size、scheduler，以及训练 token 数与模型参数量的比例。
+本节解决一组前置问题：目标模型已经大到不能反复试错时，哪些选择可以先在更小模型上定下来、怎样逐级验证迁移是否成立。读完本节应能：理解 muP 的五类参数操作如何稳定跨宽度 learning rate、识别 batch / learning rate / WSD 的拟合曲线随 token budget 怎样移动，以及判断 §8.6.5 Cerebras-GPT 与 §8.6.6 的 muP 推导细节何时需要单独查阅。
+
+MiniCPM 的具体答案是：用 muP 改参数化让 base learning rate 跨宽度迁移，用 WSD 把训练轨迹复用成多档 token budget 的 final checkpoint，再用 lower envelope 与 joint fit 估计模型—数据分配。下面按这三步展开。
 
 ![图 8.6-1 MiniCPM performance comparison](images/8-6-1-minicpm-performance-comparison.png)
 
 *图 8.6-1 MiniCPM performance comparison*
 
-图 8.6-1 交代案例背景：MiniCPM 在 1-2.5B 参数区间里表现有竞争力，所以它适合作为 small model scaling 案例。后面的重点转向训练过程：哪些超参数可以先在小模型上定，哪些仍需要随规模重新测。
+图 8.6-1 把 MiniCPM 与同代 1-2.5B 参数规模的开源模型放在一起比较 benchmark 分数，标出 MiniCPM 在这一区间的相对位置。它本身不解释具体数字——后续小节（§8.6.1 的 muP / WSD / 数据 sweep）会回到这些数字背后用到的训练配置。后面的重点转向训练过程：哪些超参数可以先在小模型上定，哪些仍需要随规模重新测。
 
 ![图 8.6-2 MiniCPM muP operations](images/8-6-2-minicpm-mup-operations.png)
 
@@ -1037,13 +1072,13 @@ Stable phase 中的 learning rate 仍然较大，loss 可能比已经 decay 的 
 
 *图 8.6-11 MiniCPM WSD lower envelope*
 
-图 8.6-11 的横轴是训练 compute，纵轴分别是 Code、English Wikihow 和 Chinese Wikihow 上的 held-out loss。每段颜色对应一个固定模型规模在若干 decayed checkpoints 上的结果。比较同一 compute 附近的不同模型，最下方的边界就是 Chinchilla Method 1 使用的 lower envelope；它依赖候选模型和训练长度是否覆盖了真正的低 loss 区域。
+图 8.6-11 把 §8.4.2 提到的 Chinchilla Method 1 lower envelope 真正落到 MiniCPM 数据上：横轴是训练 compute，纵轴分别是 Code、English Wikihow 和 Chinese Wikihow 上的 held-out loss 三栏；每段颜色对应一个固定模型规模在若干 decayed checkpoints 上的结果。比较同一 compute 附近的不同模型，最下方的边界就是 Chinchilla Method 1 使用的 lower envelope；它依赖候选模型和训练长度是否覆盖了真正的低 loss 区域。
 
 ![图 8.6-12 MiniCPM WSD joint fit](images/8-6-12-minicpm-wsd-joint-fit.png)
 
 *图 8.6-12 MiniCPM WSD joint fit*
 
-图 8.6-12 是 joint fit 视角：把多组模型大小和数据量一起拟合成 $L(N,D)$ 曲面，再从曲面推导 compute-optimal 的 $N$ 和 $D$。每个黑点是一组实际 decayed checkpoint；等高线和背景色来自拟合函数。MiniCPM 论文 §4.5 "Measuring the Scaling Law with WSD LRS" 给出的拟合结果是 $D_{opt}/N_{opt}\approx 192$，也就是"data size should be 192 times larger than the model size on average"，明显高于 Chinchilla 的约 20；同一曲面对 Llama 2 反推得到 $D_{opt}/N_{opt}\approx 70\text{–}100$（[arXiv:2404.06395](https://arxiv.org/abs/2404.06395)）。这个 192 来自拟合函数在整个曲面上的外推，没有对应某一档固定 compute 预算下的直接测量，证据强度弱于直接覆盖多档固定预算的 IsoFLOP sweep。
+图 8.6-12 是 joint fit 视角，把多组模型大小和数据量的 decayed checkpoint 一起拟合成一张 $L(N,D)$ 曲面（背景色 + 等高线），并标出实际黑点；和 §8.4.3 的 Chinchilla Method 3 同样需要把整张曲面看完。每个黑点是一组实际 decayed checkpoint；等高线和背景色来自拟合函数。MiniCPM 论文 §4.5 "Measuring the Scaling Law with WSD LRS" 给出的拟合结果是 $D_{opt}/N_{opt}\approx 192$，也就是"data size should be 192 times larger than the model size on average"，明显高于 Chinchilla 的约 20；同一曲面对 Llama 2 反推得到 $D_{opt}/N_{opt}\approx 70\text{–}100$（[arXiv:2404.06395](https://arxiv.org/abs/2404.06395)）。这个 192 来自拟合函数在整个曲面上的外推，没有对应某一档固定 compute 预算下的直接测量，证据强度弱于直接覆盖多档固定预算的 IsoFLOP sweep。
 
 这个比例绑定拟合函数、评测语料和指定 compute。MiniCPM 的 Method 1 / 3 曲线较平滑，但论文拟合得到的 exponent 与 Chinchilla 并不完全一致；论文对这次远距离外推也保持保留态度。
 
@@ -1059,13 +1094,15 @@ MiniCPM 的流程是：用 muP 稳定 learning rate，用 WSD 复用训练轨迹
 
 ### 8.6.2 DeepSeek：直接拟合 Batch / LR / IsoFLOP
 
-DeepSeek LLM 代表另一条路线：直接用小规模实验拟合 batch size、learning rate 和 model-data tradeoff。它先承认最优 LR / batch 会随规模变化，再把这种变化当成 scaling law 的对象来测。
+本节回答 MiniCPM 那条 muP 迁移路线之外的可选方案：当参数化迁移假设不成立时，可以直接用小规模实验拟合 batch size、learning rate 与 model-data tradeoff，让 scaling law 自己描述变化。读完本节应能：在 LR / batch grid 上识别近似最优区域是否足够宽、用 IsoFLOP sweep 把 fixed-compute 下的 optimal 配置外推到更大预算，以及判断 DeepSeek-V3 后续多段 LR schedule 与本节思路的承接关系。
+
+DeepSeek LLM 的具体做法是：在多个小模型上同时扫 batch × learning rate 网格，把低 loss 区域连成随 compute 变化的趋势；再在固定 FLOP budget 下做 IsoFLOP sweep，把每档预算的最优配置拿出来拟合。
 
 ![图 8.6-14 DeepSeek scaling analysis case](images/8-6-14-deepseek-scaling-analysis-case.png)
 
 *图 8.6-14 DeepSeek scaling analysis case*
 
-图 8.6-14 把 DeepSeek LLM 放进同一组 scaling 案例：它公开了 7B 和 67B 模型，并给出比较细的训练设置分析。和 MiniCPM 相比，DeepSeek 的实验重心是直接测量超参数如何随规模变化。
+图 8.6-14 把 DeepSeek LLM 7B / 67B 与同代 7B 级开源模型放在一起比较 benchmark 分数，标出 DeepSeek 在这两档规模上的相对位置。它公开了 7B 和 67B 模型，并给出比较细的训练设置分析，本图本身不解释训练设置——后续图 8.6-15–8.6-19 会回到 batch / LR / IsoFLOP sweep 的具体曲线。和 MiniCPM 相比，DeepSeek 的实验重心是直接测量超参数如何随规模变化。
 
 这条路线的代价是实验量更大，因为每个规模都需要扫一片 LR-batch space；好处是少依赖参数化迁移假设。只要低 loss 区域在多个规模上形成稳定趋势，就可以把趋势外推到目标训练。
 
@@ -1099,7 +1136,7 @@ Batch size 曲线相对规整，可以给大训练的 global batch 提供依据�
 
 *图 8.6-18 DeepSeek IsoFLOP scaling law*
 
-图 8.6-18 是更直接的 IsoFLOP sweep。左图每种颜色固定一档 training FLOPs，横轴 $M$ 是 non-embedding FLOPs/token，作为模型计算规模的口径；纵轴是 validation bits-per-byte。每条 U 形曲线的最低点给出该预算下的 optimal $M$。中图和右图再分别拟合 optimal $M$ 与 training tokens $\mathrm{D}$ 怎样随总 compute $C=MD$ 增长。
+图 8.6-18 是更直接的 IsoFLOP sweep，左中右三栏分别承担三件事：左图给出固定 FLOP budget 下的 optimal $M$（U 形曲线最低点）、中图拟合 optimal $M$ 随总 compute $C$ 的增长、右图拟合 optimal training tokens $\mathrm{D}$ 随 $C$ 的增长。左图每种颜色固定一档 training FLOPs，横轴 $M$ 是 non-embedding FLOPs/token，作为模型计算规模的口径；纵轴是 validation bits-per-byte。每条 U 形曲线的最低点给出该预算下的 optimal $M$。
 
 DeepSeek 这一步比 MiniCPM method 1 / 3 更直接：它在固定 FLOP budget 下比较候选配置，减少了 lower envelope 候选不足和 joint fit 函数形式带来的歧义。
 
@@ -1115,9 +1152,9 @@ MiniCPM 通过参数化争取超参数迁移，DeepSeek 则直接拟合超参数
 
 ### 8.6.3 其他公开报告：把 scaling 变量扩展到 MoE、架构和 downstream
 
-更多公开报告已经不再完整展示整套 Chinchilla 或 LR-batch sweep。一个现实原因是这些流程逐渐变成常规训练流程，报告往往只保留和本模型最相关的训练决策。
+本节把 scaling 变量从 batch / LR 扩展到 MoE sparsity、active parameters、architecture choice 与 downstream 映射，覆盖 §8.6.1–§8.6.2 没有处理的公开报告。读完本节应能：识别不同公开报告把哪个变量当作主缩放轴、把这个变量对应的训练决策回写到自己的训练计划里，以及在 §8.1 末尾检查表的八个维度上快速定位每份报告的强弱项。
 
-读这一组案例时，不要先记具体模型名，先问同一个问题：报告把哪个变量拿来做 scaling，这个变量最后服务什么决策。变量可能是 batch / LR，也可能是 MoE sparsity、active parameters、architecture choice 或 downstream score。
+下面按 Qwen / Kimi K2 / Llama 3 / Hunyuan / MiniMax / 近期 scaling-law 训练设置汇总的顺序逐份过，每份都回答同一组问题：报告把哪个变量拿来做 scaling，这个变量最后服务什么决策。
 
 ![图 8.6-20 Qwen batch and learning-rate scaling](images/8-6-20-qwen-batch-lr-scaling.png)
 
@@ -1139,7 +1176,7 @@ Kimi K2 在固定 active experts 的实验中观察到：增加 total experts、
 
 *图 8.6-22 Llama 3 IsoFLOP scaling law*
 
-Llama 3 报告展示了两层外推。图 8.6-22 中，每种颜色固定一档 compute，横轴是 training tokens，纵轴是 held-out validation NLL；同一档预算下，tokens 增加意味着模型相应变小。洋红色菱形是各条 IsoFLOP 曲线的最低点。NLL 是连续指标，通常比下游 accuracy 更适合拟合 scaling trend。
+Llama 3 报告展示了两层外推。图 8.6-22 用一组同色 IsoFLOP 曲线把 compute-budget 维度固定，再用洋红色菱形标出每条曲线的最低点，作为训练 token 数与模型大小配比的实验依据。每种颜色固定一档 compute，横轴是 training tokens，纵轴是 held-out validation NLL；同一档预算下，tokens 增加意味着模型相应变小。NLL 是连续指标，通常比下游 accuracy 更适合拟合 scaling trend。
 
 ![图 8.6-23 Llama 3 ARC-Challenge scaling](images/8-6-23-llama3-arc-challenge-scaling.png)
 
@@ -1153,9 +1190,9 @@ Downstream 映射环节风险更高，因为 accuracy 是离散指标，受 prom
 
 *图 8.6-24 Hunyuan MoE scaling law*
 
-Hunyuan 的 MoE scaling 强调参数口径。对 MoE 来说，train compute 更接近 active parameters，但内存、routing 和 expert 配置又受 total experts 影响。
+Hunyuan 的 MoE scaling 强调参数口径：对 MoE 来说，train compute 更接近 active parameters，但内存、routing 和 expert 配置又受 total experts 影响；同一份 sweep 不能同时套两个口径。
 
-图 8.6-24 中，Hunyuan 在固定 sparsity 配置（16 specialized experts / top-1 routing + 1 shared expert）下做 active-parameter 口径的 IsoFLOP 分析。Hunyuan-Large 论文 §2.3.1 的 compute-optimal sweep 给出约 `58.1B activated / 5.6T tokens`，对应约 96 tokens per active parameter（5.6T ÷ 58.1B ≈ 96.4）；最终发布模型选择 `52B activated / 7T tokens`，对应约 135 tokens per active parameter（7T ÷ 52B ≈ 134.6）。
+图 8.6-24 把 Hunyuan-Large 在 fixed sparsity（16 specialized experts / top-1 routing + 1 shared expert）下的 active-parameter IsoFLOP sweep 画成一族曲线，最低点对应 compute-optimal 配置。Hunyuan-Large 论文 §2.3.1 的 compute-optimal sweep 给出约 `58.1B activated / 5.6T tokens`，对应约 96 tokens per active parameter（5.6T ÷ 58.1B ≈ 96.4）；最终发布模型选择 `52B activated / 7T tokens`，对应约 135 tokens per active parameter（7T ÷ 52B ≈ 134.6）。
 
 两个数字的差别反映 compute-optimal 与 serving-cost optimal 之间的取舍：compute-optimal 优化的是给定算力下的 loss，serving-cost optimal 在损失之外叠加推理成本。这个比例绑定 active-parameter 口径；Hunyuan 这组实验没有同时搜索 sparsity level。换 active experts、routing、sparsity 或数据处理方案时，需要重新检查。
 
@@ -1178,15 +1215,15 @@ MiniMax-01 把 architecture choice 也纳入 scaling law。图 8.6-25 比较 lig
 
 *图 8.6-26 近期 scaling-law 训练设置汇总*
 
-图 8.6-26 汇总不同报告公开的决策变量：DeepSeek 展示 batch / LR 与 IsoFLOP；MiniCPM 展示 muP、WSD 和 joint fit；Qwen 只简述超参数 scaling；Kimi K2、Hunyuan、Llama 3 和 MiniMax 分别公开 MoE sparsity、active-parameter IsoFLOP、downstream 外推和 architecture comparison。公开点越完整，越容易复核具体超参数；只有结论或少量曲线时，主要能复用的是实验设计。
+图 8.6-26 把 §8.6.3 这一组公开报告的核心决策变量和原始论文图集中放在一张表/矩阵里，方便横向比较。图 8.6-26 汇总不同报告公开的决策变量：DeepSeek 展示 batch / LR 与 IsoFLOP；MiniCPM 展示 muP、WSD 和 joint fit；Qwen 只简述超参数 scaling；Kimi K2、Hunyuan、Llama 3 和 MiniMax 分别公开 MoE sparsity、active-parameter IsoFLOP、downstream 外推和 architecture comparison。公开点越完整，越容易复核具体超参数；只有结论或少量曲线时，主要能复用的是实验设计。
 
 这里还有一个边界：这些图主要服务 pretraining 决策。Post-training 会改变最终能力形态，也可能反过来改变 pretraining 对覆盖面、多样性和能力分布的要求。现在公开材料里还少见把 pretraining、SFT、RL 和 downstream 指标放进同一个稳定 scaling workflow 的做法。
 
 ### 8.6.4 Optimizer Scaling：新 optimizer 的规模风险
 
-optimizer 和参数化本身也有 scaling risk。nanoGPT speedrun 这类小模型限时训练基准里的大收益很诱人，但 optimizer 的效果会随规模变化；放到不同 compute 或不同 Chinchilla ratio 后，收益可能缩小、消失，甚至变成训练不稳定。
+本节回答一组训练决策问题：如果一个 optimizer 在小模型上更快，怎样判断它是否值得带到更大的 pretraining run？比较时要先看调参是否公平，再看规模放大后收益是否还保持。读完本节应能：识别 AdamW / AdamC / Muon / cautious optimizer 之间的关键差异、把 optimizer speedup 沿 model size 与 Chinchilla ratio 两个轴同时检验，以及在公开发布的 AdamC blow-up 案例中理解 scaling 失败的可能形态。
 
-这一节先把问题放回训练决策里：如果一个 optimizer 在小模型上更快，怎样判断它是否值得带到更大的 pretraining run？比较时要先看调参是否公平，再看规模放大后收益是否还保持。
+下面分四步处理：先做调参公平性 sanity check，再加 compute scale 与 Chinchilla ratio 两个轴，然后用 StepFun / DeepSeek / OpenAI 三种 LR-batch scaling 视角对照，最后看 AdamC blow-up 与 Muon 这两个具体工程案例。
 
 ![图 8.6-27 Optimizer hyperparameter interactions](images/8-6-27-optimizer-hparam-interactions.png)
 
@@ -1208,7 +1245,7 @@ Optimizer 比较必须报告搜索范围、LR schedule、batch、weight decay �
 
 *图 8.6-29 LR / batch scaling variables*
 
-图 8.6-29 把不同 LR / batch scaling 公式放在同一张表里。OpenAI critical batch 视角把 batch 写成 target loss 的函数；DeepSeek 把 batch / LR 写成 compute power law；StepFun 的拟合直接使用模型规模 $N$ 和数据量 $D$，并另外检查换 data recipe 或 model sparsity 后是否仍能迁移。
+图 8.6-29 用一张汇总表把 OpenAI critical batch、DeepSeek power-law、StepFun 经验拟合三种 LR / batch scaling 公式的拟合变量、适用区间和失败案例并列对比。OpenAI critical batch 视角把 batch 写成 target loss 的函数；DeepSeek 把 batch / LR 写成 compute power law；StepFun 的拟合直接使用模型规模 $N$ 和数据量 $D$，并另外检查换 data recipe 或 model sparsity 后是否仍能迁移。
 
 变量不同，外推含义就不同。普通 loss scaling 只问 compute 多了 loss 怎么变；hyperparameter scaling 还要问最优 batch 和最优 learning rate 是否随 compute、数据量或 sparsity 一起变。若变量选错，小规模上看起来最优的方法可能只是被调得更充分。
 
@@ -1216,7 +1253,7 @@ Optimizer 比较必须报告搜索范围、LR schedule、batch、weight decay �
 
 *图 8.6-30 StepFun LR / batch landscape*
 
-StepFun 先把 LR 和 batch 放进经验网格。图 8.6-30 关注同一训练设定下的 loss landscape：固定模型大小和训练数据量后，batch size 与 learning rate 形成一张 loss surface。这个 surface 在切片上相对平滑、近似凸，说明用网格寻找最优 LR / batch 是可行的。
+StepFun 先把 LR 和 batch 放进经验网格。图 8.6-30 把同一固定训练设定下的 loss surface 画成 batch × learning rate 的二维等高线图：低 loss 区域在 LR / batch 平面上的形态（窄谷、宽带、孤立峰）是判断「能否用网格搜到最优 LR / batch」的直接证据。这个 surface 在切片上相对平滑、近似凸，说明用网格寻找最优 LR / batch 是可行的。
 
 ![图 8.6-31 StepFun LR / batch trends](images/8-6-31-stepfun-lr-batch-trends.png)
 
@@ -1236,7 +1273,7 @@ StepFun 还检查训练设置的鲁棒性。它把 MoE、不同 dataset 和不�
 
 *图 8.6-33 AdamC scaling blow-up*
 
-图 8.6-33 是一个工程案例。左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，并从约 $10^{21}$ 之后进入 held-out 外推区。外推区里实测点逐档偏离预测：$10^{21}$ 处高 0.8%， $10^{22}$ 处高 2.5%， $10^{23}$ 处这一档的 run 直接发散。发散的训练设置是 cautious AdamC 配合按 batch size 平方根缩放的 learning rate，改动参数化与 scaling 规则后可以修复。这个案例来自 Held 博客（[oa.williamheld.com/blog/delphi/](https://oa.williamheld.com/blog/delphi/)）。
+图 8.6-33 是一个工程案例，左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，并从约 $10^{21}$ 之后进入 held-out 外推区。外推区里实测点逐档偏离预测：$10^{21}$ 处高 0.8%， $10^{22}$ 处高 2.5%， $10^{23}$ 处这一档的 run 直接发散。发散的训练设置是 cautious AdamC 配合按 batch size 平方根缩放的 learning rate，改动参数化与 scaling 规则后可以修复。这个案例来自 Held 博客（[oa.williamheld.com/blog/delphi/](https://oa.williamheld.com/blog/delphi/)）。
 
 Volkova et al. [Towards Robust Scaling Laws for Optimizers, arXiv:2602.07712](https://arxiv.org/abs/2602.07712) 处理同一类问题的另一面：论文指出 per-optimizer 直接拟合 Chinchilla-style scaling law 是 ill-conditioned 的、拟合参数高度相关，因此改用“共享 power-law exponents + optimizer-specific rescaling factors”，并在 AdamW、Muon、Scion、Shampoo、SOAP 五种 optimizer、两种架构上验证。
 
@@ -1259,19 +1296,21 @@ Muon 在大模型上的稳定性补丁是 MuonClip，由 Kimi K2 引入：在 at
 
 ### 8.6.5 Cerebras-GPT：muP 的公开验证案例
 
-前面 MiniCPM 已经展示 muP 可以降低 learning rate 搜索成本。Cerebras-GPT 的 standard-parametrization 模型族覆盖 111M 到 13B，按约 20 tokens per parameter 训练；其中 111M 到 2.7B 另有一组 muP 对照。这个案例检验 muP 是否能降低跨 width 的 loss 波动，并让小模型超参更容易迁移。
+本节处理一个独立验证问题：muP 在 Cerebras-GPT 这套公开模型族里是否真的能压低跨 width 的 loss 波动，并把小模型搜索到的 base 超参稳定迁移到更大模型。读完本节应能：把 standard parametrization 与 muP 在同一张 compute-loss 图上直接比较、识别 scale noise 数量级差异对应的工程含义，以及把 Cerebras-GPT 的 40M proxy model 搜索流程复用到自己的训练里。
+
+下面四张图按 compute-loss 基线、muP vs standard 偏差、参数化差异表、40M proxy 搜索四个层面展开，分别回答 baseline 在哪、muP 带来什么、参数化具体差异在哪、超参搜索如何复用。
 
 ![图 8.6-35 Cerebras compute-loss baseline](images/8-6-35-cerebras-mup-stable-scaling.png)
 
 *图 8.6-35 Cerebras compute-loss baseline*
 
-图 8.6-35 的横轴是 training FLOPs，纵轴是 Pile test loss。橙色点是按约 20 tokens per parameter 训练的 Cerebras-GPT standard-parametrization 模型，虚线是其 compute-optimal fit；Pythia、GPT-J 和 GPT-NeoX 用作公开模型参照。这张图先建立整个模型族的 compute-loss 基线，本身还没有比较 standard parametrization 与 muP。
+图 8.6-35 把 Cerebras-GPT standard-parametrization 模型族与同代开源参照（Pythia、GPT-J、GPT-NeoX）放在同一张 compute-loss 图上，橙色点是 Cerebras-GPT 实际训练点、虚线是其 compute-optimal fit、Pythia / GPT-J / GPT-NeoX 用作公开模型参照。这张图先建立整个模型族的 compute-loss 基线，本身还没有比较 standard parametrization 与 muP——下一张图 8.6-36 才是 muP 验证。
 
 ![图 8.6-36 Cerebras muP predictable scaling](images/8-6-36-cerebras-mup-predictable-scaling.png)
 
 *图 8.6-36 Cerebras muP predictable scaling*
 
-图 8.6-36 才直接比较两种参数化。纵轴是相对 standard-parametrization scaling law 的 loss 百分比偏差；蓝点的标准差约为 `0.66%`，橙色 muP 点约为 `0.04%`，后者的 scale noise 在这组实验里低约 16 倍。muP 模型的平均 Pile test loss 还比基线 fit 低约 `0.43%`。这些结果支持更稳定的超参数迁移，但实验只覆盖 Cerebras-GPT 的架构、optimizer 和训练设置。
+图 8.6-36 把图 8.6-35 的 compute-loss baseline 转成相对偏差视角：纵轴是相对 standard-parametrization scaling law 的 loss 百分比偏差，蓝点对应 standard parametrization、橙点对应 muP；两组点的标准差比较直接给出 muP 是否真把跨宽度 scale noise 压低。蓝点的标准差约为 `0.66%`，橙色 muP 点约为 `0.04%`，后者的 scale noise 在这组实验里低约 16 倍。muP 模型的平均 Pile test loss 还比基线 fit 低约 `0.43%`。这些结果支持更稳定的超参数迁移，但实验只覆盖 Cerebras-GPT 的架构、optimizer 和训练设置。
 
 ![图 8.6-37 Cerebras standard vs muP details](images/8-6-37-cerebras-standard-vs-mup-details.png)
 
@@ -1291,9 +1330,9 @@ Muon 在大模型上的稳定性补丁是 MuonClip，由 Kimi K2 引入：在 at
 
 ### 8.6.6 muP 推导直觉：A1、A2 与 width scaling
 
-Cerebras-GPT 和 MiniCPM 都把 muP 当成实践工具；现在补上它的直觉来源。muP 的目标是让 width 放大时，关键超参数尤其是 learning rate 的最优区域尽量不漂移。
+本节回答 §8.6.1 / §8.6.5 留下的开放问题：muP 为什么能稳定 learning rate？这背后的两个宽度尺度条件（A1 初始化后的 activation 尺度、A2 一次 update 引起的 activation 变化）如何具体推出每类参数的初始化与 per-parameter learning rate 规则。读完本节应能：从 A1 / A2 两条条件反推 $\sigma_l = \Theta(1/\sqrt{n_{l-1}})$ 与 SGD / Adam 的 learning rate factor，以及理解标准参数化与 muP 在同一张参数表里的具体差别。
 
-`Parametrization` 在这里指“同一个模型函数怎样用参数表示”。同样是把模型做宽，初始化标准差、输出缩放和每类参数的 learning rate 都会影响一次 update 对函数的改变。muP 的 `maximum update` 强调两件事：模型变宽后，一步更新要足够大，可以继续学习 feature；这一步更新也要受控，避免数值尺度随 width 失控。
+下面先给线性层下的 A1 / A2 推导，再回到 §8.6.5 表格里的具体规则：标准参数化在矩阵层使用 $\Theta(1/\sqrt{n_{l-1}})$ 的初始化标准差与 $\Theta(1)$ 的 learning rate，而 muP 把 Adam 的矩阵 learning rate factor 换成 $1/n_{l-1}$，并按 fan-out / fan-in 比调整初始化项。
 
 ![图 8.6-39 muP conditions](images/8-6-39-mup-conditions.png)
 
@@ -1369,7 +1408,9 @@ $$
 
 ### 8.6.7 muP 的实践检查与失效边界
 
-把 muP 写进训练代码之后，第一步是做检查。常见做法包括 coordinate check 和 transfer test：前者看不同宽度下 activation、logits、loss、gradient 或 update 的坐标尺度是否稳定；后者在一组 proxy models 上扫 base learning rate 等超参，确认低 loss 区域是否真的对齐。
+本节回答一个工程实操问题：把 muP 写进训练代码之后，第一步该做哪些检查、哪些场景下标准 muP 规则会失效。读完本节应能：用 coordinate check 与 transfer test 验证 muP 是否真在自己的目标架构上成立、识别 RMSNorm gain、sign-based optimizer（Lion）、强 weight decay 这三类常见失效模式，以及在自己的训练栈里规划额外的 stress test。
+
+下面三张图按 RMSNorm gain / Lion / 强 weight decay 顺序逐一展示标准 muP 配方在哪类细节上不能直接套用，并给出对应的应对方向。
 
 ![图 8.6-41 muP RMSNorm gain caveat](images/8-6-41-mup-rmsnorm-gain-caveat.png)
 
@@ -1395,20 +1436,9 @@ $$
 
 这三张图强调 muP 的适用边界。它通常能让标准参数化更稳定、让小模型超参更容易迁移；但现代 Transformer 里的 norm gain、特殊 optimizer、强 regularization、初始化变体和 batch choice 都可能打破简化理论。使用 muP 时仍要在目标架构上做小规模和中等规模复核，确认低 loss 区域是否真的随规模对齐。
 
-### 8.6.8 读公开 Scaling Report 的检查表
+### 8.6.8 公开 Scaling Report 的方法论边界
 
-公开 scaling report 的写法差异很大。读的时候先把图放回训练决策里，可以按下面几个问题检查：
-
-- 横轴是什么资源：compute、tokens、parameters、active parameters，还是 downstream score。
-- 纵轴是什么目标：pretraining loss、terminal loss、accuracy，还是 serving cost proxy。
-- 哪些训练条件固定：tokenizer、数据处理、optimizer、batch、LR、scheduler、context length 是否一致。
-- 哪些变量随规模调整：模型大小、训练 tokens、batch、LR、MoE sparsity、architecture 或 optimizer。
-- 实验点是否覆盖目标规模附近，还是从很小 compute 区间远距离外推。
-- 参数化是否说明清楚：standard parametrization、muP、optimizer-specific scaling 或其他初始化规则是否改变。
-- 若报告使用 hyperparameter transfer，是否说明 proxy model、搜索空间、coordinate check 和中等规模复核。
-- 结论服务哪类决策：模型/data 分配、batch/LR/scheduler、optimizer、MoE sparsity、architecture choice，还是 deployment cost。
-
-只给最终模型和少量曲线的报告仍然能提供训练思路，但很难直接复用具体超参数。更可迁移的信息通常来自完整的实验覆盖、清楚的参数口径、统一的训练条件、参数化规则，以及大训练后对预测误差的回看。
+§8.1 末尾已经给出扩展检查表（横轴 / 纵轴 / 固定训练条件 / 随规模调整的变量 / 实验点覆盖 / 参数化 / hyperparameter transfer / 决策类型 八个维度），回到那一节即可拿到完整清单。本节只补一段方法论边界，提醒即使检查表逐条通过，外推仍然有结构性风险。
 
 > [!NOTE]
 > **Scaling law 方法论的边界**：
@@ -1418,23 +1448,17 @@ $$
 
 ## 8.7 本章总结与下章衔接
 
-Scaling law 的实用价值在于把大训练前的关键选择变成一组小实验问题。读者在准备一次大训练时可以按以下顺序使用本章：
+训练侧的所有决策最终都要面对部署侧的成本账：serving 时的 GPU 时间、KV cache 显存、TTFT、throughput、continuous batching 与 PagedAttention 等具体工程对象。Train-optimal 模型上线后被实际负载压成的形状，往往和 IsoFLOP sweep 给出的最佳点不一样。
 
-1. 先看 §8.3 拿到 data / model / architecture 的单变量 baseline；
-2. 再看 §8.4 决定模型规模与训练 token 数的比例；
-3. 用 §8.5 把同一思路扩散到 autoregressive 之外的模型族；
-4. 最后用 §8.6 的公开报告校核目标训练条件。
-
-Batch 与 learning rate 在 §8.3.5，超参数迁移在 §8.6.5–§8.6.7，optimizer scaling 在 §8.6.4。任何一条 scaling 结论在使用前都要回到：训练条件是否一致、实验点是否覆盖目标区域、参数口径是否清楚、下游指标是否 noisy——这是阅读公开 scaling report 时的最小检查表（§8.6.8）。
-
-Train-optimal 与 inference-optimal 之间的取舍，决定了模型上线后会被压成什么样：serving cost、KV cache、PagedAttention、speculative decoding 这一整套工程账本正是 [第 9 章 推理系统](../chapter9/chapter9_推理系统.md) 的主线。下一章把视角从训练侧的算力最优切到 serving 侧的成本最优，看 IsoFLOP 之外还有什么维度决定模型的最终部署形态。
+[第 9 章 推理系统](../chapter9/chapter9_推理系统.md) 把视角从训练侧切到 serving 侧，继续回答"算力最优的模型怎么被高效部署"这一组工程问题。读完本章后，读者可以带着 §8.1 末尾的检查表去看公开推理报告：横轴换成 QPS / latency / serving cost 后，哪些结论仍然成立、哪些需要重写。
 
 ## 思考
 
-- 对一个目标模型规模（参数量 $N$ ）和目标训练预算（FLOPs），是否能在公开报告的 IsoFLOP 网格上读出 critical batch size？
-- 当 scaling report 写“在 100B tokens 训练”但没写 data repetition / mix / dedup 策略，外推时该如何保守估计有效 token 数？
-- 训练侧与推理侧的 Pareto 前沿：给定 $N$ 与 $D$ ，train-optimal 与 inference-optimal 的差距有多大？
-- muP 给出 LR / init 的 width-invariance 拟合后，对 optimizer scaling（Cautious AdamC / Muon 等）还剩多少没传递？
+- 看一张 scaling 图时，先固定横轴的资源（compute / tokens / parameters / downstream score）和被钉住的训练条件（tokenizer、optimizer、batch、scheduler），再判断结论能外推到多大的目标训练。这条读图动作对应学习目标 1 和 §8.1 末尾检查表。
+- 给定训练 FLOPs $C$ 和目标 loss，用 Chinchilla / IsoFLOP / critical batch size / tokens per parameter 这些概念在公开报告的网格上读出模型大小、训练 token 数、batch size 和 learning rate 的起点；起点只是 baseline，仍要在目标规模附近复核。这条对应学习目标 3。
+- 在 tokens per parameter 从 1.7（GPT-3）一路上升到 200+（Llama 3、Mistral 等 overtrained 模型）的趋势里，train-optimal 与 inference-optimal 的差距如何随模型大小和预计请求量变化？overtraining 把更多一次性训练投入换成更低的长期 serving 成本是否划算？这一组问题对应学习目标 4 和 §8.4.3。
+- 在目标模型上用 muP / WSD / optimizer scaling 时，哪些超参可以从小模型迁移，哪些必须随 compute、tokens per parameter、MoE sparsity 或数据处理方案重新扫描？这条对应学习目标 4 的另一半。
+- 当一个新模型架构（如 Mamba、Gated DeltaNet、hybrid attention）或一个新数据集出现时，如何套 §8.1 末尾的检查表判断它是否值得投入大规模预训练？检查表逐条通过只是必要条件，外推区间和参数化口径仍要单独核。这条对应学习目标 2 与学习目标 5。
 
 ## 参考文献
 
