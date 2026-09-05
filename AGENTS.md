@@ -223,6 +223,16 @@ prompt 要求 sub-agent 只报 `refuted + tentative`、**不再报 `confirmed`**
 - **教材级章节归属幻觉（sub-agent 凭印象扩写论文细节）**：RFT 写成 "Reinforcing Fine-Tuning" 而 DeepSeekMath §5.2.1 原文是 "Rejection Sampling Fine-tuning"；Dr. GRPO baseline 改成 leave-one-out（实际论文 §3.2 只删 std 与 1/|o_i| 两个分母）；R1 §2.3.1 冷启动写"温度 1.0 + DeepSeek-V3 精炼 + LLM 批量扩展"（实际论文 §2.3.1 列出的是 long CoT few-shot / 直接生成详细答案 / R1-Zero 输出整理 / 人工后处理 四种）。**对近期（≤ 2024）论文涉及实验细节的引述，必须读 PDF § 正文，不能凭 abstract 或课件 PPT 一句话扩写**。
 - **图意核对 sub-task 模板**（与 STYLE.md「图意核对」同步）：写作核心图时必须实际打开本地 PNG 核对图意，不能只看 alt text / 文件名 / 路径。checklist：(1) 子图标题 / 坐标轴 / 图例是否被正文正确转述；(2) 正文数字与图上标注是否一致；(3) 图说的「机制解释」是否能在图中找到对应视觉证据；(4) alt text / 图注 / 正文交叉引用是否使用同一个图号。
 - **删图判定**：两图承载同一份视觉信息（即使 SHA256 不同，如课件截图 vs 论文原图）即视为重复；保留论文原图、删课件截图（lecture 装饰元素属元叙述）；删图后必须按 STYLE 连号规则重排同节其他图号，并跑 `rg 图 N-x` 全仓库验证没有悬空引用。
+- **tokenization 实证数据必须实际跑 tokenizer**：写 `tiktoken` / `sentencepiece` / `transformers` 类的"X 字符串切成 N 个 token id"示例时，**必须实际运行一遍 tokenizer**，把真实 id 序列与每个 id 对应的字符串写进正文 / 图说。印象记忆几乎一定会写错：ch1 §1.1 图 1.1-2 描述「年份 1885 作为 4 位数字整体成为 id 13096」错误，tiktoken 实际切分是 `[93447 Stan, 9201 ford, 673 ` was`, 24303 ` founded`, 306 ` in`, 220 ` `, 13096 `188`, 20 `5`, 13 `.`]`，1885 是 3+1 位两段而非 4 位整体。**所有 tokenizer / BPE / 词表实证段必须以 `python3 -c "import tiktoken; ..."` 或 Jupyter notebook 实际输出为准**。
+- **fix verification round 抓到的 6 类反复错误**：每次 audit + fix 之后跑一轮 `fix verification` 专审本次 commit 引入的行（不是全文 fresh audit），下面 6 类反复出现：
+  1. **跨章引用错位**：引「§X.Y 章节标题」时 X.Y 与目标章节实际 H2/H3 不对齐（ch8 L11 引「§8.6.8」陈旧但内容已前移；ch8 L1081 引「§8.4.3」但实际在 §8.4.2；ch14 L249 引「章节末总结」但实际在 §14.3 NOTE；topics L338 把 §3 RLVR 写成 §2）。
+  2. **章节结构与节首描述矛盾**：节首说「四个递进的例子」但实际只有三个（ch6 L256 §6.4 matmul 在 §6.5）；节首说「三阶段」但表格只有两行（ch7 L1287 §7.11）。
+  3. **模型名 / 数据错** typo：「Qwen3-Next Coder」（不存在）→「Qwen3-Coder-Next」（ch13 L1209）；「FineWeb 用 Cuckoo 哈希」（sub-agent 误植，论文 §3.4 仅写 MinHash + LSH）→MinHash（ch10 L399）。
+  4. **节首描述与正文自相矛盾**：ch7 L439「§7.3 NCCL 报的 GB/s」与正文「NCCL 并不回报这个数字」直接矛盾。
+  5. **章节号归属错位**：方法 1/2/3 都在 §8.4.2 不在 §8.4.3（图 8.6-12 错引）；Method X 写在 §8.6.8 但实际在 §8.4.2（图说）。
+  6. **元叙述 / 写作计划承诺残留**：「§1.3 接下来会再次出现」（forward-looking 承诺，ch1 L132）；「每章开头的『本章学习目标』会标出」但 14 章无一标注（不成立，preface L23）；「使用前应核对...再决定是否照搬」（搜证元句，ch4 L1069）。
+  **每条都按方案 A 就地 Edit 修复**（不归到独立 round），并跑禁用句式 + 元叙述两类 rg 自检零命中才算完成。
+- **多 agent 并行 fix verification 经验**：单章节 fix verification 单独跑一次 agent，16 章节并行启动 16 个 agent，每个 agent 限定范围为「本 commit 引入的行」（`git show <hash> -- <file>` 与 `git diff HEAD~1 HEAD -- <file>`），不审历史问题。Schema 仍用简化版（findings_count / edits_applied / fixes / notes），避免 SO retry 超限。16 agent 并行总耗时约 13 分钟，比串行快 16×；findings 数量比单章节 fresh audit 少（focus 在本 commit 引入的范围），但每条都是「本轮真错」而非历史问题。
 
 ## 工具使用经验
 

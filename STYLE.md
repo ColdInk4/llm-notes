@@ -211,6 +211,16 @@ rg -n "chapter[0[0-9]]+|chapter ?one|chapter ?two" docs/
 - **删图判定**：两图承载同一份视觉信息（即使 SHA256 不同，如课件截图 vs 论文原图）即视为重复；保留论文原图、删课件截图（lecture 装饰元素属元叙述）。
 - **删图后必须按连号规则重排同节其他图号**，并跑 `rg 图 N-x` 全仓库验证没有悬空引用。
 
+### 实证数字硬约束（tokenization / 词表 / 配置）
+
+写「X 字符串切成 N 个 token id」、「模型配置 Y 含 Z 个 expert」等实证段时，必须**用脚本实际跑一遍**而不是凭印象：
+
+- **tokenization 示例**：`tiktoken` / `sentencepiece` / `transformers` 类的 token 切分必须实际运行 tokenizer，把真实 id 序列与每个 id 对应的字符串写进正文 / 图说。印象记忆几乎一定写错：例如「年份 1885 作为 4 位数字整体成为 id 13096」实际 tiktoken 输出是 `[93447 Stan, 9201 ford, 673 ` was`, 24303 ` founded`, 306 ` in`, 220 ` `, 13096 `188`, 20 `5`, 13 `.`]`，1885 是 3+1 位两段而非 4 位整体。
+- **模型配置**：`num_local_experts` / `n_routed_experts` / `swiglu_limit` / `num_hash_layers` 等配置字段必须 WebFetch HuggingFace `config.json` 或官方技术报告，按官方字面值写，不要凭印象拼凑。
+- **数据集规模 / 词表大小**：以「约」「左右」「≈」等模糊词结尾的数字必须查 `dataset_info` / `vocab_size` 一手值。
+
+写实证段时同步跑一个 `python3 -c "import ..."` 或 Jupyter notebook，把命令与输出附在章节末「来源与更新记录」或附录，便于下次审稿 / 复核时重新对照。
+
 ## 文件命名
 
 - 稳定章节放在 `docs/chapterN/` 下，主笔记文件命名为 `chapterN_标题.md`。
