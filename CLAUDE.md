@@ -6,19 +6,19 @@ AGENTS.md 是**流程规范**：回答前复核、修改前必读、审计循环
 
 ## 回答前复核
 
-- 回答涉及仓库正文内容、章节技术解释、来源判断、修改建议或任何形式的审稿 / 审计 / fresh audit / Phase 1 finding 时，**必须**先完成至少一次相关网络搜索（WebSearch + WebFetch）。广查 / 盲查 / 章节级复核即使尚未动手修改任何文件，也属于本条触发范围；不只在实际改文件时才搜索。
+- 回答涉及仓库正文内容、章节技术解释、来源判断、修改建议或任何形式的审稿 / 审计 / fresh audit / 盲查阶段 finding 时，**必须**先完成至少一次相关网络搜索（WebSearch + WebFetch）。广查 / 盲查 / 章节级复核即使尚未动手修改任何文件，也属于本条触发范围；不只在实际改文件时才搜索。
 - 联网求证后再结合本地目标章节、相邻小节和来源记录回答。若无法完成网络搜索（断网、API 限流、sandbox 拦截等），必须显式在回复中说明原因、影响范围和后续复核建议，并把相关 finding 标记为 `tentative`。
 - 仅处理**纯本地机械问题**可以不联网：例如列文件、查看当前 diff、运行已有检查命令（rg / wc / git status）、读本地 PDF 抽出的纯文本。一旦涉及技术事实、外部来源、章节判断、来源映射、引用准确度或 sub-agent 给出的 verdict，仍按上一条执行。
 
 ## Token 不是停止工作的理由
 
-在 ultracode 模式（`/effort` 设 xhigh + dynamic workflow orchestration）或任何明示"穷尽/完整"目标的会话下，**token 预算不是约束**。审计、Phase 1~3 finding、sub-agent 并行广查与 WebFetch/WebSearch 调用应做到：
+在 ultracode 模式（`/effort` 设 xhigh + dynamic workflow orchestration）或任何明示"穷尽/完整"目标的会话下，**token 预算不是约束**。审计 / 盲查 / 求证 / 复核各阶段 finding、sub-agent 并行广查与 WebFetch/WebSearch 调用应做到：
 
 - 计划阶段按 `Chapter × 问题域 × 一手源` 估出最大并行度，而不是先按"剩余 token 还够几次"压规模
 - finding 数量大时**继续**分批 WebFetch 复核而不是停在"已经修了 14 处"的 commit 边界
-- "受 token 预算约束未启动 Phase X / 章节 Y" 这种措辞**禁止**作为延期理由；要么启动，要么显式说明是"用户授权分批"或"技术失败"
+- "受 token 预算约束未启动该阶段 / 章节 Y" 这种措辞**禁止**作为延期理由；要么启动，要么显式说明是"用户授权分批"或"技术失败"
 
-报告里写"剩余 token 不够"等同于默认承认偷懒。正确说法要么是"已完成 X / Y / Z，未做 W 留到下一轮"，要么是"现在启动 Phase X"。本仓库维护目标是把每一轮能修的真错都修完，不是把"修了 14 条"包装成完整闭环。
+报告里写"剩余 token 不够"等同于默认承认偷懒。正确说法要么是"已完成 X / Y / Z，未做 W 留到下一轮"，要么是"现在启动该阶段"。本仓库维护目标是把每一轮能修的真错都修完，不是把"修了 14 条"包装成完整闭环。
 
 ## 修改前必读
 
@@ -66,14 +66,14 @@ rg -n "这里使用.{1,30}(作为|当|来当|样例|为例)|本文采用|本文�
 
 ### 联网求证门槛（hard floor）
 
-任何形式的"广查 / 盲查 / fresh audit / 三视角循环 / Phase 1~3 finding 收集"，**即使尚未动手修改任何文件**，按以下最小门槛执行：
+任何形式的"广查 / 盲查 / fresh audit / 三阶段循环 / 章节级复核 finding 收集"，**即使尚未动手修改任何文件**，按以下最小门槛执行：
 
 1. 每个 sub-agent 在出 finding 之前，**必须**对涉及外部事实的部分（arXiv 编号、模型/硬件数字、benchmark 分数、版本号、日期、厂商声明、引用文献、HF model id）至少调用一次 WebSearch，并 WebFetch 一手页面（arXiv abstract / 官方 model card / HuggingFace `config.json` / 官方仓库 README / 技术报告 PDF）做实际验证。**不得**仅凭印象、训练数据记忆或课件文字给出 verdict。
 2. finding 列表里每一条 `severity ≥ medium` 或 `needs_web_check=true` 的项目，必须在 evidence 字段附上：
    - 实际 WebSearch 查询字符串或 WebFetch URL；
    - 一手页面里的相关原文/数字摘录（≤ 2 行）；
    - 笔记正文里被质疑的那句话或数字（含 file:line）。
-3. 没有附上述证据的 finding 视为 `tentative`；Phase 2 求证阶段按主题聚类 WebFetch 核证，仍无法被一手源支撑的应当降级或丢弃，不得计入最终 fix 列表。
+3. 没有附上述证据的 finding 视为 `tentative`；求证阶段按主题聚类 WebFetch 核证，仍无法被一手源支撑的应当降级或丢弃，不得计入最终 fix 列表。
 4. sub-agent "建议加 X 链接 / 标注 Y 来源" 的建议，主 agent 在 commit 前**必须**自己再 WebFetch 核一次；历史经验：sub-agent 写出来的参考文献可用率约 70-80%，主 agent 必须复核。
 5. 历史教训：曾出现 arXiv:1712.00409（实为 Hestness 等 Baidu 论文，并非"44× ImageNet 出处"）和 arXiv:2401.06865（实为天文学家 Osborne & Salim 的星系 SED 拟合论文）两例 sub-agent 幻觉引用。**任何 arXiv 编号进笔记前必须先 WebFetch abstract 页面确认标题与作者**，不接受"看起来对题"。
 
@@ -147,11 +147,11 @@ sub-agent 的审计主体是「通读全文 + 读本地 PNG + WebFetch 一手页
 
 `introduced_by_commit` 字段是 fix verification 阶段的硬约束，跨章节 audit 必须用简化 schema（参见「工具使用经验」条目）。
 
-### 三视角循环（Phase 1 / 2 / 3）
+### 三阶段循环（盲查 / 求证 / 复核）
 
-- **Phase 1（盲查）**——按 lecture 切分，sub-agent 报告 finding 列表（含 file、line、issue_type、severity、evidence、suggestion、web_evidence）。**每个 sub-agent 至少调用一次 WebSearch + WebFetch + Read PNG + 跨章节 Read**，对涉及外部事实的 finding 在 evidence 字段附 WebSearch 查询字符串 / WebFetch URL + 一手页面原文摘录（≤ 2 行）。
-- **Phase 2（求证）**——仅针对 `needs_web_check=true` 或 `tentative` 的 finding 联网核证；可按主题聚类用 8-10 个 agent 并行 WebFetch / WebSearch。无法被一手源支撑的 finding 必须降级或丢弃。
-- **Phase 3（章节级复核 fresh audit）**——从零重新读当前文件 + 对应课件 + 引用 PNG + 跨章节对照做 fresh audit，让每个章节独立得出 verdict；同样必须联网求证外部事实。这一轮最易发现前两轮漏掉的"原始事实"类错误（如 GPU 规格、KV cache 大小、样本数、vocab_size、训练 token 数）。**Phase 3 不传 Phase 1 finding 列表**，避免 anchoring bias。
+- **盲查阶段**——按 lecture 切分，sub-agent 报告 finding 列表（含 file、line、issue_type、severity、evidence、suggestion、web_evidence）。**每个 sub-agent 至少调用一次 WebSearch + WebFetch + Read PNG + 跨章节 Read**，对涉及外部事实的 finding 在 evidence 字段附 WebSearch 查询字符串 / WebFetch URL + 一手页面原文摘录（≤ 2 行）。
+- **求证阶段**——仅针对 `needs_web_check=true` 或 `tentative` 的 finding 联网核证；可按主题聚类用 8-10 个 agent 并行 WebFetch / WebSearch。无法被一手源支撑的 finding 必须降级或丢弃。
+- **复核阶段（fresh audit）**——从零重新读当前文件 + 对应课件 + 引用 PNG + 跨章节对照做 fresh audit，让每个章节独立得出 verdict；同样必须联网求证外部事实。这一轮最易发现前两轮漏掉的"原始事实"类错误（如 GPU 规格、KV cache 大小、样本数、vocab_size、训练 token 数）。**复核阶段不传盲查 finding 列表**，避免 anchoring bias。
 
 **审计 verdict 三档规范（推荐默认 schema）**：
 
@@ -163,12 +163,12 @@ prompt 要求 sub-agent 只报 `refuted + tentative`、**不再报 `confirmed`**
 
 ### 审计-fix 一体化（方案 A）
 
-每个章节的 audit 与 fix 由**同一个 sub-agent** 在两次明确分开的 Phase 内完成，避免跨 agent 印象传染：
+每个章节的 audit 与 fix 由**同一个 sub-agent** 在两次明确分开的小阶段内完成，避免跨 agent 印象传染：
 
-- **Phase 1（audit）**：读章节全文 + lecture PDF + lecture_NN.py + 引用 PNG + 跨章节对照（按上方硬约束）；WebFetch 一手页面（论文 PDF 原文 / HF model card / NVIDIA datasheet / config.json）；产出 finding 列表，**只列 wrong_facts 与 evidence_in_lecture，不写 suggested_fix**——避免 audit 的修复方案成为 fix agent 的"印象传染源"。
-- **Phase 2（fix）**：每个 fix **必须重新 WebFetch 一手页面（不同 URL 或不同 search_query），不得复用 Phase 1 的 WebFetch 结果**。先读 lecture PDF + lecture_NN.py 原文与代码，**确认课件口径与一手页面一致后再写修复**。写完一个 fix 后**回读 fix 上下 5 行做上下文自洽检查**（sibling rows / sibling claims 是否仍成立），不一致则继续修。
+- **audit 阶段**：读章节全文 + lecture PDF + lecture_NN.py + 引用 PNG + 跨章节对照（按上方硬约束）；WebFetch 一手页面（论文 PDF 原文 / HF model card / NVIDIA datasheet / config.json）；产出 finding 列表，**只列 wrong_facts 与 evidence_in_lecture，不写 suggested_fix**——避免 audit 的修复方案成为 fix agent 的"印象传染源"。
+- **fix 阶段**：每个 fix **必须重新 WebFetch 一手页面（不同 URL 或不同 search_query），不得复用 audit 阶段的 WebFetch 结果**。先读 lecture PDF + lecture_NN.py 原文与代码，**确认课件口径与一手页面一致后再写修复**。写完一个 fix 后**回读 fix 上下 5 行做上下文自洽检查**（sibling rows / sibling claims 是否仍成立），不一致则继续修。
 - **不在 finding 里写 suggested_fix**：fix agent 不抄 audit 的修复建议，只看 wrong_facts + evidence_in_lecture + 一手 URL，自行 WebFetch 重新核验后写修复。这条切断"修复源头已污染"的链条——之前多次翻车的 Bartz 法官 / LIMO 800 vs 817 / LLaDA 2.0 "Tiwei Bie" 都是 audit 给的 suggested_fix 已经写错而被 fix 直接抄。
-- **audit 与 fix 写在一个 agent 任务里**：避免 context 在两个 agent 之间序列化丢失；同一 agent 在 Phase 2 重新 WebFetch，避免 anchoring bias；Phase 1 与 Phase 2 之间必须**有清晰的任务结构与字段隔离**，agent 不能跳过 Phase 1 直接 Phase 2。
+- **audit 与 fix 写在一个 agent 任务里**：避免 context 在两个 agent 之间序列化丢失；同一 agent 在 fix 阶段重新 WebFetch，避免 anchoring bias；audit 与 fix 之间必须**有清晰的任务结构与字段隔离**，agent 不能跳过 audit 直接 fix。
 
 ### fix verification round（次生复核）
 
@@ -224,20 +224,24 @@ prompt 要求 sub-agent 只报 `refuted + tentative`、**不再报 `confirmed`**
 - **图意核对 sub-task 模板**（与 STYLE.md「图意核对」同步）：写作核心图时必须实际打开本地 PNG 核对图意，不能只看 alt text / 文件名 / 路径。checklist：(1) 子图标题 / 坐标轴 / 图例是否被正文正确转述；(2) 正文数字与图上标注是否一致；(3) 图说的「机制解释」是否能在图中找到对应视觉证据；(4) alt text / 图注 / 正文交叉引用是否使用同一个图号。
 - **删图判定**：两图承载同一份视觉信息（即使 SHA256 不同，如课件截图 vs 论文原图）即视为重复；保留论文原图、删课件截图（lecture 装饰元素属元叙述）；删图后必须按 STYLE 连号规则重排同节其他图号，并跑 `rg 图 N-x` 全仓库验证没有悬空引用。
 - **tokenization 实证数据必须实际跑 tokenizer**：写 `tiktoken` / `sentencepiece` / `transformers` 类的"X 字符串切成 N 个 token id"示例时，**必须实际运行一遍 tokenizer**，把真实 id 序列与每个 id 对应的字符串写进正文 / 图说。印象记忆几乎一定会写错：ch1 §1.1 图 1.1-2 描述「年份 1885 作为 4 位数字整体成为 id 13096」错误，tiktoken 实际切分是 `[93447 Stan, 9201 ford, 673 ` was`, 24303 ` founded`, 306 ` in`, 220 ` `, 13096 `188`, 20 `5`, 13 `.`]`，1885 是 3+1 位两段而非 4 位整体。**所有 tokenizer / BPE / 词表实证段必须以 `python3 -c "import tiktoken; ..."` 或 Jupyter notebook 实际输出为准**。
-- **fix verification round 抓到的 8 类反复错误**：每次 audit + fix 之后跑一轮 `fix verification` **全章扫描**（不是仅审本 commit 引入的行），下面 8 类反复出现：
-  1. **跨章引用错位**：引「§X.Y 章节标题」时 X.Y 与目标章节实际 H2/H3 不对齐（ch8 L11 引「§8.6.8」陈旧但内容已前移；ch8 L1081 引「§8.4.3」但实际在 §8.4.2；ch14 L249 引「章节末总结」但实际在 §14.3 NOTE；topics L338 把 §3 RLVR 写成 §2）。
-  2. **章节结构与节首描述矛盾**：节首说「四个递进的例子」但实际只有三个（ch6 L256 §6.4 matmul 在 §6.5）；节首说「三阶段」但表格只有两行（ch7 L1287 §7.11）。
-  3. **模型名 / 数据错** typo：「Qwen3-Next Coder」（不存在）→「Qwen3-Coder-Next」（ch13 L1209）；「FineWeb 用 Cuckoo 哈希」（sub-agent 误植，论文 §3.4 仅写 MinHash + LSH）→MinHash（ch10 L399）。
-  4. **节首描述与一手论文术语不一致 / 与正文自相矛盾**：两个子类：
-     a) **节首描述与一手论文术语不一致**（Phase 9 ch4 L1003 抓的 `device-level routing` 实际论文术语是 `device-limited routing`）。fix verification agent 必须对每条节首描述断言性内容逐条 WebFetch 一手论文核证。
-     b) **节首描述与正文自相矛盾**：ch7 L439「§7.3 NCCL 报的 GB/s」与正文「NCCL 并不回报这个数字」直接矛盾。
-  5. **章节号归属错位**：方法 1/2/3 都在 §8.4.2 不在 §8.4.3（图 8.6-12 错引）；Method X 写在 §8.6.8 但实际在 §8.4.2（图说）。
-  6. **元叙述 / 写作计划承诺残留**：「§1.3 接下来会再次出现」（forward-looking 承诺，ch1 L132）；「每章开头的『本章学习目标』会标出」但 14 章无一标注（不成立，preface L23）；「使用前应核对...再决定是否照搬」（搜证元句，ch4 L1069）。
-  8. **跨章引用缩写违规**（Phase 9 ch4 L112/537/547 抓的 `EP / ETP / EDP`）：ch4 章节内部多次缩写 `Expert Parallelism` 为 `EP`，但跨章引用应使用完整 H3 标题「第 N 章 §X.Y 章节标题」，不能用 2-3 字母缩写。fix verification agent 必须对每个跨章引用 grep「ch[0-9]+」、「第 N 章 §」+ 缩写模式，识别缩写后改成完整标题。
-  7. **中段纯文字描述段漏扫**（fix verification 默认 scope 偏章首/图说/章末，**§X.2 / §X.3 / §X.4 中没有图、表格、引用的纯文字断言段容易被跳过**）。Phase 8 ch1 §1.3 L175 教训：b8773b4 写「GPT-2 预分词正则大致是... DeepSeek 系列则使用 `\p{L}+|...`」三处错（"大致是"作者声音 / openai_public.py 引用错 / "在词内或数字串中间发生 merge"反了 `\p{N}{1,3}` 的实际行为），fix verification 当时只抓了 §1.3-1 / §1.3-2 / §1.3-2 三处图说（同一节内但都属「带图」段），**完全漏掉 L175 这段没有图的纯文字描述**。fix verification prompt 必须显式要求 agent 逐字读 §X.2 / §X.3 / §X.4 全段，对每条断言性内容（"X 预分词正则 / Y 算法用 Z 公式 / N 模型用 M 配置"等）逐条 WebFetch 一手核证；agent 默认扫描容易跳过「没有图、没有表、只有一两段纯文字」的节中段。
-  11. **结构性内容必走第一性原理**（Phase 11 ch8 教训）：改图说 / 长公式 / 长算法描述等结构性内容时，**不能只做「去冗」**——要从第一性原理问 4 个问题：(1) 这段内容回答什么工程决策或论述节点？(2) 为什么放在这一节（哪段论述需要它才能继续往前推）？(3) 不放这段内容，论述会怎么断？(4) 正文（不是图说）现在有没有真正调用这段内容？如果 4 个问题的答案都是「不需要」，则可以删除或大幅压缩；如果任何一个问题答案是「需要」，则需要按「第一性原理」重写而不是简单去冗。**修正**：fix verification round 的 prompt 强制要求 agent 对结构性内容按这 4 个问题做 audit，发现问题 3 / 4 的答案是否定的原位改进。
-  9. **sub-agent 报告机制漏洞**（Phase 9 v2 教训）：当 audit-fix agent 报告 "改前 / 改后" 时，notes 里的「旧值」可能是**已经改过的最终值**而不是 git HEAD 改前值。Phase 9 ch1 agent 报告「L288 来源记录 `\x8f` 应为 `\x8d`」但实际 L288 在 Phase 9 v2 之前（d35c1cf）就是 `\x8f`（错），Phase 9 v2 改成了 `\x8d`（对）——agent notes 的「改前/改后」描述与 git HEAD diff 一致，但 audit 阶段读 notes 看不到**「Phase 9 v2 改的旧值」**这条线索（agent 自我修订已经把 notes 写成"已修复后"）。**修正**：fix verification round 的 prompt 必须显式要求 agent 在 notes 字段附「`git show <commit-hash>:<file>:<line>` 改前值」与「`git show HEAD:<file>:<line>` 改后值」，让外部审稿人能从 git ref 重建完整改前/改后链路。
-  10. **结构性内容改动必读课程材料**（Phase 11 ch13 教训）：当 audit-fix agent 改**结构性内容**（长公式推导 / 长算法描述 / 长代码块）而非单点事实数字时，**必须**先 Read 课程材料（`sources/_extracted_pdfs/lecture_{NN}.txt` 与 `sources/lectures/lecture_{NN}.py`）做第一手依据。Phase 11 ch13 agent 改了 80 行 PPO 详细推导（policy gradient → REINFORCE → TRPO → PPO-clip），但 transcript 显示 **0 次 Read lecture 抽文 / lecture_13.py**——agent 凭印象压缩，notes 写「Read ch12 §12.4 验证 PPO 推导已讲过」也是凭印象编的。**修正**：fix verification round 的 prompt 强制要求 agent 改结构性内容前必须 `Read` 课程材料，并把 read 路径写进 notes 字段「`lecture read: [路径列表]`」让外部审稿人能验证第一手依据存在。
+- **fix verification round 抓到的 11 类反复错误**：每次 audit + fix 之后跑一轮 `fix verification` **全章扫描**（不是仅审本 commit 引入的行），下面 11 类反复出现：
+
+| # | 类别 | 典型反例 | 检测方法 |
+|---|---|---|---|
+| 1 | **跨章引用错位** | 引「§X.Y 章节标题」时 X.Y 与目标章节实际 H2/H3 不对齐（ch8 L11 引「§8.6.8」陈旧但内容已前移；ch8 L1081 引「§8.4.3」但实际在 §8.4.2；ch14 L249 引「章节末总结」但实际在 §14.3 NOTE；topics L338 把 §3 RLVR 写成 §2） | grep「第 N 章 §」+ 对照目标章节实际 H2/H3 |
+| 2 | **章节结构与节首描述矛盾** | 节首说「四个递进的例子」但实际只有三个（ch6 L256 §6.4 matmul 在 §6.5）；节首说「三阶段」但表格只有两行（ch7 L1287 §7.11）| 抓节首描述数字 vs 实际 H3 子节数 |
+| 3 | **模型名 / 数据错 typo** | 「Qwen3-Next Coder」（不存在）→「Qwen3-Coder-Next」（ch13 L1209）；「FineWeb 用 Cuckoo 哈希」（sub-agent 误植，论文 §3.4 仅写 MinHash + LSH）→MinHash（ch10 L399）| grep 错误拼写 + WebFetch 一手论文核证 |
+| 4a | **节首描述与一手论文术语不一致** | ch4 L1003 抓的 `device-level routing` 实际论文术语是 `device-limited routing` | 逐条 WebFetch 一手论文核证 |
+| 4b | **节首描述与正文自相矛盾** | ch7 L439「§7.3 NCCL 报的 GB/s」与正文「NCCL 并不回报这个数字」直接矛盾 | 逐段对照节首 vs 正文 |
+| 5 | **章节号归属错位** | 方法 1/2/3 都在 §8.4.2 不在 §8.4.3（图 8.6-12 错引）；Method X 写在 §8.6.8 但实际在 §8.4.2（图说）| 抓「§X.Y」+ 对照目标章节实际 H3 |
+| 6 | **元叙述 / 写作计划承诺残留** | 「§1.3 接下来会再次出现」（forward-looking 承诺，ch1 L132）；「每章开头的『本章学习目标』会标出」但 14 章无一标注（不成立，preface L23）；「使用前应核对...再决定是否照搬」（搜证元句，ch4 L1069） | rg 抓「后续章节会 / 后文将 / 下一节会 / 下一节展开 / 下一节转到 / 本文采用 / 这里使用」 |
+| 7 | **中段纯文字描述段漏扫** | ch1 §1.3 L175 教训：b8773b4 写「GPT-2 预分词正则大致是... DeepSeek 系列则使用 `\p{L}+|...`」三处错（"大致是"作者声音 / openai_public.py 引用错 / "在词内或数字串中间发生 merge"反了 `\p{N}{1,3}` 的实际行为），fix verification 当时只抓了 §1.3-1 / §1.3-2 / §1.3-2 三处图说（同一节内但都属「带图」段），**完全漏掉 L175 这段没有图的纯文字描述** | prompt 强制 agent 逐字读 §X.2 / §X.3 / §X.4 全段，对每条断言性内容逐条 WebFetch 一手核证 |
+| 8 | **跨章引用缩写违规** | ch4 L112/537/547 写 `EP / ETP / EDP`，跨章引用应使用完整 H3 标题「第 N 章 §X.Y 章节标题」 | grep「ch[0-9]+」、「第 N 章 §」+ 缩写模式 |
+| 9 | **sub-agent 报告机制漏洞** | ch1 L288 教训：audit-fix agent 报告「改前/改后」时，notes 里的「旧值」可能是已经改过的最终值而不是 git HEAD 改前值 | prompt 强制 agent 在 notes 字段附「`git show <commit-hash>:<file>:<line>` 改前值」+「`git show HEAD:<file>:<line>` 改后值」 |
+| 10 | **结构性内容改动必读课程材料** | ch13 教训：agent 改了 80 行 PPO 详细推导（policy gradient → REINFORCE → TRPO → PPO-clip），但 transcript 显示 **0 次 Read lecture 抽文 / lecture_13.py**——agent 凭印象压缩，notes 写「Read ch12 §12.4 验证 PPO 推导已讲过」也是凭印象编的 | prompt 强制 agent 改结构性内容前必须 `Read` 课程材料，并把 read 路径写进 notes 字段「`lecture read: [路径列表]`」 |
+| 11 | **结构性内容必走第一性原理** | ch8 教训：改图说 / 长公式 / 长算法描述等结构性内容时，不能只做「去冗」——要从第一性原理问 4 个问题：(1) 这段内容回答什么工程决策或论述节点？(2) 为什么放在这一节（哪段论述需要它才能继续往前推）？(3) 不放这段内容，论述会怎么断？(4) 正文（不是图说）现在有没有真正调用这段内容？4 个都是「不需要」→ 删/压缩；任一是「需要」→ 按第一性原理重写 | prompt 强制 agent 对结构性内容按这 4 个问题做 audit |
+
+**每条都按方案 A 就地 Edit 修复**（不归到独立 round），并跑禁用句式 + 元叙述两类 rg 自检零命中才算完成。
   **每条都按方案 A 就地 Edit 修复**（不归到独立 round），并跑禁用句式 + 元叙述两类 rg 自检零命中才算完成。
 - **多 agent 并行 fix verification 经验**：单章节 fix verification 单独跑一次 agent，16 章节并行启动 16 个 agent，每个 agent 做**全章扫描**（用 `git log` 看最近 commit 历史做参考，但不限于本 commit 引入的行——参见第 7 类反复错误，「中段纯文字描述段漏扫」就是限定本 commit 引入行时漏掉的真实案例）。Schema 仍用简化版（findings_count / edits_applied / fixes / notes），避免 SO retry 超限。16 agent 并行总耗时约 13 分钟，比串行快 16×；findings 数量比单章节 fresh audit 多（因为每条 finding 都覆盖中段纯文字 + 图说 + 表格），但每条都是「本轮可修复的真错」而非历史包袱（agent 必须用 `git log` 过滤历史问题、只对当前 commit 之后或本 fix 阶段引入的行下 Edit）。
 
@@ -245,7 +249,7 @@ prompt 要求 sub-agent 只报 `refuted + tentative`、**不再报 `confirmed`**
 
 - **sub-agent 偏好 WebFetch 而忽略 WebSearch** 是持续性问题——但有解法。早期 prompt 要求"WebSearch ≥ 5~8 次"实际只跑 ~2 次 / agent；改 schema 把 WebSearch 拆为 finding 必填的 `search_query_1` / `search_query_2` / `search_query_3` 三字段后，平均跃升到 ~12 次 / agent（约 6×），并一次性抓到 11 处 fix 留下的次生错误（arXiv ID 归属、论文小节归属、法官名、数字精度等）。**结论**：单纯在 prompt 写"WebSearch ≥ N 次"无效，必须把 WebSearch 列到结构化输出必填字段才能强制执行。三个 search_query 还要求**不同关键词**（不能 3 次都搜同一个词）。
 - **fix 本身可能错**：每轮 audit 抓到真错并修复后，**fix 本身也可能错**。曾出现：修复 Santurkar 引用时写对 arXiv ID 但同 commit 引入 ch10:154 Bartz v. Anthropic "Judge Araceli Martínez-Olguín"（实际 Judge Susan Illston, N.D. Cal.）；改 OpenHermes 错分时写 ch12:281 "UltraFeedback arXiv:2310.01386"（实际 2310.01377）、"Tulu 3 arXiv:2411.19484"（实际 2411.15124）；写 ch14:51 SigLIP "5 天 73.4% 是 from-scratch 微调"（实际论文 Table 1 caption 明确 from-scratch + 5 天行也是随机初始化）。发现模式：**单轮 audit + 单轮 fix 不够**——必须跑"**次生复核 round（fix verification）**"专门审上次 commit 引入的行，专项找 typo / 错行号 / 错归属 / 错编号 / 旧幻觉残留。每轮 audit 后额外跑一次 fix verification，agent schema 强制带 `introduced_by_commit` 字段追溯次生错误来源。
-- **Schema 复杂度 → agent 失败率**：曾出现 ch5 agent 因 StructuredOutput retry cap 5 次超限而失败（Phase 1 ch12 也是同一模式）。**结论**：finding 字段不要塞太多嵌套对象，能合并就合并；web_evidence 简化为 `search_query + fetch_url + fetch_snippet + verdict` 四字段就够，不要加 `source_kind` / 多个 evidence 对象。但 `search_query_1/2/3` 三字段是必须的例外——这是强制 WebSearch 的有效手段。
+- **Schema 复杂度 → agent 失败率**：曾出现 ch5 agent 因 StructuredOutput retry cap 5 次超限而失败（跨章节 audit 也多次出现同一模式）。**结论**：finding 字段不要塞太多嵌套对象，能合并就合并；web_evidence 简化为 `search_query + fetch_url + fetch_snippet + verdict` 四字段就够，不要加 `source_kind` / 多个 evidence 对象。但 `search_query_1/2/3` 三字段是必须的例外——这是强制 WebSearch 的有效手段。
 - **SO retry 超限 → 立即简化 schema 重跑**：跨章节 audit 与其他多文件 / 多来源 finding 类任务的 schema 含 `files: [...]` / `line: {file: N}` / `web_evidence` / 多文件嵌套对象时，agent 容易 SO retry 5 次失败，但 Edit 已经落地、finding 列表未返回。**结论**：这类任务 schema 必须简化到 ≤ 4 个顶层字段。简化版本用三字段：`findings_count` / `edits_applied` / `notes`，足够驱动 commit 与进度报告。Edit 不需要被 schema 验证，仅最后 SO 必须返回。**重跑触发条件**：journal 报 `StructuredOutput retry cap (5) exceeded` 或 `subagent completed without calling StructuredOutput`。
 - **次生修复三类模式**（每轮 audit 后必须再跑 fix verification round）：
   - **数字回归 revert**：上次 commit 把对的数字改成错的（如 Singhal LPPO Stack 59%→58%、Stiennon 标题小写→Title Case），下次 audit revert 之前要确认原值与论文原文一致，不是把错的二次 revert 回对的。
