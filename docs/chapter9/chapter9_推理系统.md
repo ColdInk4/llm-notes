@@ -81,13 +81,11 @@ $$
 - `prefill`：把 prompt 中已有 token 一次性送入模型，序列维度可并行，通常更容易做成 compute-bound。
 - `generation`：每次只生成一个新 token，必须反复读取模型权重和当前请求的 KV cache，常常是 memory-bound。工程里也常把这个自回归 generation 阶段称为 `decode`。
 
-![图 9.1-2 Transformer architecture notation](images/9-1-2-transformer-architecture.png)
+![图 9.1-2 Transformer decoder block](images/9-1-2-transformer-architecture.png)
 
-*图 9.1-2 Transformer architecture notation*
+*图 9.1-2 Transformer decoder block*
 
-图 9.1-2 的作用是统一张量记号。`B` 是 batch size，`T` 是这次要处理或生成的 token 数，`S` 是已有上下文长度，`D` 是 model dimension，`H` 是 head dimension。
-
-注意力头还会用到 $N = K_{\mathrm{kv}} G$ 这组记号：$N$ 是 query head 数，$K_{\mathrm{kv}}$ 是 KV head 数，$G$ 是每个 KV head 对应的 query heads 数。后文把 key 张量仍记作 $K$，把 KV head 数固定写作 $K_{\mathrm{kv}}$，避免混淆。训练时通常可以把很多位置一起处理；推理 generation 时，$T = 1$，这正是后面 `arithmetic intensity` 下降的根源。
+图 9.1-2 给出 Transformer decoder block 的标准结构：底部 token embedding 与 absolute position embeddings 拼成输入张量（shape `(batch_size, seq_len, d_model)`），向上经过若干 Transformer Block（每个 block 内含 causal multi-head self-attention、add & dropout、position-wise feed-forward、add & dropout），最终经过 norm、output embedding、softmax 得到输出概率。中间张量的形状记号采用 `B` (batch size)、`S` (已有上下文 token 数)、`T` (本次要处理或生成的 token 数)、`D` (model dim)、`F = 4D` (MLP up-projection dim)、`H` (head dim)、`N` (query head 数)。`B`、`S`、`T` 在张量里是 batch 维度，`D` / `F` / `H` 在张量里是 contracting / model 维度。注意力头记号采用 $N = K_{\mathrm{kv}} G$：$K_{\mathrm{kv}}$ 是 KV head 数，$G$ 是每个 KV head 对应的 query heads 数。后文把 key 张量仍记作 $K$，把 KV head 数固定写作 $K_{\mathrm{kv}}$，避免混淆。训练时通常可以把很多位置一起处理；推理 generation 时，$T = 1$，这正是后面 `arithmetic intensity` 下降的根源。
 
 ![图 9.1-3 Naive inference](images/9-1-3-naive-inference.webp)
 
@@ -142,7 +140,9 @@ $$
 若计算的 `arithmetic intensity` 高于硬件的 FLOP/s 与 HBM bandwidth 比值，就更可能 compute-bound；若低于这个比值，就更可能 memory-bound。以 H100/Hopper 的 BF16 数量级示例看，峰值 FLOP/s 除以 HBM bandwidth 大约是几百 FLOPs/byte。这个数值只用于帮助判断瓶颈，不能当成所有硬件和 kernel 的通用阈值。
 
 > [!NOTE]
-> **H100 dense BF16 显式判据**：约 **989.5 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs/byte**。NVIDIA H100 datasheet 把 BF16 Tensor Core 标为 1,979 TFLOPS（含结构化稀疏），dense 取一半即 989.5；jax-ml scaling-book roofline 章节用 9.89 × 10¹⁴ bfloat16 FLOPs/s 表示同一值，与本节 989.5 一致（[NVIDIA H100 datasheet](https://www.nvidia.com/en-us/data-center/h100/) / [JAX Scaling Book roofline](https://jax-ml.github.io/scaling-book/roofline/)）。对矩阵乘法 $X(B \times D) \cdot W(D \times F)$，当 $D, F \gg B$ 时 arithmetic intensity 收敛到 $B$；因此**compute-bound iff $B > 295$**。用 Llama 2 13B 例子演示：B=64 时 latency / throughput 仍在 latency–throughput tradeoff 区间（worse latency, better throughput），且参数 + KV cache 约 79.7 GB 仍可装下单卡 80 GB；B=256 时 KV cache + 参数总内存约 240.8 GB，单卡 H100 已无法容纳。注意 80 GB 是显存容量口径，与 latency/throughput 是不同维度——B=64 vs B=256 的差距由 80 GB 容量约束决定，与 295 FLOPs/byte 的 compute-bound 判据是两条独立线索。这条阈值与上述"几百 FLOPs/byte"的数量级说法一致；这里给出具体数字只是为了把判据直接落到 batch size。
+> **H100 dense BF16 显式判据**：约 **989.5 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs/byte**。NVIDIA H100 datasheet 把 BF16 Tensor Core 标为 1,979 TFLOPS（含结构化稀疏），dense 取一半即 989.5；jax-ml scaling-book roofline 章节用 9.89 × 10¹⁴ bfloat16 FLOPs/s 表示同一值，与本节 989.5 一致（[NVIDIA H100 datasheet](https://www.nvidia.com/en-us/data-center/h100/) / [JAX Scaling Book roofline](https://jax-ml.github.io/scaling-book/roofline/)）。对矩阵乘法 $X(B \times D) \cdot W(D \times F)$，当 $D, F \gg B$ 时 arithmetic intensity 收敛到 $B$；因此**compute-bound iff $B > 295$**。这条阈值与上述"几百 FLOPs/byte"的数量级说法一致；这里给出具体数字只是为了把判据直接落到 batch size。
+
+把这条阈值落到具体 batch 上：Llama 2 13B 单步运算量大致随 $B$ 线性增长，所以 MLP generation 在 $B > 295$ 时进入 compute-bound 区间；实际服务系统常见 batch size 远小于 295，generation 因此长期 memory-bound。但 batch 继续增大后会撞上显存容量上限：Llama 2 13B 在 BF16 下参数约 26.0 GB，单条请求 KV cache 约 0.84 GB，参数 + KV cache 总内存 = $26.0 + 0.84 \cdot B$ GB。B=64 时约 79.7 GB（仍可装下单卡 80 GB H100）；B=256 时约 240.8 GB（已超过 80 GB 容量）。80 GB 是显存容量上限，与 295 FLOPs/byte 的 compute-bound 判据是两条独立约束；§9.2.3 会用更完整的 latency / throughput 账本说明这条 tradeoff。
 
 ### 9.2.1 MLP 层：batch 和 token 数能摊薄权重读取
 
@@ -221,7 +221,15 @@ $$
 
 batch size 是 throughput 的燃料，也有直接成本。更大的 batch 会让权重读取被更多请求分摊，也会让每一步需要管理的 KV cache 总量变大；服务系统通常会给 `prefill` 和 `generation` 使用不同调度策略，用小一点的 prefill batch 控制 `TTFT`，用更大的 generation batch 提高总体 throughput。
 
-一个 Llama 2 13B 的带宽估算把这条 tradeoff 具体化。设权重使用 BF16、上下文长度 $S = 1024$、$K_{\mathrm{kv}} = 40$、$H = 128$、$L = 40$，并假设 H100 的 HBM bandwidth 为 $3.35\ \mathrm{TB/s}$。模型权重约为 $26.0\ \mathrm{GB}$，单条请求的 KV cache 约为 $0.84\ \mathrm{GB}$：每 token 容量 $2 \times 2 \times K_{\mathrm{kv}} \times H$ 字节（2 是 K + V 两份，2 是 bf16 字节数），$L$ 层、$S$ token 累加，代入 $1024 \cdot 40 \cdot 128 \cdot 40 \cdot 4 = 838{,}860{,}800$ 字节 $\approx 0.84$ GB。
+一个 Llama 2 13B 的带宽估算把这条 tradeoff 具体化。设权重使用 BF16、隐藏维度 $D = 5120$、MLP 上投影维度 $F = 13824$、query head 数 $N = 40$、KV head 数 $K_{\mathrm{kv}} = 40$、head dim $H = 128$、层数 $L = 40$、vocab $V = 32000$，上下文长度 $S = 1024$，并假设 H100 的 HBM bandwidth 为 $3.35\ \mathrm{TB/s}$。
+
+模型参数量来自 embedding、attention 投影和 MLP 三部分（不含 layer norm 与 bias）：
+
+$$
+N_{\mathrm{param}} = 2 V D + D F \cdot 3 L + (2 D N H + 2 D K_{\mathrm{kv}} H) L
+$$
+
+代入上述值得到 $N_{\mathrm{param}} \approx 13.02 \times 10^9$；BF16 权重对应约 $2 \times 13.02 \approx 26.0\ \mathrm{GB}$。单条请求的 KV cache 大小为 $S \times K_{\mathrm{kv}} \times H \times L \times 2 \times 2$ 字节（2 是 K + V 两份，2 是 BF16 字节数），代入 $1024 \cdot 40 \cdot 128 \cdot 40 \cdot 4 = 838{,}860{,}800$ 字节 $\approx 0.84\ \mathrm{GB}$。
 
 把这些量代入上面的带宽下界，得到：
 
@@ -319,7 +327,7 @@ cache 存储量取决于实现方式。rolling buffer（循环缓冲区）会把
 
 *图 9.3-9 Native Sparse Attention*
 
-图 9.3-9 展示更复杂的稀疏和压缩 attention。Native Sparse Attention 把 key/value 分成 compression、selection、sliding window 三条并行分支：compression 把连续 block 聚合成 block-level 表示，selection 直接复用 compression 分支已经算出的注意力分数当作 block importance 打分并取 top-n block，sliding window 保留最近窗口的局部上下文。三条分支共用同一组 query、各自持有独立的 key/value，输出由一个 MLP + sigmoid 学出的 gate 加权求和。GQA、MLA、CLA、local attention 和 sparse attention 都在重写 KV cache 账本；它们能换速度和显存，也会改变模型保留长程信息的方式，所以需要和具体任务质量一起评估。
+图 9.3-9 展示 Native Sparse Attention (NSA) 的结构。三条并行分支都从同一组 query 和 hidden state 出发：compression 分支把连续 block 聚合成 block-level 表示；selection 分支由独立的 Lightning Indexer（基于压缩后的 indexer keys 与 query 计算 Multi-Query Attention 得到 Index Scores）选出 top-n 重要 block；sliding window 分支保留最近窗口的局部 KV。三条分支各自持有一份独立的 KV，由 Top-k Selector 在 indexer scores 上选取，最后通过 Concatenation 汇入 Shared Key-Value Multi-Query Attention 输出。NSA 的设计选择是把 sliding window、selected compressed、compression 三路拼接后共享后续 attention 计算；这种路径与用 MLP + sigmoid 学出 gate 再做加权求和的做法在结构上不同，前者把三路信息保留到 attention 内部，后者先在 attention 之前做一次加权。GQA、MLA、CLA、local attention 和 sparse attention 都在重写 KV cache 账本；它们能换速度和显存，也会改变模型保留长程信息的方式，所以需要和具体任务质量一起评估。
 
 ### 9.3.5 Quantization、Pruning 与 Distillation
 
@@ -477,7 +485,11 @@ SGLang 的 `RadixAttention` 可以看成另一类 prefix / KV cache 复用策略
 PagedAttention 更强调显存分页和碎片管理，RadixAttention 更强调 prefix cache 命中和调度；两者都服务于同一个 dynamic serving 问题：不断变化的一群请求怎样共享权重、共享前缀、少浪费 KV cache，并保持合理 latency。
 
 > [!NOTE]
-> Disaggregated Serving 思路在 Step-3（[arXiv:2507.19427](https://arxiv.org/abs/2507.19427)）之前由 DistServe / Splitwise 等工作给出 prefill-decode 分离部署方案：让擅长高吞吐矩阵乘的硬件专门承担 prefill，让单 token latency 敏感的硬件专门承担 decode。代价是 prefill 阶段写入的 KV cache 必须跨 prefill → decode 边界搬运或重算，跨单元网络与调度策略因此成为新的系统瓶颈。Step-3 进一步做的是 **Attention-FFN Disaggregation (AFD)**——按 attention 层与 FFN 层这条维度把模型解耦到两套专用 GPU 子系统上，prefill/decode disaggregation 假设已在外部完成。这两条线都以拆分换部署灵活性，但拆分维度不同：prefill/decode 拆分优化 latency / throughput 的资源分配，AFD 优化 attention 与 FFN 这两类算子的硬件匹配。这一模式也意味着是否拆分是和硬件配置绑定的工程选择，单一硬件 / 负载下只有相对优解，没有跨场景的统一答案。
+> Disaggregated Serving 思路在 Step-3（[arXiv:2507.19427](https://arxiv.org/abs/2507.19427)）之前由 DistServe / Splitwise 等工作给出 prefill-decode 分离部署方案：让擅长高吞吐矩阵乘的硬件专门承担 prefill，让单 token latency 敏感的硬件专门承担 decode。代价是 prefill 阶段写入的 KV cache 必须跨 prefill → decode 边界搬运或重算，跨单元网络与调度策略因此成为新的系统瓶颈。
+>
+> Step-3 进一步做的是 **Attention-FFN Disaggregation (AFD)**——按 attention 层与 FFN 层这条维度把模型解耦到两套专用 GPU 子系统上，prefill/decode disaggregation 假设已在外部完成。这两条线都以拆分换部署灵活性，但拆分维度不同：prefill/decode 拆分优化 latency / throughput 的资源分配，AFD 优化 attention 与 FFN 这两类算子的硬件匹配。
+>
+> 是否拆分是和硬件配置绑定的工程选择，单一硬件 / 负载下只有相对优解，没有跨场景的统一答案。
 
 ## 9.6 扩展研究：更换输入、记忆和生成范式
 
@@ -550,7 +562,7 @@ diffusion language model 试图把文本生成从严格逐 token 自回归，改
 
 *图 9.6-9 LLaDA2.0 training*
 
-LLaDA 2.0 这类工作把扩散语言模型推到更大规模：LLaDA2.0-mini 16B 与 LLaDA2.0-flash 100B 都是 MoE，并且从已有 AR checkpoint 转换而来，而非从零训练。它用 Warmup-Stable-Decay 调度 block diffusion 的 block size：warmup 阶段把 block size 从 1 逐步提到 4096，stable 阶段做全序列扩散，decay 阶段再收回到紧凑 block 以适配部署。扩散路线还没有取代自回归 Transformer，但非自回归和块内并行生成已经成为值得关注的推理效率方向。
+LLaDA 2.0 这类工作把扩散语言模型推到更大规模：LLaDA2.0-mini 16B 与 LLaDA2.0-flash 100B 都是 MoE，并且从已有 AR checkpoint 转换而来，而非从零训练。它用 Warmup-Stable-Decay 调度 block diffusion 的 block size：warmup 阶段把 block size 从 1 经 4/32/64 等离散档提到 4096，stable 阶段固定在 4096 做全序列扩散，decay 阶段再从 4096 收回，经 2048 降到紧凑 block（如 32）以适配部署。扩散路线还没有取代自回归 Transformer，但非自回归和块内并行生成已经成为值得关注的推理效率方向。
 
 ### 9.6.4 Speculative Cascades
 

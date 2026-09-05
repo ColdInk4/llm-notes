@@ -5,7 +5,7 @@
 读完本章，读者应当能够：
 
 - 解释一张 scaling 图里横轴的资源、纵轴的目标、被固定的训练条件各是什么。
-- 用 Chinchilla / IsoFLOP / critical batch size / tokens-per-parameter 这些概念读懂公开 scaling report。
+- 用 Chinchilla / IsoFLOP / critical batch size / tokens per parameter 这些概念读懂公开 scaling report。
 - 在给定 FLOPs 预算下，决定模型规模、训练 token 数、batch size 和 learning rate 的起点。
 - 判断 train-optimal 与 inference-optimal 之间的取舍，并用 muP / WSD / optimizer scaling 处理超参数迁移。
 - 看到新模型架构或新数据集时，能套 §8.6.8 的检查表判断是否值得投入大规模预训练。
@@ -97,10 +97,10 @@ Scaling law 不会替你做决定；它把昂贵的大训练决策拆成一组�
 统计学习理论很早就在研究“样本变多后误差怎么下降”。例如 VC 维理论给出类似下面的上界：
 
 $$
-\epsilon(\hat{h}) \le \epsilon(h^*) + \mathcal{O}\left(\sqrt{\frac{\mathrm{d}}{\mathrm{m}}}\right)
+\epsilon(\hat{h}) \le \epsilon(h^*) + \mathcal{O}\left(\sqrt{\frac{d}{m}}\right)
 $$
 
-其中 $m$ 是样本数， $d$ 是模型类复杂度。它说明样本数会影响泛化误差，但这类理论通常给出 worst-case upper bound，和实际训练 loss 还有距离。
+其中 $\hat{h}$ 是学到的假设， $h^*$ 是假设类里的最优假设， $\epsilon(\cdot)$ 是泛化误差， $m$ 是样本数， $d$ 是模型类复杂度。它说明样本数会影响泛化误差，但这类理论通常给出 worst-case upper bound，和实际训练 loss 还有距离。
 
 这和现代 scaling law 的关系是：两者都在问“资源增加后误差怎么下降”。区别在于，理论 bound 往往很保守，关心最坏情况；LLM scaling law 更像工程测量，关心某组固定训练条件在真实数据和真实模型上的经验曲线。因此它不能替代理论证明，但能直接服务训练预算决策。
 
@@ -210,13 +210,13 @@ $$
 
 若当前还离不可约误差很远，也常简写为：
 
-这里的 `Error(n)` 指上面那部分 excess error，也就是 `L(n) - L_\infty`。换成这个名字，只是为了更直白地说“扣掉底线以后还剩多少误差”。
-
-比如总 loss 是 `0.50`，底线是 `0.20`，那么剩下的 `0.30` 就是还能靠更多数据、更多模型容量继续压低的那部分误差。
-
 $$
 \mathrm{Error}(n) \propto n^{-\alpha}
 $$
+
+这里的 $\mathrm{Error}(n)$ 就是上面那部分 excess error，也就是 $L(n) - L_\infty$ 。换成这个名字，只是为了更直白地说“扣掉底线以后还剩多少误差”。
+
+比如总 loss 是 `0.50`，底线是 `0.20`，那么剩下的 `0.30` 就是还能靠更多数据、更多模型容量继续压低的那部分误差。
 
 ![图 8.3-3 Data size error power law](images/8-3-3-data-size-error-power-law.png)
 
@@ -225,7 +225,7 @@ $$
 > [!TIP]
 > Power law 要看 log-log 图，也就是横轴和纵轴都用对数坐标。只有点在这种坐标里接近直线时，才适合说误差按固定比例衰减。
 
-图 8.3-3 想说的是：在当前区间里，数据量每增加 $10$ 倍，误差大约按固定比例下降。比如误差从 `0.20` 变成 `0.16`，再变成 `0.128`，说明改善是按比例缩小，不是每次都少固定数值。
+图 8.3-3 的直线含义是：在当前区间里，数据量每增加 $10$ 倍，误差大约按固定比例下降。比如误差从 `0.20` 变成 `0.16`，再变成 `0.128`，改善按比例缩小，每一档减少的绝对值越来越少。
 
 这给的是一条可以外推的比例关系，但只在当前观测区间里可靠。图里的直线通常对应扣掉不可约误差后的 excess error；如果看的是原始 loss，且已经接近 $L_\infty$，曲线就会自然弯平。
 
@@ -337,9 +337,9 @@ Data repetition 处理的是有限数据集的放大问题。无限新数据的 
 
 *图 8.3-8 Data repetition effective data*
 
-图 8.3-8 左侧回答“重复数据还值不值”的问题。图下方括号里的数字都是 epoch 数，表示这些 raw tokens 相当于把对应的 unique data 过了多少遍。虚线表示一个理想假设：每次训练都看到 fresh data，重复 token 和新 token 一样有价值。实线表示 data-constrained scaling law：数据会重复，后面的 epoch 收益会打折。
+图 8.3-8 左侧回答“重复数据还值不值”的问题。这批曲线来自固定 4.2B 参数的模型，横轴是 raw tokens，括号里的数字是 epoch 数，表示这些 raw tokens 相当于把对应的 unique data 过了多少遍。虚线表示一个理想假设：每次训练都看到 fresh data，重复 token 和新 token 一样有价值。实线表示 data-constrained scaling law：数据会重复，后面的 epoch 收益会打折。
 
-读左图时看虚线和实线的距离。前几个 epoch 里，两条线很接近，说明重复数据几乎像新数据一样有用。重复更多遍后，实线逐渐变平，和虚线拉开距离；到很多 epoch 时，继续重复的收益已经很小。
+读左图时看虚线和实线的距离。到约 4 个 epoch 为止，两条线基本重合，重复数据几乎像新数据一样有用。再往右实线逐渐变平，和虚线拉开距离；到约 40 个 epoch 时，实线已经接近水平，继续重复几乎不再降低 final test loss。
 
 为了把这件事写进公式，可以把 repeated tokens 折算成 effective data，也就是“等价新数据量”。它回答的问题是：重复训练这些 token 的效果，大约相当于看到了多少不重复的新 token。
 
@@ -357,7 +357,7 @@ $$
 
 黑色线和橙 / 红色线分别表示两种假设下的有效前沿（efficient frontier）：在同一 compute 预算附近，不同 token / parameter 配比对应的预期 loss。黑色线对应理想假设，重复 token 和 fresh token 一样有价值；橙色 / 红色线对应 data-constrained 情况，重复 token 的收益要打折。
 
-右图在最大 FLOP 预算 $9.3 \times 10^{21}$ 上比较两组最优解：黄色星星是 Chinchilla 假设下的最佳点（重复 token 与 fresh token 等价），红色星星是 data-constrained 假设下的最佳点；后者比前者参数少约 27%，但对应的训练 unique tokens 规模约 25B（论文 Figure 1 caption）。
+右图在最大 FLOP 预算 $9.3 \times 10^{21}$ 上比较两组最优解。黄色星星是 Chinchilla 假设下的最佳点（重复 token 与 fresh token 等价），落在 8.67B 参数 / 178B tokens，final loss 2.376；红色星星是 data-constrained 假设下的最佳点，落在 6.34B 参数 / 242B tokens，final loss 2.359。后者参数少约 27%，把省下来的训练 compute 转给同一批 unique tokens 的额外 epoch：epoch 数从 7.1 提高到 9.7。
 
 结论限定在同一条 IsoFLOP 预算线上：如果重复 token 和 fresh token 一样有价值，最佳点偏向更大模型、较少训练 tokens；如果重复 token 的收益要打折，最佳点会移动到更小模型、更多训练 tokens。原因是数据有限时，大模型很快会缺少足够的新信息；把模型稍微做小一些，把 compute 留给更多训练 tokens，反而可能得到更低 loss。
 
@@ -371,13 +371,15 @@ $$
 
 左图扫 epoch count。loss 先降后升，说明重复几遍有用，继续重复很多遍后收益会消失，甚至可能变差。
 
-中图扫 parameter count。Muennighoff 论文共训练 400+ 模型覆盖 $10\mathrm{M}$–$9\mathrm{B}$（Figure 1 标出 4.2B / 6.34B / 8.67B 三档的最大 FLOP 预算 IsoFLOP 星点，Figure 11 sweep 从 100M tokens 对应的 compute-optimal 一路扫到 $2\mathrm{B}+$，正文比较 $200\mathrm{M}$–$1\mathrm{B}$ 与 $>2\mathrm{B}$ 两组）。结论一致：固定同一批 unique data 时，参数更多不能凭空提供新信息，数据成了主要瓶颈——超过一个门槛后，再加参数反而略恶化 loss（论文归因为 regularization 不足）。
+中图扫 parameter count。Muennighoff 论文共训练 400 多个模型，参数量覆盖 $10\mathrm{M}$ 到 $9\mathrm{B}$ 。论文 Figure 4 的三档 IsoFLOP 预算是 $9.3 \times 10^{20}$ 、 $2.1 \times 10^{21}$ 、 $9.3 \times 10^{21}$ ，单 epoch 下对应的最优模型大小分别是 2.8B、4.2B、8.7B。
+
+中图给出的结论一致：固定同一批 unique data 时，参数更多不能凭空提供新信息，数据成了主要瓶颈。超过一个门槛后，再加参数反而略恶化 loss，论文把这一点归因为 regularization 不足。
 
 右图扫 seed token count $D$ 。这里的 `seed` 指起始数据集，和 random seed 无关； $D$ 是这批起始 unique tokens 的规模。三条曲线都随 $D$ 增大而下降，说明更多 unique tokens 仍然最直接地降低 loss。
 
-Muennighoff Figure 11 caption 直接说明该图内容：把 100M unique tokens、单个 epoch 上训练的模型，画出 empirical loss 曲线与 data-constrained scaling law 预测、Chinchilla 预测三条曲线做对比（caption 原话："Empirical and predicted losses of LLMs trained on 100 million tokens for a single epoch. Excess parameters empirically hurt performance, but this may be due to a lack of regularization. Thus, our scaling formula predicts loss to plateau, while Chinchilla predicts loss to improve. By decaying the exponent α (and β) instead, one can allow excess parameters to hurt."）。
+论文 Figure 11 把这件事单独画出来：一批模型在 100M unique tokens 上只训练一个 epoch，图里同时给出实测 loss、data-constrained scaling law 的预测和 Chinchilla 的预测。实测曲线在参数量超过某个位置后开始回升，data-constrained 公式预测 loss 会走平，Chinchilla 公式则预测 loss 继续改善。
 
-Caption 把"多余参数反而略变差"归因为 regularization 不足，并提出 decay α、β 指数的替代形式，让函数形式本身能容纳"先降后升"的行为。µP vs 默认超参的对比放在 Appendix F 正文（"Surprisingly, µP leads to even higher test loss than our default hyperparameters. Nevertheless, we find that also with µP excessive parameters hurt."），不在 Figure 11 本图。
+论文把“多余参数反而略变差”归因为 regularization 不足，并提出把指数 $\alpha$ 、 $\beta$ 也随规模衰减的替代形式，让函数形式本身能容纳“先降后升”的行为。muP 与默认超参的对比放在 Appendix F：在这组实验里 muP 的 test loss 反而高于默认超参，而且换成 muP 之后多余参数同样会损害性能。
 
 数据受限时，把重复 token 当成新 token 来外推，会高估继续训练的收益。这张图把优先级说清楚：增加 unique tokens 仍然最直接；当 unique tokens 受限时，更强的 regularization 和更好的数据选择是在提高同一批数据的利用率。
 
@@ -461,7 +463,7 @@ pretraining loss 和 downstream accuracy 往往相关，但不是一一对应。
 
 #### Depth / Width 与其他 Transformer hyperparameters
 
-下一节展开 depth / width 和其他 Transformer hyperparameters。先看层数，再看宽深比、FFN expansion 和 attention head dimension，最后看参数计数口径为什么会改写结论。参数计数口径指的是：横轴里的参数量到底把哪些参数算进去。
+Depth / width 和其他 Transformer hyperparameters 沿三步展开：先看层数，再看宽深比、FFN expansion 和 attention head dimension，最后看参数计数口径为什么会改写结论。参数计数口径指的是：横轴里的参数量到底把哪些参数算进去。
 
 ![图 8.3-15 Number of layers scaling](images/8-3-15-number-of-layers-scaling.png)
 
@@ -489,7 +491,7 @@ pretraining loss 和 downstream accuracy 往往相关，但不是一一对应。
 
 *图 8.3-17 Parameter accounting in depth scaling*
 
-图 8.3-17 只想说明一个点：横轴里的“参数量”怎么数，会改变曲线形状。
+图 8.3-17 比较同一批深度实验在两种参数口径下的曲线形状：横轴里的“参数量”怎么数，会改变曲线形状。
 
 左图的横轴是 total parameters，包括 embedding 和 output head。`0 Layer` 模型虽然没有 Transformer block，但仍然有 token embedding、positional embedding 或 output head，所以左图能画出 `0 Layer` 曲线。
 
@@ -548,10 +550,10 @@ Noise scale 指 gradient noise scale。可以把它理解成一个 batch 量级�
 - $S(B)$ ：达到 target loss 需要多少 optimizer steps。
 - $E(B)$ ：达到 target loss 总共看过多少 examples / tokens。
 
-二者近似满足：
+二者按定义满足：
 
 $$
-E(B) \approx S(B)B
+E(B) = S(B)B
 $$
 
 小 batch 往往 sample efficient， $E(B)$ 较小，但需要很多 optimizer update， $S(B)$ 较大。大 batch 可以减少 steps，但每一步消耗更多 samples， $E(B)$ 往往变大。
@@ -572,19 +574,15 @@ $$
 
 这个 $B_{\mathrm{crit}}$ 通常是拟合出来的量，不一定等于某个真实 run 使用过的 batch。在这条拟合曲线上，$B_{\mathrm{crit}}$ 对应的点大约同时付出 $2S_{\min}$ 的 steps 和 $2E_{\min}$ 的 examples。它牺牲一部分单项最优，换来并行速度和样本效率之间的实用折中。
 
-图 8.3-20 给出拟合定义，图 8.3-21 把同一件事放回训练曲线：不同 batch 都追同一个 target loss，比较它们分别花了多少 update 和多少样本。
+图 8.3-20 给出的是拟合定义，图 8.3-21 把同一件事放回训练曲线。
 
 ![图 8.3-21 Critical batch loss](images/8-3-21-critical-batch-loss.png)
 
 *图 8.3-21 Critical batch loss*
 
-先区分两个量。Steps 是 optimizer update 次数，samples 是总共看过多少训练样本或 tokens。两者关系近似是：
+图 8.3-21 把 $S(B)$ 和 $E(B)$ 放回训练曲线：几个不同 batch 的 run 都追同一个 target loss，横向比较它们分别花了多少 optimizer update 和多少样本。
 
-$$
-\text{samples} \approx \text{steps} \times \text{batch size}
-$$
-
-batch size 增大时，达到同一 loss 可能需要更少 steps，但每一步消耗更多样本。样本数增加得太多时，大 batch 的并行收益正在用 sample efficiency 换。Critical batch size 可以看成并行效率和样本效率的平衡点。
+batch size 增大时，达到同一 loss 可能需要更少 steps，但按 $E(B) = S(B)B$ ，每一步消耗的样本同比例增加。样本数增加得比 steps 减少得更多时，这次放大就在用 sample efficiency 换并行吞吐。Critical batch size 是这两种效率之间的平衡点。
 
 #### Critical batch size 怎样随 loss 变化
 
@@ -596,7 +594,7 @@ batch size 增大时，达到同一 loss 可能需要更少 steps，但每一步
 
 这解释了为什么大规模 pretraining 往往能使用很大的 global batch。模型更大、目标 loss 更低、并行需求更强，都会把可用 batch 区间推大。实际系统里还要叠加硬件约束：data parallelism 扩吞吐需要足够大的 global batch；如果任务的 critical batch size 不够大，就需要调小并行规模、重新调 learning rate，或者接受一部分样本效率损失。
 
-Batch size 的结论是：不能只按 GPU 数量决定 global batch，还要估计它在目标 loss 附近有没有超过 critical batch size 太多。下一节转到 learning rate，原因是 batch 和 learning rate 一起决定 update：batch 决定梯度估计有多稳，learning rate 决定这份梯度会把参数推多远。
+Batch size 的结论是：不能只按 GPU 数量决定 global batch，还要估计它在目标 loss 附近有没有超过 critical batch size 太多。Batch 和 learning rate 一起决定一次 update：batch 决定梯度估计有多稳，learning rate 决定这份梯度会把参数推多远，所以 learning rate 的 scaling 是同一组决策的另一半。
 
 #### Learning rate：直接拟合或重参数化
 
@@ -730,7 +728,6 @@ Joint fit 先把 loss 拆成模型大小 $N$ 和训练 tokens $D$ 两个方向�
 $$
 10^{15} \times 86400
 = 8.64 \times 10^{19}
-\approx 10^{20}
 \text{ FLOPs}
 $$
 
@@ -944,7 +941,7 @@ MiniCPM 的第一步是用 muP 改参数化，让 learning rate 更容易跨规�
 
 *图 8.6-3 MiniCPM scaling strategy*
 
-图 8.6-3 把这条路线放到模型族上：先固定 aspect ratio，再用一批逐级放大的预实验模型做系统实验。论文里每个问题各用一组规模——batch size 实验用 0.009B / 0.03B / 0.17B（§3.2），learning rate 实验用 0.04B / 0.1B / 0.3B / 0.5B 并在 2.1B 上验证迁移（§3.3），WSD 与 scaling law 拟合用 0.04B 到 2B 之间的 6 档（§4.5）。最终发布的 MiniCPM-2.4B 有约 24.4 亿非 embedding 参数，比大多数预实验模型高一个数量级以上。
+图 8.6-3 把这条路线放到模型族上：先固定 aspect ratio，再用一批逐级放大的预实验模型做系统实验。论文里每个问题各用一组规模——batch size 实验用 0.009B / 0.03B / 0.17B（§3.2），learning rate 实验用 0.04B / 0.1B / 0.3B / 0.5B 并在 2.1B 上验证迁移（§3.3），WSD 与 scaling law 拟合用 0.04B 到 2B 之间的 6 档（§4.5）。最终发布的 MiniCPM-2.4B 有约 24.4 亿非 embedding 参数，与最大预实验档位 2B–2.1B 处于同一数量级；预实验网络足够覆盖发布模型的规模区间，超参数迁移的样本就在这一档内做验证。
 
 这套流程要在较小模型上先定住最敏感的量：muP 相关初始化和 per-parameter learning rate、optimal batch size、base learning rate，以及训练 token 数与模型参数量的比例。MiniCPM 的 scaling workflow 可以压缩成四个训练问题：
 
@@ -1218,7 +1215,9 @@ StepFun 还检查训练设置的鲁棒性。它把 MoE、不同 dataset 和不�
 
 *图 8.6-33 AdamC scaling blow-up*
 
-图 8.6-33 是一个工程案例：左图在较小 compute buckets 上拟合 IsoFLOP minima，右图用前段数据外推；进入 held-out 区间后，实际 loss 偏离预测，偏差随规模逐步扩大直至 blow-up。这个 AdamC 案例来自 Held 博客（[oa.williamheld.com/blog/delphi/](https://oa.williamheld.com/blog/delphi/)）。Volkova et al. [Towards Robust Scaling Laws for Optimizers, arXiv:2602.07712](https://arxiv.org/abs/2602.07712) 处理的是同一类问题的另一面：论文指出 per-optimizer 直接拟合 Chinchilla-style scaling law 是 ill-conditioned 的、拟合参数高度相关，因此改用"共享 power-law exponents + optimizer-specific rescaling factors"，并在 AdamW、Muon、Scion、Shampoo、SOAP 五种 optimizer、两种架构上验证。
+图 8.6-33 是一个工程案例。左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，并从约 $10^{21}$ 之后进入 held-out 外推区。外推区里实测点逐档偏离预测：$10^{21}$ 处高 0.8%， $10^{22}$ 处高 2.5%， $10^{23}$ 处这一档的 run 直接发散。发散的训练设置是 cautious AdamC 配合按 batch size 平方根缩放的 learning rate，改动参数化与 scaling 规则后可以修复。这个案例来自 Held 博客（[oa.williamheld.com/blog/delphi/](https://oa.williamheld.com/blog/delphi/)）。
+
+Volkova et al. [Towards Robust Scaling Laws for Optimizers, arXiv:2602.07712](https://arxiv.org/abs/2602.07712) 处理同一类问题的另一面：论文指出 per-optimizer 直接拟合 Chinchilla-style scaling law 是 ill-conditioned 的、拟合参数高度相关，因此改用“共享 power-law exponents + optimizer-specific rescaling factors”，并在 AdamW、Muon、Scion、Shampoo、SOAP 五种 optimizer、两种架构上验证。
 
 这类失败说明，建立可外推的 scaling 趋势并不容易。Muon、AdamC、cautious Adam 等新 optimizer 或 Adam 变体都可能改善某些规模下的训练效率；比较它们时，要把 weight decay、norm 参数、embedding 参数、混合精度和并行切分纳入同一组训练条件，并在 compute 增加、Chinchilla-style 数据比例和大 batch 训练下复核。
 
@@ -1228,7 +1227,9 @@ StepFun 还检查训练设置的鲁棒性。它把 MoE、不同 dataset 和不�
 
 图 8.6-34 把 Muon 的证据拆成三层。第一，在 nanoGPT speedrun 这类小模型限时训练基准上，它相对 Adam 有明显收益；第二，scaling study 需要检查收益是否随 compute 变小、是否受 Chinchilla ratio 影响；第三，Kimi K2 说明 Muon 可以在大规模训练中工作。
 
-Muon 主要作用在形状为矩阵的参数上，对 momentum update 做近似 orthogonalization；vector 参数通常仍可交给 AdamW 一类方法。Muon 的核心是 **Newton-Schulz 迭代**——通过若干次矩阵乘法迭代把 momentum update `B_t` 近似正交化为接近 `UV^T$ 的矩阵（视为在 `B_t = USV^T` 的谱分解基础上取近似正交部分；近似等价为 "$B_t = USV^\top \to UV^\top$"）。原始算法见 [Bernstein & Newhouse, 2024 (Modular Duality in Deep Learning)](https://arxiv.org/abs/2410.21265) 与 Newton-Schulz 的经典数值线性代数笔记。更新投影到谱范数 ≈ 1 的方向之后，elementwise 步长不必按最大奇异值收缩，避免更新过大或过小。Muon 在大模型上的稳定性补丁是 **MuonClip**（Kimi K2 引入）：在 attention logits 超过 ~100 时只对 Q / K 投影做 rescale，使 Muon 能在万亿参数 MoE 上做 15.5T token 的稳定预训练。Muon 的证据链分三层：(1) NanoGPT speedrun 这类小模型限时训练基准上明显收益；(2) scaling study 需检查收益是否随 compute 缩小、是否受 Chinchilla ratio 影响；(3) Kimi K2 / Kimi K2.5 在大规模训练中通过 MuonClip 验证 "works at scale"。
+Muon 主要作用在形状为矩阵的参数上，对 momentum update 做近似 orthogonalization；vector 参数通常仍可交给 AdamW 一类方法。它的核心步骤是 Newton-Schulz 迭代：设 momentum update 矩阵的奇异值分解为 $B_t = U S V^\top$ ，若干次矩阵乘法迭代把 $B_t$ 近似推向 $U V^\top$ ，也就是把奇异值统一压到 1 附近。更新投影到谱范数约等于 1 的方向之后，elementwise 步长不必按最大奇异值收缩，避免更新过大或过小。算法本身出自 Keller Jordan 2024 年 12 月的公开笔记 [*Muon: An optimizer for hidden layers in neural networks*](https://kellerjordan.github.io/posts/muon/)；对应的 duality 理论背景见 [Bernstein & Newhouse, *Modular Duality in Deep Learning*, arXiv:2410.21265](https://arxiv.org/abs/2410.21265)。
+
+Muon 在大模型上的稳定性补丁是 MuonClip，由 Kimi K2 引入：在 attention logits 超过约 100 时只对 Q / K 投影做 rescale，使 Muon 能在万亿参数 MoE 上完成 15.5T token 的稳定预训练。
 
 公开材料还不足以证明 Muon 在同等训练设置下稳定优于 AdamW。当前更稳的工程判断是：Muon 值得关注，但比较时仍要把 optimizer、LR / batch、weight decay 和稳定性补丁放进同一张账本。
 
@@ -1337,7 +1338,7 @@ $$
 \|\Delta W_l\|_* \sqrt{n_{l-1}} = \Theta(\sqrt{n_l})
 $$
 
-这就是 learning-rate scaling 的来源。在图 8.6-40 的简化线性层中，SGD 的 learning-rate factor 是 $n_l/n_{l-1}$，Adam 对矩阵参数则是 $1/n_{l-1}$。具体规则取决于 optimizer 和参数类型；Transformer 的 embedding、attention / MLP matrices、output head、bias 与 norm 参数需要分别处理。
+这就是 learning-rate scaling 的来源。在图 8.6-40 的简化线性层中，SGD 的 learning-rate factor 是 $n_l/n_{l-1}$ ，Adam 对矩阵参数则是 $1/n_{l-1}$ 。标准参数化在同一张表里的对应项是初始化标准差 $\Theta(1/\sqrt{n_{l-1}})$ 、learning rate $\Theta(1)$ ；两者的差别集中在 Adam 的 learning-rate 缩放，以及 fan-out 小于 fan-in 时的初始化项。具体规则取决于 optimizer 和参数类型；Transformer 的 embedding、attention / MLP matrices、output head、bias 与 norm 参数需要分别处理。
 
 ![图 8.6-40 muP mini recap](images/8-6-40-mup-mini-recap.png)
 
@@ -1407,20 +1408,18 @@ Batch 与 learning rate 在 §8.3.5，超参数迁移在 §8.6.5–§8.6.7，opt
 
 Train-optimal 与 inference-optimal 之间的取舍，决定了模型上线后会被压成什么样：serving cost、KV cache、PagedAttention、speculative decoding 这一整套工程账本正是 [第 9 章 推理系统](../chapter9/chapter9_推理系统.md) 的主线。下一章把视角从训练侧的算力最优切到 serving 侧的成本最优，看 IsoFLOP 之外还有什么维度决定模型的最终部署形态。
 
-Scaling 报告最有价值的信息通常是训练条件是否一致、实验点是否覆盖目标区域、参数口径和参数化是否清楚、下游指标是否 noisy。
-
 ## 思考
 
-- 对一个目标模型规模（参数量 N）和目标训练预算（FLOPs），是否能在公开报告的 IsoFLOP 网格上读出 critical batch size？
-- 当 scaling report 写"在 100B tokens 训练"但没写 data repetition / mix / dedup 策略，外推时该如何保守估计有效 token 数？
-- 训练侧与推理侧的 Pareto 前沿：给定 N 与 D，train-optimal 与 inference-optimal 的差距有多大？
+- 对一个目标模型规模（参数量 $N$ ）和目标训练预算（FLOPs），是否能在公开报告的 IsoFLOP 网格上读出 critical batch size？
+- 当 scaling report 写“在 100B tokens 训练”但没写 data repetition / mix / dedup 策略，外推时该如何保守估计有效 token 数？
+- 训练侧与推理侧的 Pareto 前沿：给定 $N$ 与 $D$ ，train-optimal 与 inference-optimal 的差距有多大？
 - muP 给出 LR / init 的 width-invariance 拟合后，对 optimizer scaling（Cautious AdamC / Muon 等）还剩多少没传递？
 
 ## 参考文献
 
 - [Kaplan et al., Scaling Laws for Neural Language Models, arXiv:2001.08361](https://arxiv.org/abs/2001.08361)
 - [Hoffmann et al., Training Compute-Optimal Large Language Models (Chinchilla), arXiv:2203.15556](https://arxiv.org/abs/2203.15556)
-- [Muennighoff et al., Scaling Data-Constrained Language Models, arXiv:2305.16264](https://arxiv.org/abs/2305.16264) — §8.3.3 effective data 公式 + Figure 1 的 8.67B / 6.34B IsoFLOP 星点 + Figure 11 excess-parameter 讨论主源
+- [Muennighoff et al., Scaling Data-Constrained Language Models, arXiv:2305.16264](https://arxiv.org/abs/2305.16264) — §8.3.3 effective data 公式 + Figure 1 右图 8.67B / 6.34B IsoFLOP 星点 + Figure 4 三档 IsoFLOP 预算 + Figure 11 excess-parameter 讨论与 Appendix F muP 对照主源
 - [Goyal et al., Scaling Laws for Data Filtering — Data Curation cannot be Compute Agnostic, arXiv:2404.07177](https://arxiv.org/abs/2404.07177) — §8.3.3 data selection 与 quality-quantity tradeoff（图 8.3-10）主源
 - [Yang et al., Tensor Programs V: Tuning Large Neural Networks via Zero-Shot Hyperparameter Transfer, arXiv:2203.03466](https://arxiv.org/abs/2203.03466)
 - [MiniCPM Technical Report, arXiv:2404.06395](https://arxiv.org/abs/2404.06395)
@@ -1431,12 +1430,12 @@ Scaling 报告最有价值的信息通常是训练条件是否一致、实验点
 
 ## 来源与更新记录
 
-
 - 早期 learning-curve 与 data-scaling 论文：Banko & Brill 2001 https://aclanthology.org/P01-1005/；Kolachina et al. 2012 https://aclanthology.org/P12-1003/；Hestness et al. 2017 https://arxiv.org/abs/1712.00409。
 - 论文与技术报告：Kaplan et al. 2020 https://arxiv.org/abs/2001.08361；Chinchilla https://arxiv.org/abs/2203.15556；Likelihood-Based Diffusion Language Models https://arxiv.org/abs/2305.18619（Gulrajani & Hashimoto, 2023）；MiniCPM https://arxiv.org/abs/2404.06395；Language models scale reliably with over-training and on downstream tasks https://arxiv.org/abs/2403.08540（Gadre et al.）；DeepSeek https://arxiv.org/abs/2401.02954；Cerebras-GPT https://arxiv.org/abs/2304.03208；Tensor Programs V https://arxiv.org/abs/2203.03466；A Spectral Condition for Feature Learning https://arxiv.org/abs/2310.17813；Hunyuan-Large https://arxiv.org/abs/2411.02265；MiniMax-01 https://arxiv.org/abs/2501.08313；Towards Robust Scaling Laws for Optimizers https://arxiv.org/abs/2602.07712（Volkova, Safaryan, Lampert, Alistarh, 2026）；Predictable Scale: Part I — Step Law https://arxiv.org/abs/2503.04715（Li et al., StepFun, 2025）；Llama 3 Herd of Models https://arxiv.org/abs/2407.21783；Qwen3 Technical Report https://arxiv.org/abs/2505.09388；Kimi K2 https://arxiv.org/abs/2507.20534；Mamba-2 https://arxiv.org/abs/2405.21060；Gated DeltaNet https://arxiv.org/abs/2412.06464。
 - 现代报告参考：Qwen、Kimi、StepFun、Llama 3、Hunyuan、MiniMax 相关论文或技术报告；其中未公开完整训练网格的案例只作为变量账本和公开口径样例。
 - 2025-2026 新模型与扩展：**Nemotron 3** 系列在 NVFP4 精度下训练；**DeepSeek v3.2** 在 MoE 规模与 RLHF 后训练上扩展；**Qwen 3 / 3.5 / 3 Next / 3 Coder Next** 在 thinking mode fusion、MoE、agentic RL 上持续迭代；**OLMo 3** 系列覆盖完整训练可复现性披露；**MiniMax M2.5** 与 **Kimi K2.5** 在 hybrid attention 上沿用 lightning + softmax 路线；**GLM 5** 与 **Xiaomi MIMO** 进入开源权重榜单前列。TPU 侧，**TPU 8t** 在 3D torus 之上叠加 **Virgo** scale-out fabric，单 fabric 可达 ~134,000 颗 TPU 8t、~47 Pb/s non-blocking bisection；**TPU 8i** 采用 Boardfly 拓扑（Dragonfly 变体）替代 3D torus；两者均以 optical circuit switching 与 flattened two-layer topology 影响大规模训练的 collective 调度。**Cohere Command A** 用 3:1 hybrid attention：3 层 sliding window attention（窗口 4,096，RoPE）+ 1 层 global attention（NoPE）作为 hybrid attention 的另一参考样本。这些 2026 模型的具体超参与 token 数随官方技术报告更新，本节只记录其类别和角色，不替代论文级复核。
 - 官方实践指南：Cerebras / EleutherAI `The Practitioner's Guide to the Maximal Update Parameterization` https://www.cerebras.ai/blog/the-practitioners-guide-to-the-maximal-update-parameterization。
+- Muon 相关（2026-09-05 复核）：Keller Jordan, `Muon: An optimizer for hidden layers in neural networks` https://kellerjordan.github.io/posts/muon/（2024-12，算法原始出处，社区笔记）；Bernstein & Newhouse, `Modular Duality in Deep Learning` https://arxiv.org/abs/2410.21265（2024-10-28，论文，duality 理论背景）。
 - 学习参考（2026-09-01 复核可访问）：How To Scale https://howtoscalenn.github.io/（muP 与 HP scaling）；Work at a Frontier Lab scaling tutorial https://www.workatafrontierlab.com/lessons/foundations/scaling-laws（Chinchilla / μ-Transfer 教学）；Epoch AI scaling topic https://epoch.ai/topics/scaling（compute / data / scaling 趋势综述）；Emergent Mind Chinchilla scaling https://www.emergentmind.com/topics/chinchilla-scaling（Chinchilla 综合技术介绍，2026-04-06 更新）；Simulations4All LLM scaling visualizer https://simulations4all.com/simulations/llm-scaling-laws-visualizer（Chinchilla compute-optimal 可视化）。
 - 不可访问（2026-09-01）：mbrenndoerfer.com Chinchilla tutorial（HTTP 403，可能限流或下线）；aiwiki.ai scaling laws（HTTP 429 rate limit，无法复核）。这两条仅在公开维护者社区偶尔出现，缺它们不影响主线；如未来恢复可再加回。
 - 学习参考只用于讲义组织、预算直觉和可视化辅助；技术口径来自课程材料、论文、技术报告和官方实践指南。

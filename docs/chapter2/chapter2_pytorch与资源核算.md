@@ -22,10 +22,7 @@
 
 **问题：在 1024 张 H100 上训练一个 70B 参数模型，数据量为 15T tokens，大概要多久？**
 
-这类问题不能等完整训练跑完再判断。大训练前需要先做 “napkin math”：用少量公开规格和训练公式完成数量级估算。
-
-> [!NOTE]
-> 这里使用 **H100** 作为资源核算和 MFU 的数量级样例，不等于所有 2026 年训练计划都应固定在 H100 上。后文提到 B200/Blackwell 时，会明确标记为更新一代硬件的新增特性。
+这类问题不能等完整训练跑完再判断。大训练前需要先做 “napkin math”：用少量公开规格和训练公式完成数量级估算。H100 是 2026 年数据中心训练的主力型号之一，下面所有资源核算和 MFU 例子都按 H100 规格估算；B200 / Blackwell 与 H100 的差异集中在 FP8 / NVFP4 等低精度格式与显存代际，对应的章节在 §2.3.1 与 §2.4.1 单列说明。
 
 #### 第一步：计算总工作量
 
@@ -36,7 +33,7 @@ F_{\text{total}} \approx 6 \times N_{\text{param}} \times N_{\text{token}}
 $$
 
 > [!NOTE]
-> 公式里的 **6** 倍来自前向和反向的粗略 FLOPs 账：前向传播约为 $2 \times$ 参数量（乘法+加法），反向传播计算梯度约为前向的 2 倍，也就是 $4 \times$ 参数量。
+> 公式里的 **6** 倍来自前向和反向的粗略 FLOPs 账：前向传播约为 $2 \times$ 参数量（乘法+加法），反向传播计算梯度约为前向的 2 倍，也就是 $4 \times$ 参数量。本章沿用 §2.1.3 的口径，把 $N_{\text{param}}$ 收窄为非 embedding 参数量；70B 级别模型与总参数量相差通常小于 1%，粗估时可忽略。
 
 代入数据：
 
@@ -58,12 +55,17 @@ $$
 
 *图 2.1-2 H100 性能明细*
 
-> [!NOTE]
-> 结构化稀疏是一种模型压缩方法，通常按固定模式剪掉稠密权重，例如 n:m 稀疏表示每 m 个连续权重里剪掉 n 个，常见形式包括 2:4、4:8、8:16。非结构化剪枝更灵活，但更难高效映射到硬件，因此实际加速通常不如结构化稀疏稳定。
+![图 2.1-3 三类稀疏剪枝对比](images/2-1-3-structured-sparsity.png)
 
-![图 2.1-3 结构化稀疏示意](images/2-1-3-structured-sparsity.png)
+*图 2.1-3 三类稀疏剪枝对比（非结构化、结构化、N:M 半结构化）*
 
-*图 2.1-3 结构化稀疏示意*
+按剪枝粒度，常见稀疏方式分成三类（图 2.1-3 从左到右）：
+
+- **非结构化剪枝**：按权重绝对值大小随机置零，不考虑位置；压缩率最高，但内存访问不连续，普通 GPU 难以直接加速。
+- **结构化剪枝**：整通道（channel）、整行或整列地移除，矩阵形状本身改变，通用硬件可以直接加速，但灵活性低，容易导致精度大幅下降。
+- **半结构化（N:M）**：在每 M 个连续权重中剪掉 N 个（例如 2:4 表示每 4 个里留 2 个），NVIDIA Ampere 架构的 Tensor Core 已原生支持，能兼顾稀疏度和硬件效率。
+
+模型压缩中常说的 n:m 稀疏属于第三类，即每 m 个连续权重里剪掉 n 个，常见形式包括 2:4、4:8、8:16。H100 给出的 1,979 TFLOP/s 即对应 2:4 structured sparsity 路径；普通 dense Transformer 应按一半 (989.5 TFLOP/s) 估算。
 
 上述 989.5 TFLOP/s 是 H100 的理论峰值，但实际运行模型时，由于各种软硬件开销，你几乎不可能达到 100% **模型算力利用率 (MFU, Model FLOPs Utilization)**，通常按 30%–60% 的利用率估算更现实。这里取 50% 用作后续估计。
 
@@ -76,7 +78,9 @@ $$
 T = \frac{W_{\text{total}}}{P_{\text{total}}} = \frac{6.3 \times 10^{24}}{5.066 \times 10^{17} \times 86400} \approx 143.9 \text{ 天}
 $$
 
-也就是约 144 天。这是一个数量级估算：它忽略了数据加载、通信、checkpoint 保存、重启和集群故障，但能快速判断预算是否现实。实际计划中还要用小规模 benchmark 估计本训练栈的 MFU，避免直接套厂商峰值。如果把总算力过度取整为 $5 \times 10^{17}$，会得到约 146 天，仍在 143–146 天区间内，作为 napkin math 仍可接受。
+也就是约 144 天。这是一个数量级估算：它忽略了数据加载、通信、checkpoint 保存、重启和集群故障，但能快速判断预算是否现实。
+
+实际计划中还要用小规模 benchmark 估计本训练栈的 MFU，避免直接套厂商峰值。如果把总算力过度取整为 $5 \times 10^{17}$，会得到约 146 天，仍在 143–146 天区间内，作为 napkin math 仍可接受。
 
 
 ### 2.1.2 场景二：内存估算
@@ -105,7 +109,7 @@ $$
 
 资源核算同时看三类约束：
 
-- **Compute**：训练普通 dense Transformer 时，常用粗估是 $6 \times N \times D$ ，其中 $N$ 是非 embedding 参数量， $D$ 是训练 token 数。这个估算适合早期预算判断，但长上下文、MoE、扩散式语言模型或特殊注意力结构会改变细节。
+- **Compute**：训练普通 dense Transformer 时，常用粗估是 $6 \times N \times N_{\text{token}}$ ，其中 $N$ 是非 embedding 参数量， $N_{\text{token}}$ 是训练 token 数。这个估算适合早期预算判断，但长上下文、MoE、扩散式语言模型或特殊注意力结构会改变细节。
 - **Memory capacity**：参数、梯度、优化器状态和激活都要占显存。AdamW 朴素训练中，优化器状态常常比参数本身更大；checkpointing、ZeRO/FSDP 和低精度训练都是在不同位置减内存。
 - **Memory bandwidth**：推理、小 batch matmul 和逐元素算子经常受 HBM 带宽限制。roofline 分析用算术强度判断一个算子更可能是 compute-bound 还是 memory-bound。
 
@@ -629,13 +633,13 @@ def cuda_if_available(index: int = 0) -> torch.device:
 > [!TIP]
 > 测 GPU 时间时还要记住 CUDA 的异步执行细节：很多 CUDA 调用只是在 CPU 侧把任务排进队列，Python 代码会先返回。若不在计时前后使用 `torch.cuda.synchronize()` 或 CUDA event，同一段 kernel 可能看起来“快得离谱”，因为你测到的是提交开销而非实际执行时间。
 
-下面用三个例子建立 FLOPs 与 FLOP/s 的直观认识：
+下面用一组例子建立 FLOPs 与 FLOP/s 的直观认识：
 
 - GPT-3 (2020 年)：训练耗时约 $3.14 \times 10^{23}$ FLOPs [文章](https://lambda.ai/blog/demystifying-gpt-3)
-- GPT-4 (2023 年)：据推测训练耗时约 $2.15 \times 10^{25}$ FLOPs [文章](https://patmcguinness.substack.com/p/gpt-4-details-revealed)
+- GPT-4 (2023 年)：据推测训练耗时约 $2 \times 10^{25}$ FLOPs [文章](https://patmcguinness.substack.com/p/gpt-4-details-revealed)
 - 政策背景：美国曾有一项行政命令，要求任何训练 FLOPs 超过 $1 \times 10^{26}$ 的基础模型必须向政府报告（该命令已于 2025 年被撤销）
-- NVIDIA A100：峰值性能为 312 TFLOP/s (即 $3.12 \times 10^{14}$ FLOP/s) [官方手册](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-nvidia-us-2188504-web.pdf)
-- NVIDIA H100：峰值性能为 1979 TFLOP/s，但这通常是在启用“稀疏性”（sparsity）的情况下。对于密集矩阵乘法，其性能约为一半，即 989.5 TFLOP/s [官方手册](https://resources.nvidia.com/en-us-tensor-core/nvidia-tensor-core-gpu-datasheet)
+- NVIDIA A100：BF16/FP16 Tensor Core 峰值性能为 312 TFLOP/s（即 $3.12 \times 10^{14}$ FLOP/s）[官方手册](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-nvidia-us-2188504-web.pdf)
+- NVIDIA H100：BF16/FP16 Tensor Core 峰值性能为 1979 TFLOP/s（含稀疏，sparsity）；dense 矩阵乘法约为一半，即 989.5 TFLOP/s [官方手册](https://resources.nvidia.com/en-us-tensor-core/nvidia-tensor-core-gpu-datasheet)
 
 #### 线性模型的计算量
 
@@ -905,6 +909,8 @@ $$
 ![图 2.4-1 深度线性网络中的 activation 与梯度流](images/2-4-1-deep-network-gradient-flow.png)
 
 *图 2.4-1 深度线性网络中的 activation 与梯度流*
+
+图 2.4-1 用三层 linear + ReLU 串成的深度线性网络示意 activation 流，每一层把 $B \times D$ 的输入线性映射成 $B \times D$ 的输出，再过 ReLU 进入下一层；下面按层展开的 FLOPs 推导为了书写简洁使用一个两层纯线性（无 ReLU）的网络，结论对更多层同样成立。
 
 - 对于 `w2`：计算 `w2.grad` 和 `h1.grad` 总共需要 $4 \times B \times D \times K$ 次 FLOPs。
 - 对于 `w1`：计算 `w1.grad` 总共需要 $2 \times B \times D \times D$ 次 FLOPs（`x` 是叶子，不为 `w1` 层额外计算 input grad；weight-grad matmul 形状 $(D, D)$，按 `2 BDD` 计算）。

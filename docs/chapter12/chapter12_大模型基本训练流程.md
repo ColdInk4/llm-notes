@@ -67,7 +67,7 @@ $$
 
 ### 12.2.2 预训练、mid-training 与 post-training
 
-预训练阶段追求覆盖面和规模。数据处理会经历抓取、解析、过滤、去重、配比和采样，目标是让模型接触足够多的语言、知识、代码和推理痕迹。每一步的具体方法和工程取舍见 [第 10 章 §10.2.1 过滤](../chapter10/chapter10_数据工程.md)、§10.2.2 去重与 §10.2.3 数据混合（MinHash/LSH、UniMax/DoReMi/RegMix、模拟 epoching 等）；本章只在流程层面提及，过滤与去重的细节与配比模型直接对应的边界写在第 10 章。
+预训练阶段追求覆盖面和规模。数据处理会经历抓取、解析、过滤、去重、配比和采样，目标是让模型接触足够多的语言、知识、代码和推理痕迹。每一步的具体方法和工程取舍见 [第 10 章](../chapter10/chapter10_数据工程.md) §10.2.1 过滤（KenLM / fastText / DSIR 等）与 §10.2.2 去重（精确哈希 / Bloom Filter / MinHash+LSH），以及 §10.2.3 数据混合（UniMax / DoReMi / RegMix、模拟 epoching 等）；本章只在流程层面提及，过滤与去重的细节与配比模型直接对应的边界写在第 10 章。
 
 mid-training 位于大规模预训练和短周期 SFT 之间。它常加入更高质量的数据、长上下文数据、instruction-like 数据、代码与数学数据。这样可以在较大 token 规模上塑造能力，同时减轻一次性 SFT 对已有能力的破坏。具体方案与 MiniCPM 的双阶段示例见 §12.2.4。
 
@@ -109,11 +109,11 @@ SFT 的目标是用示范数据控制模型输出形式。预训练模型已经�
 
 SFT 数据不只传递任务答案，也传递格式、段落密度、礼貌程度和分点习惯。构建 SFT 集时需要把 style 当作训练变量管理，否则模型会学到一种看似详尽、实际信息密度不足的回答模式。
 
-![图 12.3-3 preference evaluation 中的长度效应](images/12-3-3-preference-length-effect.png)
+![图 12.3-3 preference evaluation 中的长度效应（AlpacaFarm annotator / model 组合散点）](images/12-3-3-preference-length-effect.png)
 
 *图 12.3-3 preference evaluation 中的长度效应*
 
-图 12.3-3 展示偏好评估中的长度效应。人类评估和 GPT-based 评估都可能偏向长回答，量级足以主导排名：[arXiv:2306.04751](https://arxiv.org/abs/2306.04751) Figure 2 把 13B 模型的 AlpacaEval 胜率（GPT-4 评判、对手是 Davinci-003）与回答里的平均 unique token 数放在一张散点图上，Pearson 相关系数为 0.96。
+图 12.3-3 展示偏好评估中的长度效应。横轴是 AlpacaFarm 偏好数据中「较长输出被偏好」的胜率，纵轴是「分点列表被偏好」的胜率，每种 annotator / model 组合对应一个散点。人类标注与 GPT-4 直接判别都落在 50%–80% 区间，意味着长度和分点习惯都会影响偏好信号：[Dubois et al., 2023, *AlpacaFarm*, arXiv:2305.14387](https://arxiv.org/abs/2305.14387) Figure 5 用的就是这套 annotator / model 拆分。
 
 这个偏差会贯穿 SFT、RLHF 和 DPO：如果偏好数据持续奖励篇幅，模型会学会增加长度；如果训练目标没有长度归一化或成本约束，偏好优化会放大这种风格偏差。
 
@@ -215,7 +215,7 @@ $$
 
 实际数据收集比公式复杂。标注者是否理解任务、是否检查事实、是否偏好长回答、是否来自特定文化和职业背景，都会改变 reward model 学到的价值函数。
 
-这套 RM + PPO 的两段式范式最早由 [Stiennon et al., 2020, *Learning to Summarize from Human Feedback*, NeurIPS 2020, arXiv:2009.01325](https://arxiv.org/abs/2009.01325) 在摘要任务上给出，并附带完整标注指南；[InstructGPT, arXiv:2203.02155](https://arxiv.org/abs/2203.02155) 把它扩展到通用指令跟随。[Bai et al., 2022, *Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback* (Anthropic HH), arXiv:2204.05862](https://arxiv.org/abs/2204.05862) 补上了安全标注的组织方式，[Bai et al., 2022, *Constitutional AI: Harmlessness from AI Feedback*, arXiv:2212.08073](https://arxiv.org/abs/2212.08073) 把打标主体换成模型本身。这几份材料连同后续开源数据共同说明，偏好数据本身也是模型行为的一部分。
+这套 RM + PPO 的两段式范式最早由 [Stiennon et al., 2020, *Learning to summarize from human feedback*, NeurIPS 2020, arXiv:2009.01325](https://arxiv.org/abs/2009.01325) 在摘要任务上给出，并附带完整标注指南；[InstructGPT, arXiv:2203.02155](https://arxiv.org/abs/2203.02155) 把它扩展到通用指令跟随。[Bai et al., 2022, *Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback* (Anthropic HH), arXiv:2204.05862](https://arxiv.org/abs/2204.05862) 补上了安全标注的组织方式，[Bai et al., 2022, *Constitutional AI: Harmlessness from AI Feedback*, arXiv:2212.08073](https://arxiv.org/abs/2212.08073) 把打标主体换成模型本身。这几份材料连同后续开源数据共同说明，偏好数据本身也是模型行为的一部分。
 
 ### 12.4.2 PPO 在语言模型中的作用
 
@@ -275,7 +275,7 @@ PPO 的主要工程风险来自 reward hacking 和训练不稳定。reward model
 
 RLHF / DPO 数据的质量不止取决于标注一致性，还取决于标注者人群、专家与众包的比例、用 LLM-as-judge 替代人标的比例，以及 reward 里残留多少长度信号。四个判断要点：
 
-- **标注者人群与 demographic transfer**：InstructGPT 的标注指南把评价目标定义为 helpful / truthful / harmless 三组属性，而承担标注的人群本身高度集中：[InstructGPT, arXiv:2203.02155](https://arxiv.org/abs/2203.02155) Appendix B.3 Table 12 对 19 名自愿受访标注者的统计给出 undergraduate degree 52.6% + master's degree 36.8% ≈ 89.4%，国籍分布以 Filipino 22% 与 Bangladeshi 22% 居前。这套偏好分布把模型对齐的目标锁定在特定标注池上，与一般人类偏好之间存在系统差距；标注池的地理、学历和行业构成不公开时，后训练出来的模型就难以复现。Annotator 人口与对齐结果之间的传递有可观察的偏差（demographic transfer）：[Santurkar et al., 2023, *Whose Opinions Do Language Models Reflect?*, ICML 2023, arXiv:2303.17548](https://arxiv.org/abs/2303.17548) §4.1 报告 base LM 与 "lower income, moderate, and Protestant or Roman Catholic" 群体最对齐，而经过人类反馈微调的模型转向 "liberal, high income, well-educated, and not religious or belong to religions other than Buddhists, Muslims, and Hindus"。方向上，RLHF 把代表性整体向世俗化、高学历、高收入平移，Buddhist / Muslim / Hindu 被显式排除在 RLHF 模型更贴近的宗教集合之外。
+- **标注者人群与 demographic transfer**：InstructGPT 的标注指南把评价目标定义为 helpful / truthful / harmless 三组属性，而承担标注的人群本身高度集中：[InstructGPT, arXiv:2203.02155](https://arxiv.org/abs/2203.02155) Appendix B.3 Table 12 对 19 名自愿受访标注者的统计给出 undergraduate degree 52.6% + master's degree 36.8% ≈ 89.4%，国籍分布以 Filipino 22% 与 Bangladeshi 22% 居前。这套偏好分布把模型对齐的目标锁定在特定标注池上，与一般人类偏好之间存在系统差距；标注池的地理、学历和行业构成不公开时，后训练出来的模型就难以复现。Annotator 人口与对齐结果之间的传递有可观察的偏差（demographic transfer）：[Santurkar et al., 2023, *Whose Opinions Do Language Models Reflect?*, ICML 2023, arXiv:2303.17548](https://arxiv.org/abs/2303.17548) §4.1 报告 base LM 与 "lower income, moderate, and Protestant or Roman Catholic" 群体最对齐，而经过人类反馈微调的模型转向 "liberal, high income, well-educated, and not religious or belong to religions other than Buddhists, Muslims, and Hindus"。论文把后半句具体拆开看，意思是 RLHF 模型在 atheist / agnostic 与 Christian / Jewish 等 "Buddhist、Muslim、Hindu 以外" 的宗教群体上更贴近 base LM，相对地与 Buddhist、Muslim、Hindu 群体拉开距离；方向上，RLHF 把代表性整体向世俗化、高学历、高收入平移。
 - **专家 vs 普通人**：[Hosking, Blunsom, Bartolo, 2024, *Human Feedback is not Gold Standard*, ICLR 2024, arXiv:2309.16349](https://arxiv.org/abs/2309.16349) 定义了 Harmful / Fluency / Scope / Repetition / Refusal / Formatting / Relevance / Factuality / Inconsistency / Contradiction 共 10 类错误。scope、fluency、harmfulness 三类在实验模型上出现率低于 1%，被排除在对照之外；余下 7 类由论文作者各标注 300 条样本作为 expert 基线，再与 Prolific 上招募的众包 annotator 对照。结论是众包标注系统性低估 factuality 与 inconsistency 错误，而且 assertive（语气更确信）的输出会放大这一差距——标注者更容易相信语气确定的回答。
 - **LLM-as-judge 与 self-bootstrapping**：Anthropic Constitutional AI（[Bai et al., 2022, arXiv:2212.08073](https://arxiv.org/abs/2212.08073)）是"早期 self-bootstrapping 范式"——用 LLM 自身按宪法规则打标，再训练下一代。Zephyr（[Tunstall et al., 2023, *Zephyr: Direct Distillation of LM Alignment*, arXiv:2310.16944](https://arxiv.org/abs/2310.16944)）把这条路线推到整链无人工标注：dSFT 用 UltraChat，dDPO 用 UltraFeedback 中 GPT-4 打分的 AI feedback。多数"开源 DPO 数据集"因此实际是 LLM 蒸馏而非人类偏好，复现与对比时要先看清楚人类占比。
 - **长度攻击的工程经验**：[Singhal et al., 2024, *A Long Way to Go: Investigating Length Correlations in RLHF*, arXiv:2310.03716](https://arxiv.org/abs/2310.03716) §3.2 Table 2 把 reward 换成纯长度函数（LPPO），模拟偏好胜率在 WebGPT 56% / Stack 59% / RLCD 64%，与用学到的 reward model 做标准 PPO 的 58% / 58% / 63% 基本持平。这与"人类偏好更偏向长回答"的偏差直接相关。减少这种偏差的工程做法是按 reward / cost 联合归一化或让 reward model 看不出长度。
@@ -302,7 +302,9 @@ DPO 的目标是把 pairwise preference data 直接写成监督式损失。给�
 本节回答三个问题：DPO 损失怎么从偏好对直接推导出来、DPO 与 PPO 的工程边界在哪里、SimPO 与 length-normalized DPO 等变体改变了什么。
 
 > [!NOTE]
-> **Llama 3 技术报告把 DPO + Rejection Sampling 作为正式 RLHF 主线**。Llama 3 tech report（Grattafiori et al., 2024, [arXiv:2407.21783](https://arxiv.org/abs/2407.21783)；早期版本以 Dubey et al. 署名）§4.1 把后训练组织成多轮外循环，每轮依次做 reward modeling、rejection sampling、SFT 和 DPO：rejection sampling 对每个 prompt 从最新 chat 模型（通常是上一轮后训练的最佳 checkpoint，即上一轮 DPO 之后的模型）采样 K 个回答（K 一般取 10 到 30），由 reward model 选出最优候选，再混回本轮的 SFT 数据。Llama 1（[arXiv:2302.13971](https://arxiv.org/abs/2302.13971)）没有偏好阶段，§4 Instruction Finetuning 只做了一次 LLaMA-I 消融，沿用 Chung et al. 2022 的 Flan 式指令微调协议；Llama 2 的公开材料以 rejection sampling + PPO 为主（[arXiv:2307.09288](https://arxiv.org/abs/2307.09288)），DPO 从 Llama 3 起才进入 Llama 系列的后训练原语。相比 PPO，DPO 不需要单独训练 reward model 和 value model，训练形态更接近监督学习；rejection sampling 又把"模型在哪些 prompt 上能写出高质量回答"这一分布信息显式注入到下一轮 SFT。
+> **Llama 3 技术报告把 DPO + Rejection Sampling 作为正式 RLHF 主线**。Llama 3 tech report（Grattafiori et al., 2024, [arXiv:2407.21783](https://arxiv.org/abs/2407.21783)；早期版本以 Dubey et al. 署名）§4.1 把后训练组织成多轮外循环，每轮依次做 reward modeling、rejection sampling、SFT 和 DPO：rejection sampling 对每个 prompt 从最新 chat 模型（通常是上一轮后训练的最佳 checkpoint，即上一轮 DPO 之后的模型）采样 K 个回答（K 一般取 10 到 30），由 reward model 选出最优候选，再混回本轮的 SFT 数据。Llama 1（[arXiv:2302.13971](https://arxiv.org/abs/2302.13971)）没有偏好阶段，§4 Instruction Finetuning 只做了一次 LLaMA-I 消融，沿用 Chung et al. 2022 的 Flan 式指令微调协议；Llama 2 的公开材料以 rejection sampling + PPO 为主（[arXiv:2307.09288](https://arxiv.org/abs/2307.09288)），DPO 从 Llama 3 起才进入 Llama 系列的后训练原语。
+>
+> 相比 PPO，DPO 不需要单独训练 reward model 和 value model，训练形态更接近监督学习；rejection sampling 又把"模型在哪些 prompt 上能写出高质量回答"这一分布信息显式注入到下一轮 SFT。
 
 ### 12.5.1 DPO 与 PPO 的训练路径
 
@@ -310,7 +312,7 @@ DPO 的目标是把 pairwise preference data 直接写成监督式损失。给�
 
 *图 12.5-1 DPO 与 PPO 的训练路径*
 
-图 12.5-1 对比 PPO 和 DPO。PPO 需要 reward model、rollout、优势估计、KL 控制和多轮策略更新；DPO 直接从偏好对计算损失，训练形态更接近普通 SFT。这个简化让 DPO 成为开放模型后训练里常见的基线。
+图 12.5-1 把 PPO 和 DPO 放在 AlpacaFarm 模拟偏好与人类偏好两个口径下做横向对比：模拟胜率 PPO 46.8 ± 1.8 与 DPO 46.8 ± 1.7 几乎持平，人类胜率 PPO 55.1 ± 1.7 / DPO 无数据（红框强调 PPO / DPO 行）；同一张表还包含 SFT 10k / SFT 52k、Best-of-1024、Expert Iteration、Binary Reward Conditioning、Quark 等多种基线，给出 RLHF 方法间的相对位置。配合结构差异看，PPO 需要 reward model、rollout、优势估计、KL 控制和多轮策略更新，DPO 直接从偏好对计算损失、训练形态更接近普通 SFT；两套损失上结构差异明显，但 AlpacaFarm 这种模拟偏好下两种方法给出接近的胜率。
 
 ![图 12.5-2 DPO 简化 PPO 的关键思路](images/12-5-2-dpo-simplification.png)
 
@@ -428,7 +430,7 @@ mode collapse 是另一类副作用。经过强偏好优化后，模型可能减
 ## 来源与更新记录
 
 - 论文与技术报告：
-  - [Stiennon et al., 2020, *Learning to Summarize from Human Feedback*, NeurIPS 2020, arXiv:2009.01325](https://arxiv.org/abs/2009.01325) — RM + PPO 两段式 RLHF 范式源头
+  - [Stiennon et al., 2020, *Learning to summarize from human feedback*, NeurIPS 2020, arXiv:2009.01325](https://arxiv.org/abs/2009.01325) — RM + PPO 两段式 RLHF 范式源头
   - [Ouyang et al., 2022, *Training language models to follow instructions with human feedback* (InstructGPT), arXiv:2203.02155](https://arxiv.org/abs/2203.02155)
   - [Bai et al., 2022, *Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback* (Anthropic HH), arXiv:2204.05862](https://arxiv.org/abs/2204.05862)
   - [Bai et al., 2022, *Constitutional AI: Harmlessness from AI Feedback*, arXiv:2212.08073](https://arxiv.org/abs/2212.08073)

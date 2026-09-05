@@ -108,7 +108,7 @@ TPU 和 GPU 的通信设计体现了两种不同取向。TPU 的经典路线更�
 
 *图 7.1-7 TPU8i/TPU8t networking*
 
-拓扑路线也会随 workload 演进。TPU8i / TPU8t 通过 switched network 吸收了更适合大规模和不规则通信的设计；GPU 路线也在通过 NVLink、NVSwitch、RoCE 和更大的 NVLink domain 缩短跨设备通信路径。
+拓扑路线也会随 workload 演进。TPU 路线里 TPU8i 偏 tree-style，更贴近 expert parallel 这类较规则的路由通信；TPU8t 通过 Virgo switched network 支持更大规模和更不规则的通信。GPU 路线则通过 NVLink、NVSwitch、RoCE 和更大的 NVLink domain 缩短跨设备通信路径。
 
 因此，讨论分布式训练时要同时看 GPU 数量和连接方式：同一节点内是否有 NVLink / NVSwitch，跨节点是 InfiniBand 还是 RoCE，是否存在更大的高速通信域。这些拓扑会直接决定 TP、SP、CP、EP 这类高频通信能不能承受。
 
@@ -263,8 +263,6 @@ balanced all-to-all 示例可以直接看作一次分片转置：
 $$
 \text{out}[i] = \sum_{r=0}^{p-1} \text{input}_r[i]
 $$
-
-
 
 其中 $p$ 是 `world_size`， $r$ 是 rank 编号， $i$ 是 tensor 内部的下标。reduce 操作按不同 rank 上的相同位置聚合元素，并不在单个 rank 的向量内部求和；判断 reduce 语义时，关键是下标对齐，图里的箭头方向只表示数据流。
 
@@ -954,7 +952,7 @@ ZeRO 的意义是在不要求模型结构改写的前提下，把 DDP 的复制�
 
 *图 7.6-9 ZeRO 实践：模型能否放下*
 
-图 7.6-9 换一个精度假设回答“模型能否放下”：纯 BF16 训练（配 Kahan summation）时 master weights 之外都用 BF16，账本降到 **12 B/param**（参数 2 + 梯度 2 + 优化器状态 8）。在一台 8×A100 80G 上，每卡 80 GB 预算除以各阶段的每参数字节数，得到可放下的最大模型规模：
+图 7.6-9 换一个精度假设回答“模型能否放下”：纯 BF16 训练（配 Kahan summation）时 master weights 之外都用 BF16，账本降到 **12 B/param**（参数 2 + 梯度 2 + 优化器状态 8，其中优化器状态 8 = FP32 master weights 4 + BF16 Adam 一阶矩 2 + BF16 Adam 二阶矩 2）。在一台 8×A100 80G 上，每卡 80 GB 预算除以各阶段的每参数字节数，得到可放下的最大模型规模：
 
 | 阶段 | 每参数字节数 | 最大模型规模 |
 | --- | --- | ---: |
@@ -1078,8 +1076,6 @@ $$
 8\mathrm{bsh} \frac{n_{devices} - 1}{n_{devices}}
 $$
 
-
-
 这个公式服务的判断是通信量级和通信频率：TP 通信发生在每层、每个 block 的矩阵切分边界上，因此更依赖低延迟、高带宽互联。
 
 GPU 训练里通常把 TP 限制在节点内 NVLink / NVSwitch 域；TPU 的 mesh / torus 网络更适合规则 collective，所以可以支持更大范围的 TP。TP 上限会随模型宽度、设备拓扑和实际 benchmark 改变。
@@ -1122,9 +1118,7 @@ $$
 \text{Activations memory per layer} = \mathrm{sbh} \left(10 + \frac{24}{t} + 5\frac{as}{ht}\right)
 $$
 
-
-
-其中 $10\mathrm{sbh}$ 对应 LayerNorm、Dropout、attention / MLP 输入等非矩阵乘法或逐点相关激活。它们计算便宜，但如果每个 rank 都保存完整序列维度，就会成为 TP 之后剩下的显存瓶颈。
+其中 $10\mathrm{sbh}$ 由三个逐点分量构成：两个 LayerNorm（4）+ Dropout（2）+ attention / MLP 输入（4）。它们计算便宜，但如果每个 rank 都保存完整序列维度，就会成为 TP 之后剩下的显存瓶颈。
 
 ![图 7.9-3 sequence parallelism](images/7-9-3-sequence-parallelism.png)
 

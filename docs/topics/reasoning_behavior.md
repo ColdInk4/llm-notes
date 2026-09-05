@@ -19,7 +19,7 @@ LLM 推理能力既是可观察的生成行为，也是消耗系统预算的训�
 下面三个 2026 年的研究案例展示了 LLM 推理能力在专业任务上的实际边界：
 
 - Anthropic 的 Claude 参与 Donald Knuth 研究过的图论猜想推导过程，记录见 [Knuth 的 PDF](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf)。
-- Brenner（Harvard SEAS）、Cohen-Addad（Google Research）和 Woodruff（CMU 与 Google Research 联合）在 [arXiv:2603.04735](https://arxiv.org/pdf/2603.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
+- Brenner（Google Research 与 Harvard SEAS）、Cohen-Addad（Google Research）和 Woodruff（Google Research 与 Carnegie Mellon 联合）在 [arXiv:2603.04735](https://arxiv.org/pdf/2603.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
 - Tony Feng 的 [arXiv:2601.23245](https://arxiv.org/abs/2601.23245) *Eigenweights for arithmetic Hirzebruch Proportionality* 在 *Declaration of AI Usage* 中写明：核心数学内容（Type A / Type C / Type D 等经典群的 eigenweight 公式与证明）由内部推理代理（基于 Gemini Deep Think 构建）完整生成，Type B 沿用 prior work [FYZ25a] 计算；人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
 
 三个案例从不同角度展示同一类机制：模型负责生成推理轨迹和数学构造，作者负责设定目标、组织验证与最终叙述。这与本专题后面讨论的 CoT、多路径采样与工具扩展主题相互呼应：推理行为既可以由模型直接产生，也可以由作者代理作为中间环节。
@@ -162,7 +162,7 @@ $$
 (\text{Person}, \text{Relation}) \to \text{Target Person}
 $$
 
-训练完成后，隐藏层单元的激活模式开始对应性别、国籍、家族分支等潜在结构。这个实验说明，神经网络可以通过梯度优化从数据中形成分布式表征（distributed representation）。抽象概念不必存放在某一个单独神经元里，可以由多个神经元的联合激活模式表示。
+训练完成后，隐藏层单元的激活模式开始对应国籍、代际、家族分支等潜在结构（论文中并未显式监督这些特征）。这个实验说明，神经网络可以通过梯度优化从数据中形成分布式表征（distributed representation）。抽象概念不必存放在某一个单独神经元里，可以由多个神经元的联合激活模式表示。
 
 ![专题图 9 FFN 层的 key-value memory 视角](images/reasoning-09-ffn-key-value-memory.jpg)
 
@@ -198,7 +198,9 @@ Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。Mor Ge
 
 *专题图 11 RLVR 对推理搜索空间的影响*
 
-专题图 11 可以理解为搜索空间重加权。预训练模型已经覆盖了许多候选轨迹，其中既有正确推理，也有错误捷径、冗长模板和格式化噪声。RLVR 用可验证奖励提高正确轨迹的相对概率，使小规模采样更容易命中有效路径。它的收益来自搜索偏好变得更好，风险来自奖励信号覆盖不足、格式奖励过强和长度偏差。
+专题图 11 可以理解为搜索空间重加权。预训练模型已经覆盖了许多候选轨迹，其中既有正确推理，也有错误捷径、冗长模板和格式化噪声。RLVR 用可验证奖励提高正确轨迹的相对概率，使小规模采样更容易命中有效路径。
+
+但 Yue 等人的实验同时给出反向证据（专题图 11 Problem B 与右侧 Omni-MATH-Train 曲线）：对于基座模型原本就能找到正确路径的部分题目，RLVR 训练会把这些路径的概率压低，使对应题目在新策略下变成不可解；随着训练步数推进，平均 pass@1 在提升，但 pass@256 在下降，说明可解题集合在收缩。这与 §2.3 Pass@k 部分的结论一致——RLVR 的能力上限仍由基座模型的分布决定，它主要重排并稳定调用已有轨迹，副作用是在覆盖范围和平均性能之间做权衡。RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度偏差，还包括这一类能力边界收缩。
 
 后训练常见方法包括：
 
@@ -234,7 +236,7 @@ Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。Mor Ge
 
 专题图 12 展示了 CoT 长度与准确率之间的倒 U 型关系。短 CoT 可能没有足够中间状态来完成自我检查；适度延长 CoT 可以提供草稿空间，让模型分解问题、记录局部结论并修正错误；超过任务需要后，额外 token 可能稀释关键信息，增加自相矛盾和反复修改的机会。
 
-2025 年，Wu / Wang / Ye / Du / Jegelka / Wang（[arXiv:2502.07266](https://arxiv.org/pdf/2502.07266)）通过控制实验构造不同长度的推理链，在多个难度梯度任务上绘制长度与准确率曲线。结果说明，最佳 CoT 长度会随任务难度移动：更难任务通常需要更长中间步骤，但最优长度依然存在。
+2025 年，Wu / Wang / Ye / Du / Jegelka / Wang（[arXiv:2502.07266](https://arxiv.org/pdf/2502.07266)）通过控制实验构造不同长度的推理链，在多个难度梯度任务上绘制长度与准确率曲线。结果说明，最佳 CoT 长度会随任务难度移动：更难任务通常需要更长中间步骤，但最优长度依然存在。专题图 12(b) 还展示了 RL 训练过程中 CoT 长度的演化：随着训练推进，平均 CoT 长度从约 350 token 收敛到约 220 token，验证准确率却稳定在 0.8 左右。这说明准确率提升并不要求更长 CoT，模型在学会正确路径后倾向于用更短表达，这与上文的"长度—准确率倒 U 型"结论互为印证。
 
 2026 年 2 月，论文 [Think Deep, Not Just Long](https://arxiv.org/pdf/2602.13517) 提出 DTR（deep-thinking ratio，深度思考率）。DTR 试图衡量生成序列中有多少 token 需要较深层网络计算后才收敛。
 
@@ -282,11 +284,11 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 
 模型参数在训练结束后通常保持固定，因此参数化知识天然存在时间滞后和覆盖范围限制。外部工具把模型能力从“只依赖参数记忆”扩展到“可以检索、调用 API、执行代码、观察环境并整合结果”。先看工具增强的总体路径，再看 RAG / Deep Research 这两类典型形态。
 
-![专题图 14 外部搜索工具与 LLM 的组合](images/reasoning-14-tool-search-llm.png)
+![专题图 14 智能体思考能力的四代演进](images/reasoning-14-tool-search-llm.png)
 
-*专题图 14 外部搜索工具与 LLM 的组合*
+*专题图 14 智能体思考能力的四代演进*
 
-专题图 14 展示了工具增强的基本路径：用户问题先触发模型规划，模型再调用搜索、数据库、天气服务、代码执行器或浏览器等工具，工具返回的信息被压缩进上下文，最后由模型综合生成回答。这个机制提升的是可用信息和动作空间，模型参数本身保持不变。
+专题图 14 把推理与外部动作的结合拆成四个阶段：第一代「无思」直接产出答案；第二代「规划」在动作前先生成计划；第三代「工具」让模型调用搜索、数据库、代码执行器或浏览器；第四代「交错」让思考与工具调用在每一步中交替进行。能力上每一代都在前一代基础上叠加新维度（规划、工具、交错），但模型参数本身保持不变，改变的是推理阶段如何组合内部思考与外部动作。
 
 检索增强生成（RAG）是最常见的形式。系统先从外部知识库检索相关文档，再把文档片段作为上下文输入模型，从而减少过时知识和幻觉。Deep Research 类系统把一次回答拆成多轮搜索、阅读、筛选和综合，适合开放式研究任务。
 
@@ -322,7 +324,7 @@ LLM 推理能力可以从多个层次理解。预训练通过语言建模压缩�
 - [Hinton 等人的家谱实验](https://www.cs.toronto.edu/~hinton/absps/naturebp.pdf)
 - [Transformer 中前馈层网络的探究](https://aclanthology.org/2021.emnlp-main.446/)（[arXiv:2012.14913](https://arxiv.org/abs/2012.14913)）
 - [从生产语言模型中抽取训练数据](https://arxiv.org/abs/2012.07805)
-- [Google 团队提出的类比推理](https://arxiv.org/pdf/2310.01714)
+- [Stanford 与 Google 团队合作提出的类比推理](https://arxiv.org/pdf/2310.01714)
 - [Mind Lab 后训练 RL 微调 Kimi-K2 的研究](https://macaron.im/mindlab/research/building-trillion-parameter-reasoning-rl-with-10-gpus)
 - [第 13 章 可验证奖励的强化学习](../chapter13/chapter13_可验证奖励的强化学习.md)
 - [过犹不及：理解大语言模型中的思维链长度](https://arxiv.org/pdf/2502.07266)

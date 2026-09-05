@@ -46,7 +46,7 @@ $$
 X = E_{\text{token}} + PE(pos)
 $$
 
-正余弦位置编码是 Transformer 模型中为序列引入**位置信息**的关键设计。由于 Transformer 的核心是自注意力机制，它**本身不具备对输入顺序**的感知能力，如果直接将词向量输入模型，那么“我爱你”和“你爱我”会被视为相同的集合。为了解决这一问题，需要在输入中显式加入位置信息。正余弦位置编码是一种无需训练、通过固定公式生成的位置表示方式，其核心思想是利用不同频率的正弦和余弦函数，为序列中的每个位置生成一个唯一的、且具有相对位置关系感知能力的编码向量。
+正余弦位置编码是 Transformer 模型中为序列引入**位置信息**的关键设计。由于 Transformer 的核心是自注意力机制，它**本身不具备对 token 顺序**的感知能力：如果直接把同一组词向量输入模型，那么“我爱你”和“你爱我”会被视为相同的 token 集合。为了解决这一问题，需要在输入中显式加入位置信息。正余弦位置编码是一种无需训练、通过固定公式生成的位置表示方式，其核心思想是利用不同频率的正弦和余弦函数，为序列中的每个位置生成一个唯一的、且具有相对位置关系感知能力的编码向量。
 
 编码向量的维度按相邻两维分成一组，第 $i$ 组（ $i = 0, 1, \dots, d_{\text{model}}/2 - 1$ ）共用同一个频率。对序列中第 $pos$ 个位置（从 0 开始计数），这一组的偶数维 $2i$ 用正弦函数：
 
@@ -98,7 +98,7 @@ $$
 \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right)V
 $$
 
-这里 $d_k = d_{\text{model}}$ ，缩放因子 $\sqrt{d_k}$ 用于防止点积结果过大导致梯度进入饱和区。
+这里 $d_k = d_{\text{model}}$ 是单头情形的特例——还没有把 Q/K/V 拆成多个 head，Q/K/V 与输入 $X$ 保持相同的 $d_{\text{model}}$ 维度。缩放因子 $\sqrt{d_k}$ 用于防止点积结果过大导致梯度进入饱和区。
 
 单头注意力的局限在于，它只能计算一种“查询-键-值”关系，如同只用一双眼睛观察。这导致模型难以同时捕获语法结构、语义关联、长程依赖等多种模式，注意力分布往往过于分散，无法聚焦于多个重要的子空间。因此，普遍做法是将注意力机制重复多次，让每个头学习不同的子空间表示，最后将结果合并。
 
@@ -400,7 +400,7 @@ $$
 
 *图 3.2-5 Pre-norm/Post-norm 的训练曲线和梯度行为对比，用来说明 norm 位置会影响深层网络稳定性*
 
-采用预归一化配合其他稳定化技巧后，即使不使用**预热机制**，系统表现也能媲美甚至**优于**需要精细预热方案的**后归一化 LayerNorm**。左图展示了**机器翻译**场景下的对比结果，右图则显示在各类任务（特别是使用后归一化训练的 BERT）上的趋势。
+采用预归一化配合其他稳定化技巧后，即使不使用**预热机制**，系统表现也能媲美甚至**优于**需要精细预热方案的**后归一化 LayerNorm**。左图展示了英语-越南语机器翻译（Salazar & Nguyen 2019）下的 Dev BLEU 收敛轨迹；右上是 Xiong 2020 在 IWSLT 机器翻译任务上的验证损失与 BLEU 曲线（同一任务的 Adam 优化器 × 预热对比）；右下是 BERT 在预训练步数上的验证损失对比，是当前图片中唯一跳出机器翻译场景的实验。
 
 关于预归一化的优势存在**多种解释**：有研究认为它能避免层间**梯度衰减**，保持**梯度规模恒定**；而未使用预热的后归一化会导致**梯度爆炸**（橙色曲线）。这些论点都很有说服力。但更符合现代认知的解释可能是预归一化本身就是**更稳定的训练架构**。
 
@@ -433,7 +433,7 @@ RMSNorm 的 systems intuition 是：归一化层 FLOPs 占比很小，但 arithm
 > [!NOTE]
 > **Pre-norm 的例外**：在现代 dense Transformer 中，pre-norm 几乎是默认选择，OPT-350M（[arXiv:2205.01068](https://arxiv.org/abs/2205.01068)）是仍保留 post-layer-norm 的代表案例。HF [`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m) 的 config 里 `do_layer_norm_before: false` 直接对应这一点，同一份 config 还写着 `activation_function: "relu"`、`hidden_size: 1024` 与 `word_embed_proj_dim: 512`——同一代模型内部的 norm 顺序、激活和 embedding 投影都可能不统一，读配置时按每个 checkpoint 的字段确认。
 
-Narang 等人（EMNLP 2021，[arXiv:2102.11972](https://arxiv.org/abs/2102.11972)）的消融给出了具体数字：同为 223M 参数、11.1T ops 的设置下，基准 Transformer 每秒 3.50 步，RMSNorm 版本 3.68 步，final loss 也从 1.838 降到 1.821。
+Narang 等人（EMNLP 2021，[arXiv:2102.11972](https://arxiv.org/abs/2102.11972)）的消融在 Table 1 给出具体数字：同为 223M 参数、11.1T ops 的设置下，Vanilla Transformer（pre-norm + LayerNorm + shared biases + relative attention）每秒 3.50 步、final loss 1.838；将 LayerNorm 替换为 RMSNorm 后每秒 3.68 步、final loss 1.821。两组对照除归一化方式外保持一致，因此 RMSNorm 的收益主要来自实现层的算术强度和数据移动改善，而不是表达能力本身。
 
 ![图 3.2-6 RMSNorm 实验](images/3-2-6-rmsnorm-experiment.png)
 
@@ -571,17 +571,17 @@ Shazeer 的 GLU 变体实验（*GLU Variants Improve Transformer*, [arXiv:2002.0
 
 *图 3.2-11 位置编码从输入端加绝对位置向量，逐步演化到在 attention 计算中注入相对位置信息*
 
-**1. 绝对嵌入（Absolute Embedding）--正弦嵌入（Sine Embeddings）**
+**1. 绝对嵌入（Absolute Embedding）**
 
-它为序列中**每个位置分配唯一编码向量**，与词嵌入相加：
+绝对嵌入给序列中**每个位置分配唯一编码向量**，与词嵌入相加：
 
 $$
 \text{Final Embedding} = \text{Token Embedding} + \text{Positional Embedding}
 $$
 
-T5 等模型则采用相对位置编码。
+这里 $u_i \in \mathbb{R}^{d_{\text{model}}}$ 是位置 $i$ 的编码，可以是固定公式生成，也可以是训练中学习的参数。绝对嵌入的最大问题是位置向量只表达“我是位置 i”，并不能直接告诉模型“我相对位置 j 偏移了多少”。
 
-**正弦嵌入就是一种绝对位置编码。**
+**1a. 正弦嵌入（Sine Embeddings）**
 
 原始 Transformer 论文提出的**固定式绝对位置编码**，使用正弦/余弦函数生成唯一模式：
 
@@ -596,19 +596,32 @@ $$
 其中：
 
 - $pos$ ：token 位置索引。
-- $i$ ：维度索引（0 到 $d_{\text{model}}/2$ ）。
+- $i$ ：维度索引（0 到 $d_{\text{model}}/2 - 1$）。
 - $d_{\text{model}}$ ：模型维度（如 512）。
 
 正弦嵌入是**无参化**的，它**无需训练参数**，并且**计算高效**。同时具有一定的 **外推性**，可泛化到训练时未见的更长序列。
 
 但是它是**绝对位置感知**，无法直接建模相对距离，并且**长序列性能会衰减**，位置编码差异随距离增大而模糊。正弦嵌入理论上可计算任意位置，具有一定的外推能力，但实际长序列性能会显著衰减。
 
+**1b. 可学习绝对嵌入**
 
-**2. 相对嵌入（Relative Embedding）-- 旋转位置编码（RoPE）**
+GPT-1/2/3、OPT 等模型把位置编码改成可学习的 $u_i$：每个位置单独占一行 embedding 表，训练中与 token embedding 一起被更新。它的表达能力强，但参数量随 max_position_embeddings 线性增长，外推到训练序列长度之外的能力也有限。
+
+**2. 相对嵌入（Relative Embedding）**
+
+相对嵌入直接把“相对距离”的信号送进 attention 计算里。T5、Gopher、Chinchilla 等模型在 attention logit 上加一个与 $i - j$ 相关的偏置项：
+
+$$
+e_{ij} = \frac{x_i W^Q (x_j W^K + a_{ij}^K)^\mathrm{T}}{\sqrt{d_z}}
+$$
+
+其中 $a_{ij}^K$ 是按 key 端位置差查表得到的相对偏置。它的优势是直接建模相对位移，缺点是破坏了“embedding 的内积”结构，无法在 attention 之外复用。
+
+**3. 旋转位置编码（RoPE）**
+
 核心思想是建模 token 间的相对距离，而非只给每个位置分配一个绝对向量。RoPE 把位置变换放到 Q/K 上，使 attention score 直接依赖相对位移。
 
-旋转位置编码就是一种相对嵌入。
-
+旋转位置编码就是一种相对嵌入，但与上面 T5 的“偏置加到 logit”不同，它用 Q/K 上的**旋转变换**来编码位置。
 
 RoPE 最早由苏剑林（Jianlin Su）在 2021 年的论文《RoFormer: Enhanced Transformer with Rotary Position Embedding》（[arXiv:2104.09864](https://arxiv.org/abs/2104.09864)）中提出，GPT-J 是较早采用 RoPE 的知名开源模型之一。现代 decoder-only LLM 大量使用 RoPE 或它的长上下文变体，因为它把位置信息注入到 Q/K 上，位置关系会直接进入每层 attention score。
 
@@ -684,13 +697,13 @@ $$
 
 $$
 R(m\theta)=\begin{bmatrix}
-\cos(m\theta_0)&\sin(m\theta_0)&0&0&\cdots&0\\
--\sin(m\theta_0)&\cos(m\theta_0)&0&0&\cdots&0\\
-0&0&\cos(m\theta_1)&\sin(m\theta_1)&\cdots&0\\
-0&0&-\sin(m\theta_1)&\cos(m\theta_1)&\cdots&0\\
+\cos(m\theta_0)&-\sin(m\theta_0)&0&0&\cdots&0\\
+\sin(m\theta_0)&\cos(m\theta_0)&0&0&\cdots&0\\
+0&0&\cos(m\theta_1)&-\sin(m\theta_1)&\cdots&0\\
+0&0&\sin(m\theta_1)&\cos(m\theta_1)&\cdots&0\\
 \vdots&\vdots&\vdots&\vdots&\ddots&\vdots\\
 0&0&0&0&\cdots&\cos(m\theta_{\frac{d}{2}-1})\\
-0&0&0&0&\cdots&-\sin(m\theta_{\frac{d}{2}-1})
+0&0&0&0&\cdots&\sin(m\theta_{\frac{d}{2}-1})
 \end{bmatrix}
 $$
 
@@ -774,19 +787,21 @@ DeepSeek-V2 报告中，MLA 通过显著减少生成所需的 KV cache 来提升
 
 传统 Transformer 采用多头注意力（MHA），每个注意力头需独立缓存 Key 和 Value 向量。对一条上下文长度为 $S$ 的请求，层数为 $L$ 、attention heads 数为 $n_h$ 、每个 head 维度为 $d_h$ 时，KV cache 的元素数量为 $O(S \cdot L \cdot n_h \cdot d_h)$ ，成为长序列推理的主要瓶颈。
 
-MLA 的核心是将所有注意力头的 Key 和 Value 联合压缩到一个共享的低维潜在空间。给定当前 hidden state $h_t$ ，先构造一个 KV latent：
+MLA 的核心是将所有注意力头的 Key 和 Value 联合压缩到一个共享的低维潜在空间。给定当前 hidden state $h_t$（维度 $d_{\text{model}}$），先用下投影 $W_D^{\mathrm{KV}} \in \mathbb{R}^{d_c \times d_{\text{model}}}$ 构造一个 KV latent：
 
 $$
 c_t^{\mathrm{KV}} = W_D^{\mathrm{KV}}h_t
 $$
 
-其中 $c_t^{\mathrm{KV}}$ 是 K/V 共用的压缩向量，维度 $d_c$ 远小于所有 K/V heads 的总维度。Key 和 value 的相关投影由同一个 latent 分别恢复：
+其中 $c_t^{\mathrm{KV}}$ 是 K/V 共用的压缩向量，维度 $d_c$ 远小于所有 K/V heads 的总维度（DeepSeek-V2 / V3 官方 config 均取 $d_c = 512$；V2 $d_{\text{model}}=5120$ 时约为 $d_{\text{model}}/10$，V3 $d_{\text{model}}=7168$ 时约为 $d_{\text{model}}/14$；具体 KV cache 体积对比见 [第 9 章 §9.3.2](../chapter9/chapter9_推理系统.md)）。Key 和 value 的相关投影由同一个 latent 分别恢复：
 
 $$
-k_t^C = W_U^Kc_t^{\mathrm{KV}}, \quad v_t^C = W_U^Vc_t^{\mathrm{KV}}
+k_t^C = W_U^K c_t^{\mathrm{KV}}, \quad v_t^C = W_U^V c_t^{\mathrm{KV}}
 $$
 
-推理缓存只保存 $c_t^{\mathrm{KV}}$ 这一个共享 latent。对每层每个 token，基础缓存从 MHA 的 $2n_hd_h$ 个元素缩小到约 $d_c$ 个元素；这里 $n_h$ 是 attention heads 数， $d_h$ 是每个 head 的维度。
+其中 $W_U^K, W_U^V \in \mathbb{R}^{n_h d_h \times d_c}$ 是上投影矩阵，把压缩 latent 复原到 $n_h d_h$ 的总维度。
+
+推理缓存只保存 $c_t^{\mathrm{KV}}$ 这一个共享 latent。对每层每个 token，基础缓存从 MHA 的 $2 n_h d_h$ 个元素缩小到约 $d_c$ 个元素；这里 $n_h$ 是 attention heads 数， $d_h$ 是每个 head 的维度。
 
 图 3.2-18 中的 MLA 把需要缓存的 K/V 信息压到较低维 latent 表示中，再在 attention 路径上吸收或合并相关上投影。它重新定义了模型的缓存表示，训练和推理都需使用同一套结构。
 
@@ -798,7 +813,7 @@ $$
 
 MLA 在 attention 路径中增加了投影或重构计算。KV cache 和 HBM bandwidth 已成为瓶颈时，这些额外计算可以换取更低的显存占用和读取量。
 
-RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：额外构造带 RoPE 的 query 和共享 key，并缓存该位置 key。每层每个 token 的缓存量约为 $d_c+d_h^R$ ，其中 $d_h^R$ 是 decoupled RoPE key 的维度。
+RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_h^R$ ，其中 $d_c$ 是 shared KV latent 的维度、$d_h^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_h^R = d_h / 2$ 即每个 head dim 的一半用于位置编码）。
 
 ![图 3.2-19 MLA 实验](images/3-2-19-mla-experiment.png)
 
@@ -834,7 +849,7 @@ CLA 的收益来自减少每层都独立保存 K/V 的开销。代价是相邻�
 
 稀疏 attention 的基本思路是为每个 query 限制可访问的历史位置：局部窗口保留邻近 token 的高分辨率信息，对角线或跨块模式负责把远处信息传回来。这样可以在表达能力和运行效率之间取得平衡。
 
-GPT-3 最初发布时就采用了这类技巧来实现更大的注意力窗口。滑动窗口注意力是该思想的另一个变体，在每个层级仅关注当前位置的邻近区域。这种方式能有效控制处理长文本所需的总资源量，此时有效感受野等于局部范围乘以层数。虽然这些是较早的思路，但现代实现方式有了新的发展。
+GPT-3 最初发布时就采用了这类技巧来实现更大的注意力窗口。滑动窗口注意力是该思想的另一个变体，在每个层级仅关注当前位置的邻近区域。这种方式能有效控制处理长文本所需的总资源量；理论上信息可逐层向外传播，最远距离的上界约为「局部窗口 × 堆叠层数」（实际感受野取决于内容是否被有效聚合）。虽然这些是较早的思路，但现代实现方式有了新的发展。
 
 ![图 3.2-16 sliding-window attention](images/3-2-16-sliding-window-attention.png)
 
@@ -922,7 +937,7 @@ CSA 层执行流程可以概括为：先对 KV cache 做可学习的加权压缩
 
 HCA 的目标是极低成本地维护一个覆盖十万级 token 的全局背景视野。它只做压缩，不做稀疏选择。
 
-其实 HCA 与 CSA 类似，但压缩率 m 比 CSA 要大得多，多个 token 的局部信息被融合。`DeepSeek-V4-Pro/config.json` 的 `compress_ratios` 逐层给出这两档取值：61 层里绝大多数位置按 `128, 4, 128, 4, …` 交替，HCA 层压缩率 128、CSA 层压缩率 4，只有开头和末尾几层例外。因为压缩得足够狠，序列长度变得极短。所以 HCA 可以在这个极短的序列上进行**密集注意力**，让每个 token 都能不丢失地看到整个全局背景。由于序列短，计算成本完全可控。
+其实 HCA 与 CSA 类似，但压缩率 m 比 CSA 要大得多，多个 token 的局部信息被融合。`DeepSeek-V4-Pro/config.json` 的 `compress_ratios` 逐层给出这两档取值（61 层对应 61 个数值）：开头两层是 `128, 128`，之后按 `4, 128` 反复交替到倒数第二层，最末一层的压缩率是 `0`（即全分辨率 full-attention 层）。因此 HCA 层压缩率 128、CSA 层压缩率 4，序列中只有首尾几层与该交替模式不完全吻合。因为压缩得足够狠，序列长度变得极短。所以 HCA 可以在这个极短的序列上进行**密集注意力**，让每个 token 都能不丢失地看到整个全局背景。由于序列短，计算成本完全可控。
 
 ### 3.2.5.8 线性时间替代：linear attention / Mamba-2 / Gated DeltaNet
 
@@ -996,13 +1011,7 @@ $$
 d_{\text{ff}} = \frac{2}{3} \cdot 4 d_{\text{model}} = \frac{8}{3} d_{\text{model}} \approx 2.66 d_{\text{model}}
 $$
 
-观察现有模型会发现，许多都遵循这个经验法则，**$8/3 \approx 2.66$**。
-
-$$
-d_{\text{ff}} = (8/3)d_{\text{model}}
-$$
-
-> 上面这条公式和上一段结论描述同一件事：$8/3 \approx 2.66$ 。下一张图（图 3.3-1）会展开 $d_{\text{ff}}$ 与 $d_{\text{model}}$ 的实际分布。
+观察现有模型会发现，许多都遵循这个经验法则，**$8/3 \approx 2.66$**。下一张图（图 3.3-1）会展开 $d_{\text{ff}}$ 与 $d_{\text{model}}$ 的实际分布。
 
 ![图 3.3-1 d_ff&d_model](images/3-3-1-ffn-model-dim-ratio.png)
 
@@ -1010,7 +1019,7 @@ $$
 
 以 PaLM 为例，它虽然是 SwiGLU 模型，但把 $d_{\text{ff}}$ 直接设为 $4d_{\text{model}}$，没有做 2/3 缩放。LLaMA-2 70B 与 Mistral-7B v0.1 落在 3.5 倍附近：LLaMA-2 70B 的 `hidden_size = 8192`、`intermediate_size = 28672`，Mistral-7B v0.1 的 `hidden_size = 4096`、`intermediate_size = 14336`，两者都是 $d_{\text{ff}}/d_{\text{model}} = 3.5$。两个模型都用 GQA（`num_key_value_heads = 8`），共享 KV 省下的预算被重新分配给 MLP，于是在 $8/3$ 的基础上再乘约 1.33。
 
-LLaMA-2 7B/13B 仍用 MHA（`num_key_value_heads = num_attention_heads`），FFN expansion 沿用 $8/3$ 左右而没有 GQA 下的 1.33 倍放大。LLaMA-1 7B 的 `hidden_size = 4096`、`intermediate_size = 11008`，$d_{\text{ff}}/d_{\text{model}} \approx 2.687$；DeepSeek-LLM-67B-base 和 Yi-34B 共享 `hidden_size = 7168`、`intermediate_size = 20480`，比值约 $2.857$，落在 $2.66\text{–}2.86$ 区间。Qwen 系列在不同代际之间来回摆动而非单调收敛：原版 Qwen-14B（`hidden_size = 5120`、`intermediate_size = 27392`）$d_{\text{ff}}/d_{\text{model}} \approx 5.35$，Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`）回到约 $2.675$，Qwen2-7B（`hidden_size = 3584`、`intermediate_size = 18944`）再次跳到约 $5.29$，明显偏离 $8/3$。这条经验区间因此只能覆盖同代密集 decoder 的稳定样本，跨代跨族外推都需要重新核对 config。
+LLaMA-2 7B/13B 仍用 MHA（`num_key_value_heads = num_attention_heads`），FFN expansion 沿用 $8/3$ 左右而没有 GQA 下的 1.33 倍放大。LLaMA-1 7B 的 `hidden_size = 4096`、`intermediate_size = 11008`，$d_{\text{ff}}/d_{\text{model}} \approx 2.687$；DeepSeek-LLM-67B-base 和 Yi-34B 共享 `hidden_size = 7168`、`intermediate_size = 20480`，比值约 $2.857$，落在 $2.66\text{–}2.86$ 区间。Qwen 系列在不同代际之间来回摆动而非单调收敛：原版 Qwen-14B（`hidden_size = 5120`、`intermediate_size = 27392`，`hidden_act: silu`，实际为 SwiGLU）$d_{\text{ff}}/d_{\text{model}} \approx 5.35$，Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`，SwiGLU）回到约 $2.675$，Qwen2-7B（`hidden_size = 3584`、`intermediate_size = 18944`，SwiGLU）再次跳到约 $5.29$，明显偏离 $8/3$。原版 Qwen-14B 没有沿用 GLU 的 2/3 缩放，反而把 expansion 推到约 5 倍；Qwen1.5 才把这条经验值拉回 8/3 附近；Qwen2 又回到高 expansion 区段。整体看，Qwen 系列并非单调逼近 $8/3$，而是按代际目标在不同取值之间反复调整，读配置时需要按代核对。
 
 **例外二：T5 模型**
 
@@ -1040,7 +1049,7 @@ T5 和 LaMDA 是明显例外，T5 把这个比例推到 16。PaLM 540B 也不在
 
 *图 3.3-3 多数模型让 head 数量乘以 head dim 接近 model dim，但也存在 T5、LaMDA 等例外*
 
-Bhojanapalli 等人 2020 年的研究提出，如果注意力头数量不断增加，其秩会越来越低。如果每个头的维度非常少，就会开始影响注意力操作的表达能力。但在现代 LLM 实践中，1:1 比例通常没有表现出明显的低秩瓶颈。
+Bhojanapalli 等人在 [*Low-Rank Bottleneck in Multi-head Attention Models*, arXiv:2002.07028](https://arxiv.org/abs/2002.07028) 中提出，如果 head dim 过小而头数继续增加，attention 矩阵会落入低秩瓶颈，限制表达能力。1:1 比例附近则一般没有表现出明显的低秩约束，这是当前主流模型能稳定落在这条经验线上的部分原因。
 
 ![图 3.3-4 参数比例](images/3-3-4-parameter-ratio.png)
 
@@ -1054,9 +1063,9 @@ Bhojanapalli 等人 2020 年的研究提出，如果注意力头数量不断增�
 
 *图 3.3-5 宽深比通常以 $d_{\text{model}}/n_{\text{layer}}$ 观察，不同模型族集中在一段经验区间内*
 
-主流 dense decoder-only 模型的宽深比集中在每层约 100–200 个隐藏维度，即 $d_{\text{model}}/n_{\text{layer}} \approx 100\text{–}200$。按各模型官方 config 计算：BLOOM 176B 14336/70 ≈ **205**、T5 v1.1 XXL 4096/24 ≈ **171**、PaLM 540B 18432/118 ≈ **156**、GPT-3 175B 12288/96 = **128**、OPT-6.7B 与 Mistral-7B v0.1 4096/32 = **128**、Qwen-7B 与 OLMo-3-7B 同样是 4096/32 = **128**、Qwen2-7B 3584/28 = **128**、LLaMA-1 7B 4096/32 = **128**、LLaMA-1 65B 与 LLaMA-3 70B 8192/80 ≈ **102**、Gemma 3 ≈ **87**、Gemma 4 ≈ **61**。
+主流 dense decoder-only 模型的宽深比集中在每层约 100–200 个隐藏维度，即 $d_{\text{model}}/n_{\text{layer}} \approx 100\text{–}200$。按各模型官方 config 计算：BLOOM 176B 14336/70 ≈ **205**、T5 v1.1 XXL 4096/24 ≈ **171**、PaLM 540B 18432/118 ≈ **156**、GPT-3 175B 12288/96 = **128**、OPT-6.7B 与 Mistral-7B v0.1 4096/32 = **128**、Qwen-7B 与 OLMo-3-7B 同样是 4096/32 = **128**、Qwen2-7B 3584/28 = **128**、LLaMA-1 7B 4096/32 = **128**、LLaMA-1 65B 与 LLaMA-3 70B 8192/80 ≈ **102**、Gemma 3 27B 5376/62 ≈ **87**、Gemma 4 E2B 2048/35 ≈ **59**、Gemma 4 31B dense 4608/48 ≈ **96**。
 
-encoder-decoder 族整体更窄：T5-11B 的 `d_model = 1024` 配 `num_layers = 24`，比值降到 40 出头。所以这条经验区间只在 dense decoder-only 内部稳定，跨族外推会失效；Gemma 4 则落在 decoder-only 区间偏低的一端。
+encoder-decoder 族整体更窄：T5-11B 的 `d_model = 1024` 配 `num_layers = 24`，比值降到 40 出头。所以这条经验区间只在 dense decoder-only 内部稳定，跨族外推会失效；Gemma 4 的小模型（E2B）落在 decoder-only 区间偏低的一端，而同代际的 31B dense 又回到接近 LLaMA-2 70B 的 ~96 区间。
 
 宽深比的考量非常重要，它会控制可用并行度。如果采用流水线并行，通常会将不同层切割后分配到不同设备或设备块上；对于特别宽的模型，可以采用张量并行，将矩阵切片分布到多个 GPU 上。不同并行范式会产生不同约束：张量并行需要非常高速的网络，而流水线并行对网络速度或延迟的要求可以稍低。因此网络约束可能反过来影响宽度-深度的决策。
 
@@ -1155,13 +1164,13 @@ $$
 - $K = W_k(x)$
 - $\text{logits} = QK^{\mathrm{T}} / \sqrt{d_k}$
 
-先让查询向量和键向量通过层归一化层：
+先让查询向量和键向量通过层归一化层（早期实现用 LayerNorm，现代实现多用 RMSNorm）：
 
-- $Q = \text{LayerNorm}(W_q(x))$
-- $K = \text{LayerNorm}(W_k(x))$
+- $Q = \text{RMSNorm}(W_q(x))$
+- $K = \text{RMSNorm}(W_k(x))$
 - $\text{logits} = QK^{\mathrm{T}} / \sqrt{d_k}$
 
-在进行 **softmax** 点积运算之前，先让**查询向量和键向量通过层归一化层**。这是另一种控制 softmax 行为的思路：通过控制 softmax 输入的数值范围来抑制极端 logits。
+在进行 **softmax** 点积运算之前，先让**查询向量和键向量通过归一化层**。这是另一种控制 softmax 行为的思路：通过控制 softmax 输入的数值范围来抑制极端 logits。
 
 这个技巧最初来自视觉和多模态模型领域，Dehghani 等人 2023 年关于训练超大视觉 Transformer 的论文（*Scaling Vision Transformers to 22 Billion Parameters*, [arXiv:2302.05442](https://arxiv.org/abs/2302.05442)）采用了相关做法。随后 Meta 的 Chameleon 和 Hugging Face 的 Idefics 在多模态训练组件中采用了这个技巧，Gemma 2、DCLM、OLMo 2 等模型也用它稳定训练。
 
@@ -1213,5 +1222,5 @@ Transformer 的许多超参数存在经验区间，例如 GLU FFN 通常会降�
 
 - 课程映射：Lecture 3 提供现代 dense Transformer 默认骨架；Lecture 4 补充 attention alternatives 与 MoE 边界；Lecture 10 支撑 GQA、MLA、CLA 与 KV cache 的推理成本讨论。
 - 相关论文：Transformer、RMSNorm、SwiGLU/GLU、RoPE（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864)）、[GQA](https://arxiv.org/abs/2305.13245)、[MLA / DeepSeek-V2](https://arxiv.org/abs/2405.04434)、CLA、[Gated DeltaNet](https://arxiv.org/abs/2412.06464)。
-- 架构消融与超参数：[Narang et al., EMNLP 2021](https://arxiv.org/abs/2102.11972)（Table 1 的 step/s 与 final loss）、[Kaplan et al., 2020](https://arxiv.org/abs/2001.08361)（Figure 5 的 FFN ratio / aspect ratio / head dim 扫描）、[PaLM](https://arxiv.org/abs/2204.02311) Table 1 与训练设置、[ST-MoE](https://arxiv.org/abs/2202.08906)（router z-loss 与 Mesh TensorFlow z-loss 的关系）、[OLMo 2](https://arxiv.org/abs/2501.00656) Table 3 的稳定性配方、[Methods of improving LLM training stability, arXiv:2410.16682](https://arxiv.org/abs/2410.16682) Table 4 的困惑度对比。
+- 架构消融与超参数：[Narang et al., EMNLP 2021](https://arxiv.org/abs/2102.11972)（Table 1 的 step/s 与 final loss）、[Kaplan et al., 2020](https://arxiv.org/abs/2001.08361)（Figure 5 的 FFN ratio / aspect ratio / head dim 扫描）、[PaLM](https://arxiv.org/abs/2204.02311) Table 1 与训练设置、[ST-MoE](https://arxiv.org/abs/2202.08906)（router z-loss 与 Mesh TensorFlow z-loss 的关系）、[OLMo 2](https://arxiv.org/abs/2501.00656) Table 3 的稳定性配方、[Methods of improving LLM training stability, arXiv:2410.16682](https://arxiv.org/abs/2410.16682) Table 4 的困惑度对比、[Bhojanapalli et al., ICML 2020](https://arxiv.org/abs/2002.07028)（Low-Rank Bottleneck in Multi-head Attention Models）。
 - 官方配置：[`mistralai/Mistral-7B-v0.1`](https://huggingface.co/mistralai/Mistral-7B-v0.1)、[`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m)、[`Qwen/Qwen2-7B`](https://huggingface.co/Qwen/Qwen2-7B)、`Gemma2Config` 与 `Gemma4TextConfig`（Hugging Face Transformers main 分支）、[Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/model_doc/deepseek_v4)与 [DeepSeek-V4-Pro 配置](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)。查阅日期：2026-09-04。

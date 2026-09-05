@@ -31,7 +31,15 @@
 
 ## 14.1 多模态的目标与边界
 
-把多模态模型纳入本章的视角是：Transformer 的核心抽象是 token 序列，因此每种非文本模态都要先经过"token 化"或"embedding 化"，再进入与文本 token 同一套注意力与 FFN 计算。本章沿三条主线展开：(1) **对齐与理解**——CLIP / SigLIP 用图文对比学习把图像压到文本语义附近（§14.2）；(2) **模板化 VLM**——LLaVA / LLaVA OneVision / Qwen-VL 系列用 vision encoder + projector + LM 模板（§14.3-§14.5）；(3) **统一自回归**——Chameleon 把图像变成离散 token，与文本 token 在同一 next-token objective 上预测（§14.6）。最后一节讨论多模态训练稳定性（QK norm、z-loss、logit drift）（§14.7），并把音频等尚未充分覆盖的模态放到延伸阅读小节（§14.8）。理解任务和生成任务在 encoder / decoder / loss / sampling 上的不同取舍，也会贯穿这三类路线。
+Transformer 的核心抽象是 token 序列，因此每种非文本模态都要先经过"token 化"或"embedding 化"，再进入与文本 token 同一套注意力与 FFN 计算。
+
+本章沿三条主线展开：
+
+- **对齐与理解**：CLIP / SigLIP 用图文对比学习把图像压到文本语义附近（§14.2）。
+- **模板化 VLM**：LLaVA / LLaVA OneVision / Qwen-VL 系列用 vision encoder + projector + LM 模板（§14.3-§14.5）。
+- **统一自回归**：Chameleon 把图像变成离散 token，与文本 token 在同一 next-token objective 上预测（§14.6）。
+
+最后一节讨论多模态训练稳定性（QK norm、z-loss、logit drift）（§14.7），并把音频等尚未充分覆盖的模态放到延伸阅读小节（§14.8）。理解任务和生成任务在 encoder / decoder / loss / sampling 上的不同取舍，也会贯穿这三类路线。
 
 ## 14.2 CLIP 与 SigLIP：用图文对学习视觉语义
 
@@ -191,7 +199,7 @@ Qwen-VL 系列展示了 VLM 向更通用多模态模型演进的几个方向：�
 ### 14.5.2 Qwen2-VL
 
 - 视觉编码器：更大 ViT（约 675M 参数）；支持 **dynamic resolution**。
-- 每个 224×224 patch 经过 ViT/14 编码后再做 2×2 压缩，产出约 66 tokens。
+- 224×224 图像切成 14×14 patches，经 ViT/14 编码后产生 16×16 = 256 个 token；再做 2×2 空间压缩，最终约 66 tokens。
 - 视频采样 2 帧/秒，单视频 token 上限 16384。
 - 引入 **Multimodal Rotary Position Embedding（MRoPE）**——把时间、宽度、高度作为三个独立 rotary 轴。
 - LM 初始化自 Qwen2；视觉编码器初始化自 DFN。
@@ -208,11 +216,11 @@ MRoPE 把位置信息扩展到多维输入。文本只有一维顺序；图像�
 ### 14.5.3 Qwen3-VL
 
 - 视觉编码器：**SigLIP-2**（与 SigLIP 同架构）。
-- **Interleaved MRoPE**：时间 / 高度 / 宽度三个轴按 `[t w h t w h t w h ...]` 交错分配到不同频段（Qwen2-VL 是 `[t t t t w w w w h h h h]`）；相邻 token 在三个轴上都共享一个分量。
+- **Interleaved MRoPE**：把 t / h / w 三个分量在 embedding 维度上交错分配（pattern `[t h w t h w t h w ...]`），让每个轴都同时覆盖低频段与高频段；Qwen2-VL 是按 `[t t t t h h h h w w w w]` 把三个轴分成三个连续块，低频和高频被某一轴独占，长视频上频谱不均衡。Qwen3-VL 的交错方式避免这种偏置，长视频位置建模更稳定。
 - 视频帧附带 **显式文本时间戳**（区别于 T-RoPE 的隐式时间位置）。
 - 上下文长度：**256K**。
 - 模型规格：dense 2B / 4B / 8B / 32B 与 MoE 30B-A3B / 235B-A22B。
-- Loss：**square-root-normalized per-token loss**——按 $\sqrt{\text{num\_tokens\_per\_sample}}$ 归一化，避免视频样本因 token 数远大于图文样本而主导梯度。
+- Loss：**square-root-normalized per-token loss**——按 $\sqrt{T_i}$ 归一化（$T_i$ 是样本 $i$ 的 token 数），避免视频样本因 token 数远大于图文样本而主导梯度。
 - **DeepStack**：在多个 Transformer 层注入视觉特征，而不只在 adapter 输出层；提升视觉-语言对齐深度。
 - 引用：DeepStack 论文 Meng et al., *DeepStack: Deeply Stacking Visual Tokens is Surprisingly Simple and Effective for LMMs*，[arXiv:2406.04334](https://arxiv.org/abs/2406.04334)；Qwen3-VL Technical Report [arXiv:2511.21631](https://arxiv.org/abs/2511.21631)。
 
@@ -249,7 +257,7 @@ interleaved MRoPE 把时间、高度和宽度轴交错分配到不同频段，�
 VQ-VAE 把连续图像压缩成离散 codebook indices。Encoder 产生连续 latent，quantization 把 latent 映射到最近的 codebook entry，decoder 再重建图像。对语言模型来说，codebook index 就像视觉词表中的 token。
 
 > [!NOTE]
-> Chameleon 训练规模（[arXiv:2405.09818](https://arxiv.org/abs/2405.09818)）：VQ-VAE 把 512×512 图像编码为 1024 个离散 tokens（codebook 大小 8192）；训练分两阶段，第二阶段混入高质量数据。训练稳定性方面，文本 token 的熵低、图像 token 的熵高，二者交错会产生 norm growth 和 logit drift；常用 **$QK$ norm** 与 **z-loss regularization** 来抑制。
+> Chameleon 训练规模（[arXiv:2405.09818](https://arxiv.org/abs/2405.09818)）：VQ-VAE 把 512×512 图像编码为 1024 个离散 tokens（codebook 大小 8192）。训练分两阶段：第一阶段约占 80% tokens，包含约 2.9T 文本 token、1.5T 文本/图像 token 与 400B 文本/图像交错 token；第二阶段约 20% tokens，混入等量的高质量数据。训练稳定性方面，文本 token 的熵低、图像 token 的熵高，二者交错会产生 norm growth 和 logit drift；常用 **$QK$ norm** 与 **z-loss regularization** 来抑制。
 
 ![图 14.6-3 Chameleon 文本与图像交错生成示例](images/14-6-3-chameleon-example.png)
 
@@ -263,7 +271,7 @@ VQ-VAE 把连续图像压缩成离散 codebook indices。Encoder 产生连续 la
 
 这一节把前面的结构选择收束成训练检查表。多模态系统的风险通常来自 token 预算、loss 权重、位置编码、数据阶段和生成目标同时变化。
 
-Chameleon 的离散图像 token 路线还暴露出另一类稳定性问题：文本 token 的熵较低，图像 token 的熵较高，混合训练时容易出现 norm growth 和 logit drift。QK norm 与 z-loss regularization 的作用是约束 attention 分数和 logits 的尺度，让跨模态 next-token objective 不至于被某一类 token 的尺度变化拖偏。
+Chameleon 的离散图像 token 路线额外引出一类稳定性问题：文本 token 熵低、图像 token 熵高，二者交错训练时容易出现 norm growth 和 logit drift。QK norm 与 z-loss regularization 用来约束 attention 分数与 logits 的尺度，让跨模态 next-token objective 不被某一类 token 的尺度变化拖偏（详见 §14.6 NOTE）。
 
 几个工程判断需要一起检查：
 

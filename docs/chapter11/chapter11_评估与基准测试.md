@@ -63,13 +63,13 @@
 
 *图 11.1-5 DeepSeek-R1 基准性能*
 
-[DeepSeek-R1 论文 Figure 1 报告的基准性能](https://arxiv.org/pdf/2501.12948)，展示了 DeepSeek-R1 在 AIME 2024、Codeforces、GPQA Diamond、MATH 500 等基准上的性能。
+[DeepSeek-R1 论文 Figure 1 报告的基准性能](https://arxiv.org/pdf/2501.12948)，展示了 DeepSeek-R1 在 AIME 2024、Codeforces、GPQA Diamond、MATH-500 等基准上的性能。
 
 ![图 11.1-6 Llama 4 基准性能](images/11-1-6-llama4-benchmarks.png)
 
 *图 11.1-6 Llama 4 基准性能*
 
-[Llama 4 Behemoth 指令微调版本的基准性能](https://ai.meta.com/blog/llama-4-multimodal-intelligence/)，展示了其在 MMLU-Pro、MATH500、GPQA 等多个基准上的表现。
+[Llama 4 Behemoth 指令微调版本的基准性能](https://ai.meta.com/blog/llama-4-multimodal-intelligence/)，展示了其在 MMLU-Pro、MATH-500、GPQA 等多个基准上的表现。
 
 ![图 11.1-7 OLMo-2 基准性能](images/11-1-7-olmo2-benchmarks.png)
 
@@ -161,7 +161,7 @@ Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会�
 ### 11.2.3 如何评估输出？
 
 - 参考答案是否准确无误？
-- 使用什么指标？对于代码生成，是 pass@1（模型生成一个回答，输出回答和标准答案一样即为正确）还是 pass@10（模型一次生成十个回答，只要十个输出回答里有一个和标准答案一样即为正确））？
+- 使用什么指标？对于代码生成，是 pass@1（模型生成一个回答，输出回答和标准答案一样即为正确）还是 pass@10（模型一次生成十个回答，只要十个输出回答里有一个和标准答案一样即为正确）？
 - 如何考量成本？模型性能不应只看准确率，还要考虑计算成本。例如：一个更大但仅略优的模型，是否值得其高推理延迟或训练开销？在资源受限场景（如移动端、低延迟服务），成本是关键约束。
 - 如何处理不对称错误？某些错误的代价远高于其他错误。在医疗、金融、法律等高风险领域中，幻觉（hallucination）的代价远高于其他错误。
 - 如何评估开放域生成任务？当没有标准答案时（如“写一个关于斯坦福的精彩故事”），评估变得极其困难。常见做法：
@@ -394,7 +394,7 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ### 11.4.4 Humanity's Last Exam
 
-[Humanity's Last Exam](https://arxiv.org/abs/2501.14249) 是一个雄心勃勃的项目，包含约 2,500 道多模态、多学科的选择题和简答题（[arXiv:2501.14249](https://arxiv.org/abs/2501.14249) v11，2026-07-28 abstract “2,500 questions across dozens of subjects”; §3.1 Collection / Question Style “around 14% of questions requiring comprehending both text and an image”, “24% of questions are multiple-choice with the remainder being exact-match”, 即约 14% 需图像理解、约 24% 选择题、约 76% 精确匹配）。通过五十万美元奖金池激励社区贡献（Scale AI 官方公告：top 50 题各 $5,000，后续 500 题各 $500；论文摘要未直接公布，由官方公告确认），并用前沿 LLM 筛选掉过于简单的问题，再经过多阶段审查。局限在于问题征集过程可能存在严重的选择偏差，且问题类型仍局限于有标准答案的“考试”形式。
+[Humanity's Last Exam](https://arxiv.org/abs/2501.14249)（HLE）是一个由社区贡献的多模态、多学科基准，包含 2,500 道选择题与精确匹配题，覆盖数学、人文与自然科学等数十个学科。约 14% 的题目需要同时理解文本和图像，约 24% 是选择题，其余 76% 是精确匹配题。奖金池 50 万美元按贡献题目的难度分档：最难的 50 题各 5,000 美元，再往后 500 题各 500 美元。题目由社区贡献，先用前沿 LLM 筛选掉过于简单的题，再经过多阶段专家审查。HLE 的局限在于问题征集过程可能存在严重的选择偏差，且问题类型仍局限于有标准答案的”考试”形式。
 
 ![图 11.4-4 Humanity's Last Exam 收集筛选流程](images/11-4-4-hle-pipeline.png)
 
@@ -442,9 +442,9 @@ AlpacaEval 2.0 的一个重要变化，是用回归方式修正长度偏置，�
 
 ### 11.5.4 WildBench
 
-[WildBench](https://arxiv.org/pdf/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（[arXiv:2406.04770](https://arxiv.org/abs/2406.04770) §2.1）。主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude-3-Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。
+[WildBench](https://arxiv.org/pdf/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（论文 §2.1）。主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude-3-Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。
 
-WildBench 与 Chatbot Arena 高度相关，论文报告的 Pearson 相关系数为：WB-Reward 对 top-ranking 模型 0.98、WB-Score 0.95，均高于 ArenaHard 的 0.91 和 AlpacaEval 2.0 length-controlled win rate 的 0.89（[arXiv:2406.04770](https://arxiv.org/abs/2406.04770) §4.2 Table 3）。这些数值因评测设置而异，但总体说明 WildBench 已成为新基准有效性的“事实上的”检验标准之一。
+论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。WildBench 与 Chatbot Arena 高度相关，论文 §4.2 Table 3 报告的 Pearson 相关系数为：WB-Reward 对 top-ranking 模型 0.98、WB-Score 0.95，均高于 ArenaHard 的 0.91 和 AlpacaEval 2.0 length-controlled win rate 的 0.89。这些数值随评测设置而异，但总体说明 WildBench 已成为新基准有效性的“事实上的”检验标准之一。
 
 ![图 11.5-5 WildBench 构建流程](images/11-5-5-wildbench-pipeline.png)
 
@@ -483,9 +483,9 @@ LLM-as-judge 与 RLHF / RLVR 的连接在第 12 章偏好优化和第 13 章 ver
 > [!NOTE]
 > **基准饱和与坐标移动**：早期 GPT-3 X-Large 在 MMLU 上只有 43.9%，但刷到接近饱和后被 MMLU-Pro 替代（具体口径见 §11.4.2）。GPQA 论文里 GPT-4 few-shot CoT 在 Diamond 子集上是 38.8%，而当前榜单上 GPQA Diamond 与 SWE-bench Verified 已被多个前沿模型刷到 90% 上下。基准饱和与坐标快速移动说明同一模型在不同时间窗的分数几乎不能直接横比，评估时需要同时记录版本、日期和 prompt 模板。
 
-### 11.6.1 SWEBench
+### 11.6.1 SWE-bench
 
-[SWEBench](https://arxiv.org/abs/2310.06770) 包含 12 个 Python 代码库中的 2294 个任务，根据 GitHub issue 描述，提交一个能通过单元测试的 Pull Request (PR)。评估直接运行单元测试来验证修复是否成功。
+[SWE-bench](https://arxiv.org/abs/2310.06770) 包含 12 个 Python 代码库中的 2294 个任务，根据 GitHub issue 描述，提交一个能通过单元测试的 Pull Request (PR)。评估直接运行单元测试来验证修复是否成功。
 
 ![图 11.6-1 SWE-bench 评测流程](images/11-6-1-swebench-workflow.png)
 
@@ -523,9 +523,9 @@ Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 �
 
 *图 11.6-6 Cybench 模型结果*
 
-### 11.6.4 MLEBench
+### 11.6.4 MLE-bench
 
-[MLEBench](https://arxiv.org/abs/2410.07095) 自动化参与 75 个 Kaggle 机器学习竞赛，包括数据处理、模型训练、超参调优和结果提交。在论文给定的设置下，当前最佳模型获得任何 Kaggle 奖牌（bronze / silver / gold）的比例为约 **16.9%**。
+[MLE-bench](https://arxiv.org/abs/2410.07095) 自动化参与 75 个 Kaggle 机器学习竞赛，包括数据处理、模型训练、超参调优和结果提交。在论文给定的设置下，当前最佳模型获得任何 Kaggle 奖牌（bronze / silver / gold）的比例为约 **16.9%**。
 
 ![图 11.6-7 MLE-bench 评测流程](images/11-6-7-mlebench-workflow.png)
 
@@ -594,7 +594,7 @@ ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到�
 
 [HarmBench](https://arxiv.org/abs/2402.04249) 定义了 510 种违反法律或社会规范的有害行为，通过提示词测试模型是否会执行，并评估其拒绝率。
 
-在 HELM 的 [Leaderboard armBench](https://crfm.stanford.edu/helm/safety/latest/#/leaderboard) 展示了当前 LLM 在 HarmBench 基准上的排行。
+在 HELM 的 [HarmBench leaderboard](https://crfm.stanford.edu/helm/safety/latest/#/leaderboard/harm_bench) 可以看到不同模型在该基准上的排行。
 
 ![图 11.8-3 HarmBench 排行榜](images/11-8-3-harmbench-leaderboard.png)
 
@@ -704,7 +704,7 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 ### 11.10.2 数据集质量
 
-[许多基准存在标注错误或噪声](https://arxiv.org/abs/2502.03461)。例如，[修正后的 SWE-Bench Verified](https://openai.com/index/introducing-swe-bench-verified/) 版本显示，原始分数可能因错误而被低估。
+[许多基准存在标注错误或噪声](https://arxiv.org/abs/2502.03461)。例如，[修正后的 SWE-bench Verified](https://openai.com/index/introducing-swe-bench-verified/) 版本显示，原始分数可能因错误而被低估。
 
 ![图 11.10-2 基准标注错误和噪声](images/11-10-2-benchmark-label-noise.png)
 
@@ -718,10 +718,10 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 ## 11.11 我们到底在评估什么？
 
-评估对象必须先说清楚：当前比较的是方法、裸模型、带工具的模型，还是完整产品系统。这个边界就是评估的 rules of the game。
+评估对象必须先说清楚：当前比较的是方法还是模型/系统。这个边界就是评估的 rules of the game。
 
 - 过去：在 ImageNet 时代，我们评估的是方法（method），即在固定数据集和训练协议下，新算法的优劣。
-- 现在：我们更多评估的是模型/系统（model/system），即“端到端”的最终产品，开发者可以使用任何数据、任何技巧。
+- 现在：我们更多评估的是模型/系统（model/system），即”端到端”的最终产品，开发者可以使用任何数据、任何技巧。
 
 这两种范式各有价值：评估方法能促进算法创新；评估系统对下游用户更有意义。但必须清晰界定评估的“游戏规则”，否则比较将失去意义。
 
@@ -735,7 +735,7 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 本章围绕"如何评估一个模型到底有多好"展开，把评估拆成四个维度（task / dataset / metric / format）× N 种 benchmark：perplexity 测分布匹配，exam 测知识（MMLU / GPQA / HLE），chat 测偏好（Arena / AlpacaEval / WildBench），agent 测任务能力（SWE-bench / Terminal-Bench / Cybench），推理测专门能力（ARC-AGI），安全测对齐（HarmBench / AIR-Bench / GCG jailbreak）。每类 benchmark 都有 contamination、difficulty、realism、validity 四个共同问题，nanoGPT speedrun 作为 sanity check 经常出现。
 
-评估对象粒度分四档（method / base model / model + tools / product system），见 §11.11。LM-as-judge 的偏差与缓解见 §11.5.5，Chatbot Arena 与 AlpacaEval 的裁判设置见 §11.5.1 与 §11.5.3。LLM judge 的 length / position / self-preference 三类偏差可以通过多 judge ensemble、按 prompt 模板分层、控制 token 预算缓解，单一 judge 的判断应与人类 judge 的相关系数报告同时呈现。
+评估对象粒度分 method 与 model/system 两档，§11.11 把这个边界单独拆开讲。LM-as-judge 的偏差与缓解见 §11.5.5，Chatbot Arena 与 AlpacaEval 的裁判设置见 §11.5.1 与 §11.5.3。LLM judge 的 length / position / self-preference / style 四类偏差可以通过多 judge ensemble、按 prompt 模板分层、控制 token 预算缓解，单一 judge 的判断应与人类 judge 的相关系数报告同时呈现。
 
 下章进入 [第 12 章 大模型基本训练流程](../chapter12/chapter12_大模型基本训练流程.md)：评估方法定下来后，再回到训练流水线——pre-training → mid-training → SFT → RLHF/PPO/DPO 的后训练，对应的 SFT/RLHF/PPO/DPO 案例在第 12 章展开。
 

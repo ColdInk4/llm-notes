@@ -88,8 +88,6 @@ $$
 y = \sum_{i \in \mathcal{T}} G_i(x) E_i(x)
 $$
 
-**关键点在于集合** $\mathcal{T}$`：
-
 实现稀疏化的关键步骤是确定集合 $\mathcal{T}$ 。无论是 token-choice 还是 expert-choice， $G(x)$ 的计算过程都包含两个步骤：
 
 - **打分：** 计算 routing score $h(x) = x \cdot W_g$ 。
@@ -336,7 +334,7 @@ routing 机制的选择依据是输入 hidden state。输入 token 在经过 emb
 
 
 
-Roller et al. 2021 的 [Hash Layers for Large Sparse Models, arXiv:2106.04426](https://arxiv.org/abs/2106.04426) 走的是**预计算查表**路径：在训练前就把每个 token 映射到固定 expert（random hash 或 balanced assignment），不引入随机投影，也不通过梯度优化哈希参数；其论文 §3.1 明确写明”we generally employ pre-computed hash functions, which use a lookup table during learning – precomputed in advance – to map tokens to expert modules”。这与下文示例代码采用的几何 LSH 是不同的非学习式 routing 范式，应分开理解。
+Roller et al. 2021 的 [Hash Layers For Large Sparse Models, arXiv:2106.04426](https://arxiv.org/abs/2106.04426) 走的是**预计算查表**路径：在训练前就把每个 token 映射到固定 expert（random hash 或 balanced assignment），不引入随机投影，也不通过梯度优化哈希参数；其论文 §3.1 明确写明”we generally employ pre-computed hash functions, which use a lookup table during learning – precomputed in advance – to map tokens to expert modules”。这与下文示例代码采用的几何 LSH 是不同的非学习式 routing 范式，应分开理解。
 
 下面给出一个**来自经典 LSH 家族、与 Roller 2021 实现路径不同的**简化示例来说明几何哈希在 routing 上的可能形态，目的是让”非学习 routing”具体可读。
 
@@ -346,7 +344,7 @@ $$
 h_i(x) = \left\lfloor \frac{a_i^\top x + b_i}{\epsilon} \right\rfloor
 $$
 
-这里的 $D$ 是复合哈希函数里随机投影方向（即参与组合的 $h_i$ 数量）的个数；embedding 维度仍为公式里的 $d$。这种方法不通过梯度优化哈希参数，但 routing 结果会因随训练演化的 $x$ （token embedding）而动态改变。LSH **概率性地**实现了负载均衡，并且由于其局部敏感性，能够保留弱局部性，即相似 token 更可能落入同一哈希桶。因此，LSH 可以看成一种”弱语义”的非学习 routing。
+单个 $h_i$ 只产生一维量化值，实际使用时把若干个 $h_i$ 拼成复合哈希，投影方向的数量对应下方示例代码里的 `n_hashes` ；token embedding 的维度是公式里的 $d$ ，对应代码里的 `d_model` 。这种方法不通过梯度优化哈希参数，但 routing 结果会因随训练演化的 $x$ （token embedding）而动态改变。LSH **概率性地**实现了负载均衡，并且由于其局部敏感性，能够保留弱局部性，即相似 token 更可能落入同一哈希桶。因此，LSH 可以看成一种”弱语义”的非学习 routing。
 
 **桶宽度** $\epsilon$ 与上式中的量化步长对应，用于把连续投影值分桶；桶越宽，同一桶内聚集的向量越多。
 
@@ -565,7 +563,7 @@ MoE 相较于传统 dense 模型的优势是：它可以扩大总参数规模，
 实证结果显示，这两条路径在不同设置下表现差异显著。比如：
 
 - OLMoE 的实验发现，采用 token-choice routing 从零训练的 MoE 在约 500–600B tokens 时就能追上并在随后超越 upcycled 模型，相当于原始 dense 模型训练数据量约 25% 的计算预算即可达到追赶点。
-- Komatsuzaki 等人在其 upcycling 工作中，视觉与语言编码器侧使用 expert-choice routing（容量因子 C=2），语言解码器侧为兼顾训练与推理一致性改用 top-K=2 routing；其论文 Figure 4 报告的结论是，从零训练的 MoE 需要大约原 dense 模型训练量的 120% 才能赶上 upcycled 模型。二者差异来自实验范式、路由策略、模型结构和训练预算不同。
+- Komatsuzaki 等人在其 upcycling 工作中，视觉模型与语言模型的 encoder 侧使用 expert-choice routing（容量因子 C = 2），语言模型的 decoder 侧为兼顾训练时 teacher forcing 与推理时自回归解码的一致性改用 top-K = 2 routing；其论文 Figure 4 报告的结论是，语言侧从零训练的 MoE 需要大约原 dense checkpoint 计算预算的 120% 才能追上 upcycled 模型。二者差异来自实验范式、路由策略、模型结构和训练预算不同。
 
 OLMoE 的实验还提示，已有 dense 权重可能约束专家重新分化，因此他们更强调从零训练 MoE 的价值。
 
@@ -961,9 +959,9 @@ v3 则强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 
 
 图 4.3-1 展示了 DeepSeekMoE 的两个结构动作：先把较大的 routed expert 拆成更多细粒度 experts，再加入始终激活的 shared expert。细粒度拆分增加了可选组合数，使 router 能用多个小 expert 拼出更细的计算路径；shared expert 则承接所有 token 都需要的通用变换，减少 routed experts 被迫重复学习通用模式的压力。
 
-- **细粒度专家分割**：在保持专家参数总量不变的前提下，把原来的较大 FFN expert 按比例缩小，例如每个小 expert 为标准 FFN 参数量的 0.25 倍，并将每个原 expert 分割成若干更小的 experts，从而把 $N$ 个 experts 扩展为 $mN$ 个小 experts。这种做法把参数密度从“每个 expert 更大”转向“更多但更小的 experts”，为更细粒度的路由组合提供空间。
+- **细粒度专家分割**：在保持专家参数总量不变的前提下，把原来的较大 FFN expert 按比例缩小，例如取 $m=4$ 时每个小 expert 为标准 FFN 参数量的 $1/m=0.25$ 倍，并把每个原 expert 拆成 $m$ 个更小的 experts，从而把 $N$ 个 experts 扩展为 $mN$ 个小 experts。这种做法把参数密度从“每个 expert 更大”转向“更多但更小的 experts”，为更细粒度的路由组合提供空间。
 
-   - **保持计算成本恒定的激活策略**：为了使激活计算量与激活参数量的比值 $\rho = C_{\text{active}} / P_{\text{active}}$ 大致不变，模型会在每次前向中激活更多个小 experts。当每个 expert 变小后，router 可以选择更多 experts 参与，例如将原来的 top-k 扩展为对分割后小 experts 激活 $mK$ 个，从而在控制每次前向计算预算的同时增加组合灵活性。
+   - **保持每次前向激活成本稳定**：每个小 expert 的参数量变成原来的 $1/m$，但每次前向激活的 expert 数量由原来的 $K$ 个扩展为 $mK$ 个。两项相乘后，单 token 实际经过的专家 FFN FLOPs 与未拆分前基本一致，从而在控制每次前向计算预算的同时扩大组合空间。
 
    - **组合灵活性增长**：细粒度化 experts 后，可供选择的 expert 组合数量显著增加。这个组合空间为 router 提供了更多表达路径，但也会增加负载均衡、通信和训练稳定性压力。
 
@@ -972,11 +970,11 @@ v3 则强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 
 
 - **共享专家**：保留若干 shared experts 来处理通用模式，在 routed experts 之外提供常驻路径。该设计与细粒度 experts 协同，能在增加路由组合空间的同时保留一条稳定的通用计算通道。
 
-![图 4.3-2 激活参数相同的 MoE 消融](images/4-3-2-active-parameter-ablation.png)
+![图 4.3-2 激活计算量相同的 MoE 消融](images/4-3-2-active-parameter-ablation.png)
 
-*图 4.3-2 激活参数相同的 MoE 消融*
+*图 4.3-2 激活计算量相同的 MoE 消融*
 
-图 4.3-2 固定总参数量和激活参数量，再改变 shared expert 与 routed expert 的粒度。多数组合中，更细的 routed experts 与少量 shared experts 能提高归一化指标；右侧问答类任务的提升尤其明显，说明 shared expert 对通用能力和 routed expert 分化有互补作用。
+图 4.3-2 把每次前向的激活计算预算控制在相近水平，再改变 shared expert 与 routed expert 的粒度。多数组合中，更细的 routed experts 与少量 shared experts 能提高归一化指标；右侧问答类任务的提升尤其明显，说明 shared expert 对通用能力和 routed expert 分化有互补作用。
 
 随着专家继续细化，收益会逐渐受通信开销、路由稳定性和每个 expert 可获得 token 数限制。[论文](https://arxiv.org/pdf/2401.06066)的消融实验也提供了一个经验：**当共享专家和激活的 routed experts 保持大约 1:3 的比例时，在基准任务上效果仅给出边际优势**——1/2/4 个共享专家的 Pile loss 差距 ≤0.005，原文 *"different ratios... do not significantly impact performance, 1:3 yields marginally better Pile loss"*。
 
@@ -984,8 +982,8 @@ v3 则强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 
 
 - **负载均衡策略**：为了缓解负载不均衡导致的 expert collapse、expert starvation 和系统瓶颈，早期 DeepSeekMoE 使用 auxiliary loss；DeepSeek-V3 一类路线改用 per-expert bias / aux-loss-free balancing，通过在线调整 expert bias 平衡负载，同时尽量减少 auxiliary loss 对主目标的干扰。**注意**：DeepSeek-V3 的主要平衡策略是 aux-loss-free，但 [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §2.1.2 仍保留一个 **sequence-wise balance auxiliary loss** 作为兜底，专门防止单条序列内出现极端 imbalance；这是与"完全无辅助损失"的关键区别。
 
-   - expert-level balancing 关注每个 expert 是否都有足够 token 和梯度，避免少数 experts 富者愈富。
-   - device-level balancing 关注 experts 分布到多 GPU/多节点后，每台设备是否都在忙；即使 expert 平均负载合理，也可能出现某台设备承载的 experts 整体更热门。
+    - **expert-level balancing** 关注每个 expert 是否都有足够 token 和梯度，避免少数 experts 富者愈富。
+    - **device-level balancing** 关注 experts 分布到多 GPU/多节点后，每台设备是否都在忙；即使 expert 平均负载合理，也可能出现某台设备承载的 experts 整体更热门。
 
 > [!TIP]
 > DeepSeek-V3 这类设计可以粗略记成“传输低精度、关键计算中等精度”：通信中的激活和部分梯度可用 FP8 压缩以省带宽，而专家输出 combine 等敏感计算仍保留 BF16 来维持稳定。
@@ -995,7 +993,7 @@ v3 则强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 
 DeepSeek-V3 论文在 MoE 之外同时披露了两项与 MoE 并列的核心架构创新，本节统一吸收：
 
 - **Multi-Head Latent Attention（MLA）**：把 K/V 压缩到低秩潜空间后再做注意力，相比 MHA 大幅压缩 KV cache（DeepSeek-V3 每 token 每层 MHA 需缓存 $2 n_h d_h = 2 \times 128 \times 128 = 32768$ 个元素，MLA 只缓存 $d_c + d_h^R = 512 + 64 = 576$ 个；细节见 [第 9 章 §9.3.2](../chapter9/chapter9_推理系统.md)）。MLA 与本节 MoE 路线在 DeepSeek-V3 中同时启用，是 V3 在长上下文与高吞吐推理两个方向都能维持竞争力的关键。
-- **Multi-Token Prediction（MTP）**：训练目标中允许模型一次预测未来多个 token，可以作为辅助训练信号提升数据效率，也能在 decoding 时作为 speculative decoding 的草稿使用。MTP 在主流开源模型里 "hasn't caught on very much"，目前主要在 DeepSeek 系列内部规模化使用。
+- **Multi-Token Prediction（MTP）**：训练目标中允许模型一次预测未来多个 token，可以作为辅助训练信号提升数据效率，也能在 decoding 时作为 speculative decoding 的草稿使用。MTP 在大多数主流开源模型里尚未普及，目前主要在 DeepSeek 系列内部规模化使用。
 - **MoE fine-tuning 易过拟合**：MoE 专家数量大时 fine-tune 全部专家常常引发严重 overfitting；常见做法是只 fine-tune attention 层或 dense FFN 层，把 routed experts 冻结。这一经验在 V3 / V4-Pro 等大规模 MoE 后训练阶段尤其需要复现。
 
 ---
@@ -1093,23 +1091,29 @@ expert parallelism 的意义在于把专家维度也变成可切分资源：atte
 | 模型 | 总专家数 | top-k | 共享专家数 | 激活比例 | 来源 |
 | --- | --- | --- | --- | --- | --- |
 | GShard | 2048 | 2 | 0 | ~1/1024 | Lepikhin et al., 2020 |
-| Switch Transformer | 64 | 1 | 0 | 1/64 | [arXiv:2101.03961](https://arxiv.org/abs/2101.03961) Table 9（CS336 Lecture 4 表口径；详见下方 NOTE） |
+| Switch Transformer | 64 | 1 | 0 | 1/64 | [arXiv:2101.03961](https://arxiv.org/abs/2101.03961) Table 9 的 Switch-XXL 变体；详见下方 NOTE |
 | ST-MOE | 64 | 2 | 0 | 1/32 | Zoph et al., 2022 |
 | Mixtral 8x7B | 8 | 2 | 0 | 2/8 = 1/4 | [arXiv:2401.04088](https://arxiv.org/abs/2401.04088) |
 | DBRX | 16 | 4 | 0 | 4/16 = 1/4 | Databricks Mosaic |
 | Grok-1 | 8 | 2 | 0 | 2/8 = 1/4 | [xai-org/grok-1](https://huggingface.co/xai-org/grok-1) |
 | DeepSeek v1 (DeepSeek-MoE 16B) | 64 routed + 2 shared = 66 | 6 | 2 | (6 routed + 2 shared) / 66 = 8/66 ≈ 12.1% | [arXiv:2401.06066](https://arxiv.org/abs/2401.06066) |
-| Qwen 1.5 MoE | 60 routed + 4 shared = 64 | 4 | 4 | (4 routed + 4 shared) / 64 = 8/64 = 1/8 = 12.5% | [Qwen/Qwen1.5-MoE-A2.7B config](https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B)；4 shared expert 用单个 fused MLP 实现（shared_expert_intermediate_size = 4 × 1408 = 5632） |
+| Qwen 1.5 MoE | 60 routed + 4 shared = 64 | 4 | 4 | (4 routed + 4 shared) / 64 = 8/64 = 1/8 = 12.5% | [Qwen/Qwen1.5-MoE-A2.7B config](https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B)：`num_experts: 60`、`num_experts_per_tok: 4`；shared expert 计数见下方 NOTE |
 | DeepSeek v3 | 256 routed + 1 shared = 257 | 8 | 1 | (8 routed + 1 shared) / 257 = 9/257 ≈ 3.5% ≈ 1/28.6 | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) + [DeepSeek-V3 config](https://huggingface.co/deepseek-ai/DeepSeek-V3) |
 | OlMoE | 64 | 8 | 0 | 8/64 = 1/8 | [arXiv:2409.02060](https://arxiv.org/abs/2409.02060) |
 | Llama 4 Maverick | 128 routed + 1 shared = 129 | 1 | 1 | (1 routed + 1 shared) / 129 = 2/129 ≈ 1.55% | [Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct) |
-| MiniMax-M1 | 32 routed + 0 shared = 32 | 2 | 0 | 2/32 = 1/16 ≈ 6.25% | CS336 2026 Lecture 4 slides “Expert routing setups for recent MoEs” 表 — “MiniMax 32 2 0 ~1/4”（末列 ~1/4 属 fine-grained ratio 列，激活比另计）；[MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k) `num_local_experts: 32`、`num_experts_per_tok: 2`、`shared_intermediate_size: 0`；MiniMax-M1 混合架构为 7 个 linear attention 层 : 1 个 full attention 层（共 80 层，70 层 linear attention + 10 层 full attention），参见 CS336 2026 Lecture 4 video “a 7:1 hybrid (7 linear, 1 full)” |
+| MiniMax-M1 | 32 routed + 0 shared = 32 | 2 | 0 | 2/32 = 1/16 ≈ 6.25% | [MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k)：`num_local_experts: 32`、`num_experts_per_tok: 2`、`shared_intermediate_size: 0` |
+
+> [!NOTE]
+> **Qwen 1.5 MoE 的 shared expert 计数**：官方架构为 60 个 routing expert（每 token top-4）加 4 个常驻 shared expert，每 token 共激活 8 个。HF config 里没有单独的 shared expert 个数字段，只有 `shared_expert_intermediate_size: 5632` 这一 shared 侧 FFN 中间维度；单个 routed expert 的 `moe_intermediate_size` 是 1408，5632 = 4 × 1408，说明 4 个 shared expert 在实现上被合成一个 fused MLP。读 config 时按维度倍数还原专家数，才能和 60 + 4 = 64 的架构描述对上。
+
+> [!NOTE]
+> **MiniMax-M1 混合架构**：attention 侧按 7 层 linear attention 配 1 层 full attention 的 7:1 比例堆叠，`MiniMax-M1-80k` config 的 `attn_type_list` 共 80 项，取值为 1 的位置在索引 7、15、23 … 79，对应 70 层 linear attention 加 10 层 full attention。表中列出的是它的 MoE 配置。
 
 > [!NOTE]
 > **DeepSeek 与 Llama 4 的设计哲学对比**：DeepSeek v3 把激活比压到约 1/28.6（极稀疏，强调参数规模扩大与计算效率），Llama 4 Maverick 在共享 expert 常驻 + 每 token 仅 1 个 routed 的极稀疏设置下激活 2/129 ≈ 1.55%（强调专家利用度）。两种选择都能 work，但意味着 all-to-all 通信、expert parallelism、负载均衡的设计权衡完全不同。
 
 > [!NOTE]
-> **Switch Transformer expert 数**：本表 64 experts / 1/64 取 CS336 2026 Lecture 4 的表口径，对应 [Fedus et al., 2022, *Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity*, arXiv:2101.03961](https://arxiv.org/abs/2101.03961) Table 9 里的 Switch-XXL（395B，64 experts）。同一张 Table 9 还给出 Switch-Base 7B / 128 experts、Switch-Large 26B / 128 experts、Switch-C 1571B / 2048 experts，四个变体的 top-k 均为 1；表中另一列 “Expert freq.” 是 Switch 层替换 FFN 层的频率，Base / Large / XXL 为 1/2，Switch-C 为 1。
+> **Switch Transformer expert 数**：本表这一行的 64 experts / 1/64 对应 [Fedus et al., 2022, *Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity*, arXiv:2101.03961](https://arxiv.org/abs/2101.03961) Table 9 里的 Switch-XXL（395B，64 experts）。同一张 Table 9 还给出 Switch-Base 7B / 128 experts、Switch-Large 26B / 128 experts、Switch-C 1571B / 2048 experts，四个变体的 top-k 均为 1；表中另一列 “Expert freq.” 是 Switch 层替换 FFN 层的频率，Base / Large / XXL 为 1/2，Switch-C 为 1。
 
 ## 4.6 DeepSeek MoE 三代演进
 
@@ -1149,8 +1153,9 @@ expert parallelism 的意义在于把专家维度也变成可切分资源：atte
 > 一个思考方向是把 router 训练拆成阶段：先 warmup，让 router 自由探索、experts 接触多样输入；再分析 expert 激活模式，通过 routing loss 或 bias 调整帮助 experts 形成更稳定的功能分工；最后保持 shared experts 的通用能力，同时让 routed experts 在关键任务上更充分分化。这是教学设想，不是当前 MoE 的通用标准流程。
 
 ## 参考文献
+
 - [减少计算消耗的万亿参数 MoE 调优](https://macaron.im/mindlab/research/building-trillion-parameter-reasoning-rl-with-10-gpus)
-- [Hash Layers for Large Sparse Models](https://arxiv.org/abs/2106.04426)（Roller et al., 2021，预计算查表 hash routing）
+- [Hash Layers For Large Sparse Models](https://arxiv.org/abs/2106.04426)（Roller et al., 2021，预计算查表 hash routing）
 - [Switch Transformers](https://arxiv.org/abs/2101.03961)（Fedus et al., 2022，Table 9 给 Switch-XXL 395B / 64 experts、Switch-Base 7B / 128 experts、Switch-Large 26B / 128 experts、Switch-C 1571B / 2048 experts，top-k 均为 1）
 - [ST-MoE: Designing Stable and Transferable Sparse Expert Models](https://arxiv.org/abs/2202.08906)（Zoph et al., 2022，§3.3 引入 router z-loss）
 - [GShard](https://arxiv.org/abs/2006.16668)（Lepikhin et al., 2020，2048 experts / top-2）
@@ -1159,10 +1164,11 @@ expert parallelism 的意义在于把专家维度也变成可切分资源：atte
 - [DeepSeek-V3](https://arxiv.org/pdf/2412.19437)（671B / 37B active；256 routed + 1 shared / top-8；aux-loss-free + seq-wise balance loss）
 - [Mixtral of Experts](https://arxiv.org/abs/2401.04088)（8 experts / top-2）
 - [OLMoE](https://arxiv.org/abs/2409.02060)（64 routed / top-8 / 0 shared；从零训练 vs upcycled，~25% 计算预算即可追平）
-- [Sparse Upcycling](https://arxiv.org/abs/2212.05055)（Komatsuzaki et al., 2022，expert-choice 路由 + 从零训练需 ~120% dense 计算预算才追上 upcycled）
+- [Sparse Upcycling](https://arxiv.org/abs/2212.05055)（Komatsuzaki et al., 2022，encoder 侧 expert-choice routing 且 C = 2、语言 decoder 侧 top-K = 2；语言侧从零训练需约 120% dense 计算预算才追上 upcycled）
 - [Kimi K2](https://arxiv.org/abs/2507.20534)（1T total / 32B active；384 routed + 1 shared / top-8）
 
 ## 来源与更新记录
 
-
 - 公开模型配置：[OlMoE config](https://huggingface.co/allenai/OLMoE-1B-7B-0924)、[Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct)。DeepSeek-V4 系列配置见 [DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)：`n_routed_experts: 384`、`n_shared_experts: 1`、`num_experts_per_tok: 6`、`topk_method: "noaux_tc"`、`scoring_func: "sqrtsoftplus"`、`num_hash_layers: 3`、`swiglu_limit: 10.0`（查阅日期 2026-09-03）。
+- §4.5 expert 配置表的 Qwen 1.5 MoE 与 MiniMax-M1 两行取自 [Qwen1.5-MoE-A2.7B config](https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B/blob/main/config.json) 与 [MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k/blob/main/config.json)（状态：官方，查阅日期 2026-09-05）。
+- 课程材料：CS336 2026 Lecture 4 slides 与 video，对应 lecture 映射见 [`sources/cs336-2026.md`](../../sources/cs336-2026.md)。

@@ -47,7 +47,9 @@ GPU 高性能编程先从一条可复用的排查链开始：
 *表 6.1 A100/H100/B200 硬件数量级*
 
 > [!NOTE]
-> "每 SM register 256 KB" 指的是 SM 内部的 register file 容量：CUDA Blackwell tuning guide 给出 "The register file size is 64K 32-bit registers per SM"，即 65536 × 4 B = 256 KB；这与"每个 thread 最多使用 255 个 32-bit register"是不同维度。前者是物理存储大小（决定占用率），后者是每个 thread 的可用上限（决定单 thread 寄存器压力）。这两组数字同时出现，可避免混淆：寄存器上限影响单个 thread 可用空间，寄存器总量影响 SM 上能并发驻留多少 thread block。
+> 表里的“每 SM register 256 KB”指 SM 内部 register file 的物理容量：每个 SM 有 64K 个 32-bit register，即 $65536 \times 4\ \text{B} = 256\ \text{KB}$ 。它和“每个 thread 最多使用 255 个 32-bit register”是两个不同维度的上限——前者决定一个 SM 上能并发驻留多少 thread block，后者决定单个 thread 的寄存器压力。后面算 occupancy 时两个数字都会用到。
+>
+> “每 SM L1 + shared memory”一行是统一 cache 的总容量。在 B200（compute capability 10.0）上，这 256 KB 中能配置成 shared memory 的部分是 228 KB，单个 thread block 最多申请 227 KB。
 
 带宽账本比容量账本更直接影响 kernel 优化。Registers 最快但局部性最强；shared memory 适合一个 thread block 内协作；L2 是芯片级缓存；HBM 容量最大，访问代价也最高。
 
@@ -58,12 +60,15 @@ GPU 高性能编程先从一条可复用的排查链开始：
 | L2 cache bandwidth | ~5-8 TB/s | ~12 TB/s | ~9 TB/s |
 | HBM bandwidth | 2 TB/s | 3.35 TB/s | 8 TB/s |
 
-\* 来源：NVIDIA datasheet 未公开 register bandwidth 这一指标。
-
 *表 6.2 A100/H100/B200 内存带宽数量级*
 
+\* Register bandwidth 是按 SM 数、时钟频率和寄存器端口宽度换算出来的量级估计，用于和下面三级带宽做数量级对比。
 > [!NOTE]
-> **Hopper 与 Blackwell 在 memory hierarchy 上的两个新硬件特征**：(1) **Tensor Memory (TMEM，Blackwell 数据中心型号 B200/GB200)**——在 Tensor Core 旁新增一组张量专用内存，容量 256 KB/SM，按 128 lane × 512 column 的 32-bit 单元组织，$128 \times 512 \times 4 \text{ B} = 256 \text{ KB}$。`tcgen05.mma` 的累加器直接驻留在 TMEM 上，无需立刻写回 shared memory 或 HBM。TMEM 由 kernel 用 `tcgen05.alloc` 显式分配、`tcgen05.dealloc` 显式释放，两条指令必须由同一个 warp 集体发起；`tcgen05.relinquish_alloc_permit` 表示当前 CTA 不再发起新的 `tcgen05.alloc`，本身不负责 alloc/dealloc 配对——cluster 中两个 peer CTA 之间的 alloc/dealloc 协同通过各自对应的 warp 同步执行完成（[CUDA PTX ISA §9.7.17.1 Tensor Memory](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#tensor-memory)；[`tcgen05.alloc` / `tcgen05.dealloc` 见 §9.7.17.7.1](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html)）。(2) **Thread Block Cluster（H100 9.0+ 与 B200）**——允许把多个 thread block 编为一个 cluster，cluster 内的 block 可跨 SM 直接访问彼此的 distributed shared memory（[CUDA PTX ISA §2.2.2 Thread Block Clusters](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#thread-block-clusters)），共享内存域从单 SM 扩展到 portable cluster size 8 个 SM；若开启 `cudaFuncAttributeNonPortableClusterSizeAllowed`，可进一步扩展到 16 个 SM；这一特性自 Hopper 引入，Blackwell 沿用并扩展。TMEM 触发 Blackwell 专属的 kernel 设计模式（TMEM-resident mma、persistent kernels）；cluster 是 Hopper 与 Blackwell 都可用的 grid 调度扩展，对应 cluster-level tile 等模式。在 PTX 层，`tcgen05.alloc` / `tcgen05.dealloc` 直接暴露给程序员；默认编程模型（CUDA C++、Triton、TorchInductor）下不需要显式管理 TMEM，编译器在 `tcgen05.mma` 调用前后自动完成分配与释放。
+> Hopper 与 Blackwell 在 memory hierarchy 上各加了一层上表没有列出的资源。
+>
+> **Tensor Memory（TMEM，Blackwell 数据中心型号 B200 / GB200）**：在 Tensor Core 旁新增一组张量专用内存，容量 256 KB/SM，按 128 lane × 512 column 的 32-bit 单元组织，即 $128 \times 512 \times 4\ \text{B} = 256\ \text{KB}$ 。`tcgen05.mma` 的累加器直接驻留在 TMEM 上，无需立刻写回 shared memory 或 HBM。TMEM 由 kernel 用 `tcgen05.alloc` 分配、`tcgen05.dealloc` 释放，两条指令都由同一个 warp 集体发起；`tcgen05.relinquish_alloc_permit` 只声明当前 CTA 不再发起新的 `tcgen05.alloc`，不参与 alloc/dealloc 配对。默认编程模型（CUDA C++、Triton、TorchInductor）下不需要显式管理 TMEM，编译器在 `tcgen05.mma` 前后自动完成分配与释放；写 PTX 时这两条指令才直接暴露给程序员。
+>
+> **Thread Block Cluster（Hopper 引入，Blackwell 沿用）**：允许把多个 thread block 编为一个 cluster，cluster 内的 block 可跨 SM 直接访问彼此的 distributed shared memory，共享内存域从单个 SM 扩展到 portable cluster size 的 8 个 SM；设置 `cudaFuncAttributeNonPortableClusterSizeAllowed` 后，B200 上可进一步用到 16 个 SM。TMEM 对应 Blackwell 专属的 kernel 设计模式（TMEM-resident mma、persistent kernel），cluster 则是 Hopper 与 Blackwell 都可用的 grid 调度扩展，对应 cluster-level tile 一类写法。
 
 CUDA / Triton 的基础并行模型可以写成三层：
 
@@ -92,16 +97,16 @@ Occupancy 有两个常见含义：
 
 *图 6.1-2 wave quantization*
 
-图 6.1-2 展示了 block occupancy 的工程后果。横向矩阵尺寸从 1792 增到 1793 时，tile 数从 $7 \times 14 = 98$ 跳到 $8 \times 15 = 120$。
+图 6.1-2 展示了 block occupancy 的工程后果。横轴是矩阵尺寸，两条散点是同一 GEMM 在各尺寸下的实测性能，曲线呈周期性锯齿。取 $256 \times 128$ 的输出 tile：尺寸为 1792 时 tile 数是 $(1792 / 256) \times (1792 / 128) = 7 \times 14 = 98$ ；尺寸增到 1793 后两个方向都要向上取整，tile 数跳到 $8 \times 15 = 120$ 。
 
-A100 有 108 个 SM，120 个 tile 无法在一波内全部执行，尾波只剩少量 block，周期性低效就会出现在性能曲线上。
+A100 有 108 个 SM，120 个 tile 无法在一波内全部执行，尾波只剩 12 个 block，其余 SM 空转，性能曲线上就出现周期性的下跌。
 
 调 block size、grid size 和 thread coarsening 时，需要同时看每个 block 的工作量和总 block 数对 SM 数的整除关系。
 
 Shared memory 和 HBM 还有两类不同的访存坑：
 
-- **Bank conflict** 发生在 shared memory。shared memory 通常分成 32 个 bank。若一个 warp 的多个线程在同一周期访问同一个 bank 的不同地址，这些访问会被串行化。连续 float32 元素常可粗略记作 $\mathrm{bank}(i) = i \bmod 32$。
-- **Memory coalescing** 发生在 global memory / HBM 访问。一个 warp 同一条 load 指令访问连续地址时，硬件更容易合并成少量 cache-line transaction；若同一拍访问矩阵不同 row 的同一列，地址跨度通常很大，coalescing 会变差。
+- **Bank conflict** 发生在 shared memory。shared memory 分成 32 个 bank，每个 bank 宽 4 B，因此 bank 映射每 128 B 循环一次。若一个 warp 的多个线程在同一周期访问同一个 bank 的不同地址，这些访问会被串行化；若它们访问的是完全相同的地址，硬件走广播路径，不构成冲突。连续 float32 元素的 bank 编号是 $\mathrm{bank}(i) = i \bmod 32$。
+- **Memory coalescing** 发生在 global memory / HBM 访问。一个 warp 的 32 个线程各取 4 B 连续地址时，正好凑成 128 B，硬件可以合并成一条 cache-line transaction；若同一拍访问矩阵不同 row 的同一列，地址跨度通常很大，一次 load 会拆成多条 transaction，有效带宽随之下降。
 
 Bank conflict 常出现在 tile 被写入 shared memory 后又按另一种方向读取时。按行连续写入通常很顺，但转置读取或按列读取可能让同一个 warp 的多个 thread 落到同一个 bank。常见缓解方式是 swizzling：保持逻辑坐标不变，只改变 shared memory 中的物理下标，例如把某一维映射成 `row ^ col` 这类按位异或形式。这样相邻 thread 的访问会被打散到更多 bank；读取时使用同一套映射还原逻辑位置。
 
@@ -207,7 +212,7 @@ def profile(run: Callable, num_warmups: int = 1):
 
 *表 6.5 矩阵乘法 profiler 摘要（单卡 B200）*
 
-`cutlass3x` 指向 NVIDIA 的线性代数 kernel 生态，`sm100` 对应 Blackwell / B200，`sgemm` 表示 float32 GEMM，`64x64x16` 或 `32x32x16` 是 tile 形状。相同 Python 表达式在不同形状下可能调用不同 kernel，因此性能分析不能只停在 `a @ b` 这一层。
+`cutlass3x` 指 CUTLASS 3.x（NVIDIA 维护的 CUDA 线性代数模板库），`sm100` 表示目标架构是 Blackwell 数据中心 SKU（即 B200 / GB200），`simt` 表示该 kernel 走 SIMT 路径，由普通 CUDA core 执行逐元素乘加，`sgemm` 表示单精度 float32 GEMM，`64x64x16` 或 `32x32x16` 是 tile 形状。相同 Python 表达式在不同形状下可能调用不同 kernel，因此性能分析不能只停在 `a @ b` 这一层。
 
 ## 6.3 Kernel fusion：GeLU 作为最小案例
 
@@ -310,7 +315,7 @@ Softmax 比 GeLU 多了 reduction。每个输出元素依赖整行最大值和�
 
 *图 6.4-1 Triton softmax row program*
 
-图 6.4-1 展示了 row-wise softmax 的 block 级组织方式。左侧 `pid=1` 选择 row 1；右侧同一个 program 先 `tl.load` 整行，再做 `tl.max`、`tl.exp`、`tl.sum` 和 normalize，最后 `tl.store` 回输出。row 之间没有共享状态，所以 grid 可以是一维的 `(M,)`。
+图 6.4-1 展示了 row-wise softmax 的 block 级组织方式。左侧 `pid=1` 选择 row 1；右侧同一个 program 先 `tl.load` 整行，再做 `x - tl.max(x)` 减最大值（数值稳定性）、`tl.exp` 取指数、`tl.sum` 求分母和 normalize，最后 `tl.store` 回输出。row 之间没有共享状态，所以 grid 可以是一维的 `(M,)`。
 
 ```python
 def triton_softmax(x: torch.Tensor):
@@ -328,7 +333,9 @@ def triton_softmax(x: torch.Tensor):
     return y
 ```
 
-Kernel 内部和朴素 softmax 的数学结构很像，但访存结构完全不同。朴素 PyTorch 会经历 row max、减 max、`exp`、row sum、除法等多个 op，每一步都可能形成独立 kernel 和中间张量。以行数 $M$、列数 $N$ 为账本：朴素实现共 $5MN + M$ 次 HBM 读和 $3MN + 2M$ 次 HBM 写，访存量随 $M$ 和 $N$ 增长接近 8 倍于"每行一次读、一次写"的理想值。Triton fused softmax 把一行读入后，把 max/sum reduction 和 normalize 尽量留在同一个 program 内完成，把整条流水线收敛到每行约一次读加一次写。
+Kernel 内部和朴素 softmax 的数学结构很像，但访存结构完全不同。朴素 PyTorch 会经历 row max、减 max、`exp`、row sum、除法等多个 op，每一步都可能形成独立 kernel 和中间张量。
+
+以行数 $M$、列数 $N$ 为账本：朴素实现共 $5MN + 2M$ 次 HBM 读和 $3MN + 2M$ 次 HBM 写，合计 $8MN + 4M$ 次访存；理想情况下每个元素只读一次、写一次，只需 $2MN$ 次，两者相差约 4 倍。Triton fused softmax 把一行读入后，把 max/sum reduction 和 normalize 都留在同一个 program 内完成，把整条流水线收敛到每行约一次读加一次写，这 4 倍就是它的理论加速上限。
 
 ```python
 @triton.jit
@@ -449,13 +456,15 @@ Triton 代码最终会编译到 PTX（Parallel Thread Execution）。`triton_gel
 
 *表 6.8 Triton GeLU PTX 中的执行模型信号*
 
-PTX 中同一个 thread 实际处理多个相邻元素（thread coarsening），体现在连续的 `ld.global.v4.b32` / `st.global.v4.b32` 序列上，编译器把多个相邻元素合并到同一个 thread 的连续 vector load/store 里，减少调度开销并提高每个 thread 的工作量。PTX 仍不是硬件最终全部细节；warp 调度、具体 SM 分配和许多微架构行为还要继续下探到 profiler 或 SASS 才能确认。
+这几个信号合起来能算出 thread coarsening 的倍数：`BLOCK_SIZE` 是 1024，而 `.reqntid 128` 说明一个 block 只有 128 个 thread，因此每个 thread 要处理 $1024 / 128 = 8$ 个元素。这 8 个元素在 PTX 里表现为两条 `ld.global.v4.b32` 和两条 `st.global.v4.b32`，编译器把相邻元素合并进同一个 thread 的向量 load/store，减少指令与调度开销，同时提高每个 thread 的工作量。
+
+PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微架构细节要继续下探到 profiler 或 SASS 才能确认。
 
 本章的工具选择可以压缩成一条工程判断链：PyTorch builtin 优先；逐元素链条先试 `torch.compile`；需要改变计算组织、显式控制 tile、mask、访存和片上复用时使用 Triton；只有在需要更细粒度硬件控制或复用已有 CUDA 生态时，才继续下探到 CUDA C++、PTX 或 SASS。
 
 ## 本章总结与下章衔接
 
-本章把 GPU 高性能编程拆成一条可复用的排查链：benchmark 端到端时间 → profiler 找到实际 kernel 与时间分布 → 决定 fusion 收益 → 在 Triton 里写 block 级 kernel → 通过 PTX 与 `cuobjdump` 看到 compiler 把 block 拆到 thread/warp/指令后做了什么。当自动编译（`torch.compile`）不够用时，这套链可以定位到具体哪条 kernel 哪一行做错了。
+本章把 GPU 高性能编程拆成一条可复用的排查链：benchmark 端到端时间 → profiler 找到实际 kernel 与时间分布 → 决定 fusion 收益 → 在 Triton 里写 block 级 kernel → 通过 PTX 文本看到 compiler 把 block 拆到 thread/warp/指令后做了什么。当自动编译（`torch.compile`）不够用时，这套链可以定位到具体哪条 kernel 哪一行做错了。
 
 下章进入 [第 7 章 分布式训练](../chapter7/chapter7_分布式训练.md)：单卡账本成立之后，把同一组账本扩展到跨卡——collective 语义、NCCL / torch.distributed 的实际接口、ZeRO / FSDP 的状态分片，以及 TP / PP / SP / CP / EP 在混合并行中的组合（EP 在第 7 章 §7.9 与第 4 章 MoE 章节交叉）。
 
@@ -477,6 +486,10 @@ PTX 中同一个 thread 实际处理多个相邻元素（thread coarsening），
 
 ## 来源与更新记录
 
-
 - 来源：本章以 CUTLASS 3.x 源码、Triton 文档、PTX ISA 与 NVIDIA H100/B200 datasheet 为主；`triton_gelu-ptx.txt` 等 PTX 一手输出物仅作可访问示例引用。
+- 硬件规格：[CUDA C++ Best Practices — Blackwell Tuning Guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html)（register file 64K 32-bit registers/SM、max 255 registers/thread、portable cluster size 8 与 B200 的非 portable cluster size 16），查阅日期 2026-09-05，状态：官方。
+- Tensor Memory：[CUDA PTX ISA — Tensor Memory](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#tensor-memory) 与 Colfax Research 的 Blackwell TMEM GEMM 教程（256 KB/SM、128 lane × 512 column、`tcgen05.alloc` / `tcgen05.dealloc` 由单个 warp 发起），查阅日期 2026-09-05，状态：官方 + 社区实现说明。
+- Wave / tile quantization：[NVIDIA Matrix Multiplication Background User's Guide](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html)（$256 \times 128$ tile、A100 108 SM 的一波 tile 数），查阅日期 2026-09-05，状态：官方。
+- Fused softmax 访存账本：[Triton fused softmax 教程](https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html)（朴素实现总访存 $8MN + 4M$、理想 $2MN$、理论加速约 4 倍），查阅日期 2026-09-05，状态：官方文档。
+- 表 6.2 的 register bandwidth 为按 SM 数、时钟与寄存器端口宽度换算的量级估计，其余三级带宽取自各代 datasheet 公布值。
 - 参考：[`triton_gelu-ptx.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/triton_gelu-ptx.txt)；Triton 文档；PyTorch `torch.compile` 文档。

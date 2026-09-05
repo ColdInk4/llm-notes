@@ -29,7 +29,7 @@ Tokenizer 在训练开始前就被固定下来，它一旦确定，后面所有�
 
 *图 1.1-2 GPT tokenizer 将字符串编码为 token id*
 
-图 1.1-2 展示了现代 tokenizer 的几个常见现象：空格经常和后面的词片段一起成为 token；句首的 `hello` 和带前置空格的 ` hello` 可能对应不同 id；数字常按几位一组切分。图上的彩色片段说明 tokenizer 学到的是训练语料中的统计片段，token 边界和人类直觉里的词边界并不总是重合。
+图 1.1-2 展示了 GPT-5（tiktoken `o200k_base`）对 `"Stanford was founded in 1885."` 的切分。9 个 token id 对应同一字符串，序列下方的高亮片段说明 tokenizer 学到的是训练语料中的统计片段，不是人类直觉里的词边界：前导空格经常和 `Stan` 一起成为单独 token（id 93447）；同一个 `Stanford` 在句首被切成 `Stan`+`ford` 两个 token，而带前置空格的 ` founded`、in 等又各占一个 token；年份 `1885` 作为 4 位数字整体成为 id 13096，体现了"数字常按几位一组切分"的规律。
 
 衡量压缩效率的一个简单指标是 bytes per token：
 
@@ -45,9 +45,9 @@ $$
 
 图 1.1-3 把这条成本链画在同一条轴上：tokenizer 切分得越碎，同一段原始文本就越快耗尽上下文窗口，attention 矩阵也越大。提高压缩率可以缓解这个问题，代价是扩大词表会增加 embedding 和输出层的参数量，并让低频 token 更难被充分训练。词表规模因此成为一个需要权衡的量，下面用几个公开模型看看这个量落在什么区间。
 
-OpenAI 的 tiktoken 提供两类相近规模的编码，可以用来看清一个词表规模是怎样被算出来的。`o200k_base` 的合并表含 199,998 条 rank，编号 0-199997；再加上两个显式特殊 token `ENDOFTEXT`（id 199999）和 `ENDOFPROMPT`（id 200018），vocab\_size 取到 200,019。中间的 id 199998 与 200000-200017 共 19 个槽位在 `o200k_base` 下没有分配。GPT-5、GPT-4o、o1、o3 等纯文本模型都沿用这套编码。
+OpenAI 的 tiktoken 提供两类相近规模的编码，可以用来看清一个词表规模是怎样被算出来的。`o200k_base` 的合并表含 199,998 条 rank，编号 0-199997；再加上两个显式特殊 token `ENDOFTEXT`（id 199999）和 `ENDOFPROMPT`（id 200018），vocab\_size 取到 200,019。中间的 id 199998 与 200000-200017 共 19 个槽位在 `o200k_base` 下没有分配。GPT-5、GPT-4o、o1、o3 等模型的文本 tokenizer 都沿用这套编码（GPT-4o 自身的视觉部分另走独立路径，不在本节范围内）。
 
-`o200k_harmony` 复用同一张合并表，把上面那 19 个空槽连同更高位一起填成消息边界、role、channel 和 function calling 的控制 token：id 199998 是 `<|startoftext|>`，200002 到 200012 之间依次出现 `<|return|>`、`<|constrain|>`、`<|channel|>`、`<|start|>`、`<|end|>`、`<|message|>`、`<|call|>`，其余位置一直到 201087 都是 `<|reserved_*|>` 占位，于是 vocab\_size $= 201{,}088$。`openai/gpt-oss-20b` 与 `openai/gpt-oss-120b` 按 `gpt-oss-` 前缀映射到这套编码。精确取值见 [`tiktoken_ext/openai_public.py`](https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py)。
+`o200k_harmony` 复用同一张合并表，把上面那 19 个空槽连同更高位一起填成消息边界、role、channel 和 function calling 的控制 token：id 199998 是 `<|startoftext|>`，200002 到 200012 之间命名控制 token 依次是 `<|return|>`、`<|constrain|>`、`<|channel|>`、`<|start|>`、`<|end|>`、`<|message|>`、`<|call|>`（中间穿插的 `<|reserved_200004|>`、`<|reserved_200009|>`、`<|reserved_200010|>`、`<|reserved_200011|>` 也占位），其余位置一直到 201087 都是 `<|reserved_*|>` 占位，于是 vocab\_size $= 201{,}088$。`openai/gpt-oss-20b` 与 `openai/gpt-oss-120b` 按 `gpt-oss-` 前缀映射到这套编码。精确取值见 [`tiktoken_ext/openai_public.py`](https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py)。
 
 开源权重模型的词表也在同一量级。DeepSeek-V3 的 vocab\_size $= 129{,}280$（[HF config](https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/main/config.json)），技术报告 §4.1 把它描述为 byte-level BPE 的 128K 扩展词表。Qwen3-235B-A22B 的 vocab\_size $= 151{,}936$（[HF config](https://huggingface.co/Qwen/Qwen3-235B-A22B/blob/main/config.json)），Qwen3 技术报告 §2 给出的 tokenizer 基础大小是 151,669，两者相差的 267 个槽位留给 reserved 与对齐用的 padding。十万到二十万这个区间，就是当前主流模型在压缩率、词表稀疏性和跨语言覆盖之间选定的折中位置。
 
@@ -64,13 +64,10 @@ Tokenizer-free 架构尝试直接在 byte 或动态 chunk 上建模，代表方�
 **byte 级 tokenizer** 先把字符串编码成 UTF-8 byte，再把每个 byte 当作 token。它的基础词表只需要 256 个值，能够覆盖任意合法 UTF-8 文本，也避免传统 OOV（out-of-vocabulary）问题。代价是纯 byte tokenizer 的压缩率恒为 1：
 
 $$
-C_{\text{ratio}}
-  = \frac{N_{\text{bytes}}}{N_{\text{tokens}}}
-  = \frac{N}{N}
-  = 1
+C_{\text{ratio}} = \frac{N_{\text{bytes}}}{N_{\text{tokens}}} = \frac{N_{\text{bytes}}}{N_{\text{bytes}}} = 1
 $$
 
-纯 byte tokenizer 下，每个 byte 都直接进入模型序列。中文（通常 3 byte）、emoji（4+ byte）和长代码片段会快速拉长序列长度，full attention 成本随之上升。
+纯 byte tokenizer 下，每个 byte 都直接进入模型序列，等式中的 $N_{\text{bytes}}$ 同时是输入 UTF-8 字节数与 token 数。中文（通常 3 byte）、emoji（4+ byte）和长代码片段会快速拉长序列长度，full attention 成本随之上升。
 
 **词级 tokenizer** 按空格、标点或语言特定分词规则切分文本。它的 token 往往更接近人类理解的词，压缩率也较高。工程问题在于词表可能随训练数据无限增长：`look`、`looks`、`looked`、`looking` 会成为不同词；测试时遇到没见过的人名、术语或拼写变化，只能使用 `<UNK>` 或回退策略，信息会丢失或变得难以比较。
 
@@ -94,7 +91,21 @@ Byte Pair Encoding（BPE）算法最早由 Philip Gage 在 1994 年的数据压�
 
 图 1.3-1 可以按四步理解。第一步准备覆盖目标任务的语料，并完成必要清洗、合规筛查和采样配比。第二步选择基础单位，byte-level BPE 通常从 256 个 byte token 开始。第三步统计当前 token 序列中的相邻 pair 频率，每轮合并最高频 pair，并把新 token 加入词表。第四步导出 `vocab` 和 `merges`，供后续编码、解码和训练使用。
 
-一个极简 BPE 示例可以从字符串 `the cat in the hat` 开始。初始状态先把字符串转成 UTF-8 byte id，每个 byte 都是一个 token。训练时反复统计相邻 token pair，选择频率最高的 pair 合并，并把新 token 加入词表。
+一个极简 BPE 示例可以从字符串 `the cat in the hat` 开始。初始状态先把字符串转成 UTF-8 byte id，每个 byte 都是一个 token。训练时反复统计相邻 token pair，选择频率最高的 pair 合并，并把新 token 加入词表。BPE 训练循环可以用下面的伪代码描述：
+
+$$
+\begin{aligned}
+&\text{初始化：} \; \text{indices} = \text{UTF-8}(s), \quad \text{vocab} = \{i \mapsto \text{bytes}(i) : 0 \le i < 256\}, \quad \text{merges} = \{\} \\
+&\text{for } i = 1, 2, \dots, V - 256: \\
+&\quad \text{counts}(a, b) = \sum_{k} \mathbb{1}[\text{indices}[k]=a \land \text{indices}[k+1]=b] \\
+&\quad (a^*, b^*) = \arg\max_{(a,b)} \text{counts}(a, b) \\
+&\quad \text{vocab}[256 + i - 1] = \text{vocab}[a^*] \oplus \text{vocab}[b^*] \\
+&\quad \text{merges}[(a^*, b^*)] = 256 + i - 1 \\
+&\quad \text{indices} = \text{merge}(\text{indices}, (a^*, b^*), 256 + i - 1)
+\end{aligned}
+$$
+
+其中 $\text{counts}(a, b)$ 是当前序列中相邻 pair $(a, b)$ 的出现次数；$\arg\max$ 在并列时按实现约定（Python `max` 默认按 dict 插入顺序）取最早遇到的高频 pair。$V$ 是目标 vocab_size，最终新增 token id 从 $256$ 起按合并顺序递增。
 
 | 轮次 | 当前高频 pair | 新 token | 合并后的含义 |
 | --- | --- | --- | --- |
@@ -104,19 +115,37 @@ Byte Pair Encoding（BPE）算法最早由 Philip Gage 在 1994 年的数据压�
 
 这个 trace 展示了 BPE 的两条账本同时变化：token 序列越来越短，词表越来越大。训练结束后，`merges` 记录的是这些合并的顺序，也就是 merge rank。编码新文本时，从 byte 序列出发，按训练时记录的优先级应用可匹配的合并规则；越早学到的 merge，优先级越高。解码时再把 token id 查回 byte 片段并拼接，因此只要 `vocab` 和 `merges` 一致，普通文本就能 round-trip。
 
-![图 1.3-2 vocab 与 merges 共同定义编码和解码规则](images/1-3-2-vocab-merges-example.png)
+![图 1.3-2 vocab 与 merges 共同决定 token id 序列](images/1-3-2-vocab-merges-example.png)
 
-*图 1.3-2 vocab 与 merges 共同定义编码和解码规则*
+*图 1.3-2 vocab 与 merges 共同决定 token id 序列*
 
-图 1.3-2 中，`vocab` 记录 token id 到 byte 或字符串片段的映射，`merges` 记录相邻 pair 的合并顺序。两者缺一不可：只有 `vocab` 可以查 id 的内容，却不知道编码时该怎样合并；只有 `merges` 可以描述训练顺序，却无法单独完成 id 到文本的解码。
+图 1.3-2 把同一段文本 `"你好，hello, world!🟢!"` 送进 DeepSeek-R1 tokenizer，给出了 12 个 token id 与对应的彩色片段。`vocab` 单独只回答"id 对应的字节片段是什么"；`merges` 单独只回答"训练时按什么顺序合并"。两者合在一起才能解释编码——譬如 id 223 在该词表下是空格片段，三次出现说明前导空格和标点后的空格分别被并入了同一片段。完整 round-trip 需要 `vocab` 和 `merges` 同时参与：编码时按 `merges` 顺序把 byte 序列逐步合并成 token id；解码时按 `vocab` 把每个 id 还原成 byte 片段再拼回字符串。
 
 现代 tokenizer 还需要处理三个工程细节。
 
 - **特殊 token**：`<PAD>`、`<UNK>`、`<BOS>`、`<EOS>`、`<|endoftext|>` 等控制符应保留固定 id，并避免被普通 merge 拆开或吞并。
-- **预分词边界**：生产实现通常先按 regex 或 Unicode 类别分 chunk，再对 chunk 应用 BPE，减少无意义跨边界合并。
+- **预分词边界**：生产实现通常先按 regex 或 Unicode 类别分 chunk，再对 chunk 应用 BPE，减少无意义跨边界合并。GPT-2 的预分词正则大致是 `'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+`（[`openai_public.py`](https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py)），DeepSeek 系列则使用 `\p{L}+|\p{N}+|[^\p{L}\p{N}\s]+|\s+`。两套规则都把字母串、数字串、连续符号、空白分别视作 chunk，从而避免在词内或数字串中间发生 merge。
 - **编码速度**：朴素实现每次编码都遍历所有 merge，复杂度很高。实际实现会维护 pair 索引、rank 或优先队列，只处理当前文本中可能发生的合并。
 
-同一条"数据驱动切分"的思路还有几种不同实现，它们的差异主要在优化目标和工程接口。BPE 用频率贪心合并；WordPiece 更接近选择能提升语料似然的子词；Unigram 从较大候选词表出发，用概率模型和剪枝保留能解释语料的 token；SentencePiece 是训练和编码框架，可承载 BPE 或 Unigram，并把空格等边界信息纳入模型。
+同一条"数据驱动切分"的思路还有几种不同实现，它们的差异主要在优化目标和工程接口。BPE 用频率贪心合并：
+
+$$
+\text{merge}^* = \arg\max_{(a, b)} \text{counts}(a, b)
+$$
+
+WordPiece 把合并准则换成"提升语料对数似然最多的子词对"：
+
+$$
+\text{merge}^* = \arg\max_{(a, b)} \frac{\text{counts}(a, b)}{\text{counts}(a) \cdot \text{counts}(b)}
+$$
+
+即按互信息（PMI）排序而不是绝对频率。Unigram 从一个较大的初始 token 候选词表出发，给每个候选 token 赋概率 $P(t)$，对一段文本 $x$ 的所有可能分词 $S$ 求边缘似然，用负对数似然作为训练 loss：
+
+$$
+\mathcal{L} = -\log P(x) = -\log \sum_{S} \prod_{t \in S} P(t)
+$$
+
+训练过程中反复剪掉对 loss 贡献最小的 token（例如每次移除掉使总 loss 增加最小的 10%–20% 的 token），直到词表收敛到目标大小。SentencePiece 是训练和编码框架，可承载 BPE 或 Unigram，并把空格等边界信息纳入模型。
 
 ## 1.4 分词器质量检查与工程取舍
 
@@ -139,12 +168,12 @@ Byte Pair Encoding（BPE）算法最早由 Philip Gage 在 1994 年的数据压�
 
 ## 1.5 DeepSeek tokenizer 案例
 
-公开模型的 tokenizer 可以作为健康检查对象。以 DeepSeek Coder tokenizer 为例，面向代码和中英文混合文本的词表通常会覆盖缩进、常见标点组合、中文字词片段、数字串、URL 片段和 emoji。这样能减少 token 数，让固定上下文窗口容纳更多原始文本；低频语言或罕见符号如果语料覆盖不足，仍会被拆成更细片段。
+公开模型的 tokenizer 可以作为健康检查对象。以 DeepSeek-R1（沿用 DeepSeek-V3 的 byte-level BPE 词表，vocab_size = 129,280）为例，面向代码和中英文混合文本的词表通常会覆盖缩进、常见标点组合、中文字词片段、数字串、URL 片段和 emoji。这样能减少 token 数，让固定上下文窗口容纳更多原始文本；低频语言或罕见符号如果语料覆盖不足，仍会被拆成更细片段。
 
 ```python
 from transformers import AutoTokenizer
 
-MODEL_NAME = "deepseek-ai/deepseek-coder-6.7b-instruct"
+MODEL_NAME = "deepseek-ai/DeepSeek-R1"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 print(f"vocab size: {len(tokenizer.get_vocab())}")
 ```
