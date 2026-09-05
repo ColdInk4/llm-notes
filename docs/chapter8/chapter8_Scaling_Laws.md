@@ -414,7 +414,7 @@ $$
 
 右图扫 seed token count $D$ 。这里的 `seed` 指起始数据集，和 random seed 无关； $D$ 是这批起始 unique tokens 的规模。三条曲线都随 $D$ 增大而下降，说明更多 unique tokens 仍然最直接地降低 loss。
 
-论文 Figure 11 把这件事单独画出来：一批模型在 100M unique tokens 上只训练一个 epoch，图里同时给出实测 loss、data-constrained scaling law 的预测和 Chinchilla 的预测。实测曲线在参数量超过某个位置后开始回升，data-constrained 公式预测 loss 会走平，Chinchilla 公式则预测 loss 继续改善。
+论文 Figure 3 把这件事单独画出来：一批模型在 100M unique tokens 上只训练一个 epoch，图里同时给出实测 loss、data-constrained scaling law 的预测和 Chinchilla 的预测。实测曲线在参数量超过某个位置后开始回升，data-constrained 公式预测 loss 会走平，Chinchilla 公式则预测 loss 继续改善。
 
 论文把“多余参数反而略变差”归因为 regularization 不足，并提出把指数 $\alpha$ 、 $\beta$ 也随规模衰减的替代形式，让函数形式本身能容纳“先降后升”的行为。muP 与默认超参的对比放在 Appendix F：在这组实验里 muP 的 test loss 反而高于默认超参，而且换成 muP 之后多余参数同样会损害性能。
 
@@ -1273,7 +1273,7 @@ StepFun 还检查训练设置的鲁棒性。它把 MoE、不同 dataset 和不�
 
 *图 8.6-33 AdamC scaling blow-up*
 
-图 8.6-33 是一个工程案例，左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，并从约 $10^{21}$ 之后进入 held-out 外推区。外推区里实测点逐档偏离预测：$10^{21}$ 处高 0.8%， $10^{22}$ 处高 2.5%， $10^{23}$ 处这一档的 run 直接发散。发散的训练设置是 cautious AdamC 配合按 batch size 平方根缩放的 learning rate，改动参数化与 scaling 规则后可以修复。这个案例来自 Held 博客（[oa.williamheld.com/blog/delphi/](https://oa.williamheld.com/blog/delphi/)）。
+图 8.6-33 是一个工程案例，左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，并从约 $10^{21}$ 之后进入 held-out 外推区。外推区里实测点逐档偏离预测：$10^{21}$ 处高 0.8%， $10^{22}$ 处高 2.5%， $10^{23}$ 处这一档的 run 直接发散。发散的训练设置是 cautious AdamC 配合按 batch size 平方根缩放的 learning rate，改动参数化与 scaling 规则后可以修复。这个案例来自 Held 博客（[openathena.ai/blog/delphi](https://openathena.ai/blog/delphi)）。
 
 Volkova et al. [Towards Robust Scaling Laws for Optimizers, arXiv:2602.07712](https://arxiv.org/abs/2602.07712) 处理同一类问题的另一面：论文指出 per-optimizer 直接拟合 Chinchilla-style scaling law 是 ill-conditioned 的、拟合参数高度相关，因此改用“共享 power-law exponents + optimizer-specific rescaling factors”，并在 AdamW、Muon、Scion、Shampoo、SOAP 五种 optimizer、两种架构上验证。
 
@@ -1464,7 +1464,7 @@ $$
 
 - [Kaplan et al., Scaling Laws for Neural Language Models, arXiv:2001.08361](https://arxiv.org/abs/2001.08361)
 - [Hoffmann et al., Training Compute-Optimal Large Language Models (Chinchilla), arXiv:2203.15556](https://arxiv.org/abs/2203.15556)
-- [Muennighoff et al., Scaling Data-Constrained Language Models, arXiv:2305.16264](https://arxiv.org/abs/2305.16264) — §8.3.3 effective data 公式 + Figure 1 右图 8.67B / 6.34B IsoFLOP 星点 + Figure 4 三档 IsoFLOP 预算 + Figure 11 excess-parameter 讨论与 Appendix F muP 对照主源
+- [Muennighoff et al., Scaling Data-Constrained Language Models, arXiv:2305.16264](https://arxiv.org/abs/2305.16264) — §8.3.3 effective data 公式 + Figure 1 右图 8.67B / 6.34B IsoFLOP 星点 + Figure 3 100M unique tokens IsoLoss contours + Figure 4 三档 IsoFLOP 预算 + Appendix F "Do Excess Parameters Hurt, Plateau or Help?" 与 muP 对照主源
 - [Goyal et al., Scaling Laws for Data Filtering — Data Curation cannot be Compute Agnostic, arXiv:2404.07177](https://arxiv.org/abs/2404.07177) — §8.3.3 data selection 与 quality-quantity tradeoff（图 8.3-10）主源
 - [Yang et al., Tensor Programs V: Tuning Large Neural Networks via Zero-Shot Hyperparameter Transfer, arXiv:2203.03466](https://arxiv.org/abs/2203.03466)
 - [MiniCPM Technical Report, arXiv:2404.06395](https://arxiv.org/abs/2404.06395)

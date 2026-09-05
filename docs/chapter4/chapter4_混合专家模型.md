@@ -46,7 +46,7 @@ DeepSeek、Kimi、Qwen、GLM、MiMo 等模型族都探索过 MoE 架构。MoE �
 - **通信（§4.4、§7.9.2）**：expert 分布在多 GPU / 多节点时如何避免 dispatch / combine 拖慢整层？这条线从 dispatch / combine 通信形状谈到 EP / ETP / EDP 拓扑与 MegaBlocks。
 - **稳定性（§4.1.3、§4.3.2）**：router logits 在低精度与稀疏梯度下如何不爆炸？这条线把 router FP32、z-loss、swiglu_limit、upcycling 与训练稳定性挂钩。
 
-四个目标对应四条主线：目标 1 串起 §4.1 整节；目标 2 集中在 §4.1.1 的 routing 对比；目标 3 由 §4.1.1 与 §4.3.2 共同承担；目标 4 由 §4.4、§4.5、§7.9.2 共同承担。
+四个目标对应四条主线：目标 1 串起 §4.1 整节；目标 2 集中在 §4.1.1 的 routing 对比；目标 3 由 §4.1.1、§4.1.3 与 §4.3.2 共同承担；目标 4 由 §4.4、§7.9.2 共同承担。
 
 ## 4.1 分析 MoE
 
@@ -1070,7 +1070,7 @@ MoE 稳定性通常需要同时处理路由更新、激活异常值和损失尖�
 
 ## 4.4 MoE 与深度学习
 
-**本节解决什么前置问题**：把 §4.1 的机制放到深度学习总体语境下重看——固定分工（CNN 卷积核）vs 动态分工（MoE routing）的差异，MoE 工程挑战的三条主线（专家负载 / 设备负载 / router 稳定性），以及 dispatch / expert compute / combine 的系统实现细节；本节末段以 Kimi K2 的 MoE + LoRA + RL 收束，让读者看到「系统视角」如何决定微调是否可行。
+**本节解决什么前置问题**：把 §4.1 的机制放到深度学习总体语境下重看——固定分工（CNN 卷积核）vs 动态分工（MoE routing）的差异，MoE 工程挑战的三条主线（专家负载 / 设备负载 / router 稳定性），以及 dispatch / expert compute / combine 的系统实现细节；本节末段以 Kimi K2 的 MoE + MuonClip + 联合 RL 收束，让读者看到「系统视角」如何决定微调是否可行。
 
 **基础层级特征抽取与传统分工**
 
@@ -1117,25 +1117,25 @@ expert parallelism 的意义在于把专家维度也变成可切分资源：atte
 > [!WARNING]
 > MoE 的“总参数更大但激活参数更少”只有在路由足够均衡、通信可控、expert matmul 利用率足够高时，才会转化为端到端训练或推理收益。
 
-在超大规模 MoE 推理模型上，研究者展示了通过 LoRA + RL 进行高效微调的可行性。这里的 LoRA 是在模型的 dense 层和 expert 层加上低秩适配器，使微调时只更新少量参数；RL 用于优化模型的行为策略。
+在超大规模 MoE 基座模型上，工程权衡集中在如何用全参数（或接近全参数）训练拿到 RL 增益，而不引入专家 / 设备层级的额外不稳定。
 
-以 [Kimi K2](https://huggingface.co/moonshotai/Kimi-K2-Instruct) 为例（约 1T total / 32B active；384 routed + 1 shared / top-8 per token，详见 [Kimi K2 论文](https://arxiv.org/abs/2507.20534)），公开材料中描述了结合混合并行与 LoRA 分片来降低 RL 微调成本的路线。这里的核心判断是：MoE 基座很大时，全参数 RL 代价极高，低秩适配和并行切分会直接决定训练是否可行。
+以 [Kimi K2](https://huggingface.co/moonshotai/Kimi-K2-Instruct) 为例（约 1T total / 32B active；384 routed + 1 shared / top-8 per token，详见 [Kimi K2 论文](https://arxiv.org/abs/2507.20534)），公开材料描述的训练路径是：预训练阶段用 Muon 优化器并在 QK 上做 MuonClip 截断，把 attention logits 压在一个稳定区间，从而在 15.5T tokens 上做到「零 loss spike」；后训练阶段在完整 MoE 上做联合 RL，结合真实与合成 agentic 环境的轨迹做策略优化。MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并行切分与稳定性技巧直接决定训练是否可行。
 
-相关对比实验通常会显示：强基座模型配合小规模 LoRA 的 RL，可能比小模型全参数 RL 更高效。直观原因是 RL 阶段很依赖基座模型的先验能力；基座越强，越容易产生高质量轨迹，RL 信号也更有效。超大规模 MoE 还会遇到一些特殊挑战：
+相关对比观察通常显示：基座模型的能力对 RL 阶段的样本效率影响显著，基座越强，RL 越容易产生高质量轨迹，信号也更有效；但能否扩展到 MoE 全参数 RL 取决于工程栈能否同时压住以下几类挑战：
 
    - **routing 不均衡**：部分 experts 被过度调用，部分 experts 闲置；
    - **通信压力**：不同 GPU、节点间数据交换频繁；
    - **并行布局复杂**：tensor、pipeline、expert 和 sequence parallelism 的组合很难优化；
    - **训练、推理不一致**：可能导致 expert 重要性比例突然失衡。
 
-为解决这些问题，相关系统通常会组合几类工程优化方法：
+针对这些挑战，相关系统通常会组合几类工程优化方法：
 
 1. **混合并行设计**：合理安排不同并行方式，减少通信开销；
-2. **截断重要性采样修正**：防止少数专家过载；
+2. **优化器侧稳定性**：例如 MuonClip 之类在 attention logits 上做截断，控制 router / attention 输出范围；
 3. **自适应并行调度器**：根据实时指标、GPU 利用率、内存、step time 自动调整 tensor、pipeline、expert、sequence 并行策略。
 
 > [!WARNING]
->这些结论基于 Kimi K2 和特定任务，具有工程环境依赖；在其他模型、硬件或任务中，效果可能不同，需要复现验证。
+>这些结论基于 Kimi K2 与同类超大规模 MoE 系统的公开材料，具有工程环境依赖；在其他模型、硬件或任务中，效果可能不同，需要复现验证。
 
 ## 4.5 Expert 配置表与代表模型
 

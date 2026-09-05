@@ -22,7 +22,7 @@
 
 本章的 PyTorch 代码可以按”形状账本”来读：每个 tensor 的 shape 决定元素数和矩阵乘维度，每个 dtype 决定 bytes，每个中间激活是否保留决定反向传播显存。写一行 tensor 代码时，最好顺手问三件事：它会触发多少矩阵乘、会搬多少字节、反向传播还要保留什么。这样后面学习 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md)、[第 7 章 §7.6 ZeRO / FSDP](../chapter7/chapter7_分布式训练.md) 和 [第 9 章 §9.3 模型与 KV cache 压缩](../chapter9/chapter9_推理系统.md) 时，才不会把性能问题只理解成”代码慢”。
 
-阅读本章代码时，建议把变量名当成账本列： $B$ 通常表示 batch， $S$ 表示 sequence length， $D$ 表示 hidden dim（与 [第 3 章](../chapter3/chapter3_语言模型架构和训练技术细节.md) 写作中的 $d_{\text{model}}$ 同义）， $d_k$ 表示 attention 头维度， $h$ 表示 attention 头数。一个 `einsum` 或 `matmul` 是否昂贵，取决于这些维度相乘后会产生多少元素、多少 FLOPs、多少中间张量。后文示例会沿用 `cuda_if_available()` 管理设备回退。
+阅读本章代码时，建议把变量名当成账本列： $B$ 通常表示 batch， $S$ 表示 sequence length， $D$ 表示 hidden dim（与 [第 3 章 语言模型架构和训练的技术细节](../chapter3/chapter3_语言模型架构和训练技术细节.md) 写作中的 $d_{\text{model}}$ 同义）， $d_k$ 表示 attention 头维度， $h$ 表示 attention 头数。一个 `einsum` 或 `matmul` 是否昂贵，取决于这些维度相乘后会产生多少元素、多少 FLOPs、多少中间张量。设备选择统一通过 `cuda_if_available()` 管理 CPU 回退。
 
 另一个常用 helper 是 `get_promised_flop_per_sec(dtype)`。它按 GPU 代际和 dtype 估算理论峰值，用来把 FLOPs 账本转换成训练时间和 MFU 估算。
 
@@ -1318,7 +1318,7 @@ total_memory = 4 * (num_parameters + num_activations + num_gradients + num_optim
 flops = 6 * B * num_parameters
 ```
 
-Transformer 的处理会更加复杂，但原理相同。做完整模型的内存和计算量分析时，下面两篇博客文章会帮到你：
+Transformer 的处理会更加复杂，但原理相同。完整模型的内存与 FLOPs 推导，可参考下面两篇博客：
 - [Transformer 训练的内存使用情况](https://shjwudp.github.io/blog/2023/gpt-training-memory-estimation-nemo-training-practice/)
 - [Transformer 的 FLOPs](https://www.adamcasson.com/posts/transformer-flops)
 
@@ -1503,7 +1503,7 @@ class CruncherCheckpointed(nn.Module):
 
 ## 本章总结与下章衔接
 
-本章围绕四张资源账本展开：tensor 的 shape / dtype / device 与 stride、`6ND` 量级的 FLOPs、activation + optimizer state + gradient + parameter 的显存组合、以及 roofline 上的 arithmetic intensity / MFU。PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通：换硬件（A100 / H100 / B200）或换精度（fp32 / bf16 / fp16 / fp8）时只需替换峰值数字，账本形状不变。第 9 章会把同一套算术强度与带宽账本搬到推理侧，用来解释 decode 阶段为什么受 KV cache 读取带宽支配。
+本章围绕四张资源账本展开：tensor 的 shape / dtype / device 与 stride、`6ND` 量级的 FLOPs、activation + optimizer state + gradient + parameter 的显存组合、以及 roofline 上的 arithmetic intensity / MFU。PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通：换硬件（A100 / H100 / B200）或换精度（fp32 / bf16 / fp16 / fp8）时只需替换峰值数字，账本形状不变。[第 9 章 §9.2 Arithmetic Intensity](../chapter9/chapter9_推理系统.md) 把同一套算术强度与带宽账本搬到推理侧，用来解释 decode 阶段为什么受 KV cache 读取带宽支配。
 
 下章进入 [第 3 章 语言模型架构和训练的技术细节](../chapter3/chapter3_语言模型架构和训练技术细节.md)：把 token 和算力账本当作输入侧准备之后，第 3 章讨论现代 dense decoder 的默认骨架（Pre-norm / RMSNorm / no bias / SwiGLU / RoPE / GQA / MLA / CLA）、attention 替代和训练稳定性。
 

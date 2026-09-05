@@ -369,7 +369,7 @@ $$
 这条 S 型曲线决定去重阈值。band 内部要求全部相等、band 之间只要一个命中，这种 and-or 结构把平缓的 $s$ 变成陡峭的门限。增大 $r$ 会提高单个 band 的全匹配门槛，曲线右移，只有更相似的文档才成为候选；增大 $b$ 会增加命中机会，曲线左移，更多中等相似度文档进入候选集。
 
 > [!NOTE]
-> Lee 等人在 arXiv:2107.06499 中使用的一组具体参数是： $n = 9000$ 个哈希函数，分成 $b = 20$ 个 band，每 band $r = 450$ 行。相变阈值 $\theta = (1/b)^{1/r} \approx 0.993$ ：在这个相似度上，单个 band 全匹配的概率恰好是 $1/b$ ，于是候选碰撞概率为 $1 - (1 - 1/b)^b \approx 1 - 1/e \approx 0.63$ 。相似度高于 0.993 的文档对碰撞概率迅速趋近 1，低于 0.993 的则迅速趋近 0，这样就把全量 $O(N^2)$ 精确比对压缩成对少量候选对的验证。
+> Lee 等人在 arXiv:2107.06499 中使用的一组具体参数是： $n = 9000$ 个哈希函数，分成 $b = 450$ 个 band，每 band $r = 20$ 行（论文原文用其自己的 $b$ / $r$ 记号写为 $b = 20$ / $r = 450$ ，对应到本节「b 个 band、每 band r 行」约定后正好相反；其概率公式 $P = 1 - (1 - s^b)^r$ 也按论文记号给出）。相变阈值 $\theta = (1/b)^{1/r} \approx 0.737$ ：在这个相似度上，单个 band 全匹配的概率恰好是 $1/b$ ，于是候选碰撞概率为 $1 - (1 - 1/b)^b \approx 1 - 1/e \approx 0.63$ 。相似度高于 0.737 的文档对碰撞概率迅速趋近 1，低于 0.737 的则迅速趋近 0，这样就把全量 $O(N^2)$ 精确比对压缩成对少量候选对的验证。论文 §2.1 正是按这组参数，把「在 Common Crawl / C4 这类网页语料上抓到 Jaccard 0.8 以上的近重复文档」的目标做成了可行操作。
 
 ![图 10.2-5 LSH band 与相似度关系](images/10-2-5-lsh-bands-threshold.png)
 
@@ -557,7 +557,7 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 - 课程材料：CS336 2026 Lecture 13（数据来源、版权与公开数据集）与 Lecture 14（转换、过滤、去重、混合、后训练合成数据）slides/video。
 - 数据集规模：The Pile（arXiv:2101.00027、Pythia arXiv:2304.01373 的 token 口径）、C4（arXiv:1910.10683 与 HF `allenai/c4`）、LLaMA 1（arXiv:2302.13971 表 1）、FineWeb（arXiv:2406.17557）、Dolma（HF `allenai/dolma`）、DCLM（arXiv:2406.11794、HF `mlfoundations/dclm-baseline-1.0`）、Nemotron-CC（arXiv:2412.02595）、The Stack v2（arXiv:2402.19173、HF `bigcode/the-stack-v2`）；查阅日期：2026-09-05。
 - Common Crawl 单次 crawl 统计：Common Crawl 官方 crawl 公告（CC-MAIN-2026-17）；查阅日期：2026-09-05。
-- 过滤与去重方法：OpenWebMath（arXiv:2310.06786 表 2 的 MATH Algebra-Easy 对照）、phi-1（arXiv:2306.11644 §2.1 的 350M 模型 96K / 36K 步对照）、arXiv:2202.06539（重复 10 次的序列被生成的频率约为出现 1 次序列的 1000 倍）、arXiv:2107.06499（ $n = 9000$ / $b = 20$ / $r = 450$ ）、UniMax（arXiv:2304.09151，max-epoch $N \in \{1, 5, 10\}$ 的 ablation 与 $N = 1$ 的默认设定）；查阅日期：2026-09-05。
+- 过滤与去重方法：OpenWebMath（arXiv:2310.06786 表 2 的 MATH Algebra-Easy 对照）、phi-1（arXiv:2306.11644 §2.1 的 350M 模型 96K / 36K 步对照）、arXiv:2202.06539（重复 10 次的序列被生成的频率约为出现 1 次序列的 1000 倍）、arXiv:2107.06499（论文记号 $b = 20$ / $r = 450$ / $n = 9000$ ，按「b 个 band、每 band r 行」约定对应 $b = 450$ / $r = 20$ / $n = 9000$ ）、UniMax（arXiv:2304.09151，max-epoch $N \in \{1, 5, 10\}$ 的 ablation 与 $N = 1$ 的默认设定）；查阅日期：2026-09-05。
 - 法律与数据安全：Bartz v. Anthropic PBC, Case No. 3:24-cv-05417 (N.D. Cal.) 公开报道与和解页面、arXiv:2302.10149、arXiv:2010.12563、arXiv:2510.07192；查阅日期：2026-09-05。
 - 后训练合成数据：OpenThoughts（arXiv:2506.04178 §4.1 的 27 code / 21 math / 14 science 来源与 §4.4 的 1× / 4× / 16× 采样 ablation、HF `open-thoughts/OpenThoughts3-1.2M`）、SWE-smith（arXiv:2504.21798）、SWE-rebench（arXiv:2505.20411）、SWE-ZERO-12M（HF `AlienKevin/SWE-ZERO-12M-trajectories`）；查阅日期：2026-09-05。
 - 训练数据评估：信息引导探针（arXiv:2503.12072，参考模型为 BERT-110M、探针形式为 cloze 填空）；查阅日期：2026-09-05。

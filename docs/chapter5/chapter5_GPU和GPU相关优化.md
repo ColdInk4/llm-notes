@@ -64,7 +64,7 @@ GPU 的历史背景只需要抓住一条主线：它最初为图形渲染中的�
 
 | 指标 | A100 | H100 | H200 | B200 |
 | --- | --- | --- | --- | --- |
-| SM 数 | 108 | 132 | 132 | GB100 die SM 数 NVIDIA 官方未公布；按 GB100 公布的 148 SM（部分启用配置）与每 SM 128 个 FP32 core 的推算常见于第三方资料；NVIDIA Blackwell 公开 tuning guide 与 datasheet 未给出 SM 数字 |
+| SM 数 | 108 | 132 | 132 | GB100 die SM 数 NVIDIA 官方未公布；按第三方拆解资料约 148 SM（部分启用配置）、每 SM 128 个 FP32 core 推算常见；NVIDIA Blackwell 公开 tuning guide 与 datasheet 未给出 SM 数字 |
 | 每 SM 寄存器 | 256 KB | 256 KB | 256 KB | 256 KB |
 | 每 SM L1 + shared memory | 192 KB | 256 KB | 256 KB | 256 KB |
 | L2 cache | 40 MB | 50 MB | 50 MB | 单颗 GB200 / B200 GPU（全封装，含 2 个 GB100 die）L2 = 126 MB（[NVIDIA Blackwell tuning guide §1.4.2.2](https://docs.nvidia.com/cuda/blackwell-tuning-guide/)）；折算每 GB100 die ≈ 63 MB |
@@ -130,7 +130,7 @@ A100 的宏观拓扑可以理解为四层：**GPC（Graphics Processing Cluster�
 | **TF32** | 156 TFLOP/s（dense）/ 312 TFLOP/s（with sparsity） | 默认 AI 训练格式 |
 | **FP16/BF16** | 312 TFLOP/s（dense）/ 624 TFLOP/s（with sparsity） | 混合精度训练 |
 | **INT8** | 624 TOPS（基础）/ 1,248 TOPS（结构化稀疏） | 推理加速 |
-| **INT4** | 1,248 TOPS（基础）/ 2,496 TOPS（结构化稀疏）（[NVIDIA A100 白皮书](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/)；产品 datasheet 未列） | 极致推理优化 |
+| **INT4** | 1,248 TOPS（基础）/ 2,496 TOPS（结构化稀疏）（[NVIDIA A100 白皮书](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/) 与 A100 datasheet specs table 一致列出） | 极致推理优化 |
 
 **核心技术**：
 
@@ -961,7 +961,7 @@ H100 的第四代 Tensor Core 在 **FP8 精度下的理论吞吐量是 FP16 的�
 
 因此 V3 采用混合精度策略来同时利用低精度吞吐和高精度累加：
 
-矩阵乘法 $QK^T$ 使用 FP8 执行，充分利用 Tensor Core 的高吞吐；**matmul 累加器**保持在 FP32 精度，避免 FP8 累加时的精度损失。**Softmax 中的中间统计量**（ $m_i, l_i$ 与中间指数值）保留在 FP32，保证指数和归一化的数值稳定性（softmax 中的指数和除法极易在低精度下溢出；FP8 WGMMA 输出与下一次 WGMMA 输入之间还会再 requant 回 FP16）。同时输出 $PV$ 可选择性转换为 FP8，以适应后续层。
+矩阵乘法 $QK^T$ 使用 FP8 执行，充分利用 Tensor Core 的高吞吐；**matmul 累加器**保持在 FP32 精度，避免 FP8 累加时的精度损失。**Softmax 中的中间统计量**（ $m_i, l_i$ 与中间指数值）保留在 FP32，保证指数和归一化的数值稳定性（softmax 中的指数和除法极易在低精度下溢出）。softmax 在 FP32 下计算完成后，$P$ 需要**按块（per-block）requant 回 FP8**才能进入下一个 WGMMA，因此第二次矩阵乘 $PV$ 仍是 FP8 输入 + FP32 累加；这一 requant 与 softmax 融合在同一 pass 里，避免额外访存。最终输出 $O$ 在写回 HBM 时按下一层精度选择 BF16 或 FP8。
 
 此外，V3 实现了 **动态缩放因子** 管理。由于 FP8 的表示范围有限（E4M3 约 -448 到 448，E5M2 约 -57344 到 57344），在计算 $QK^T$ 前需要根据输入范围确定缩放因子，防止溢出。V3 按块（tile）动态计算缩放因子，并在流水线中传递，确保 FP8 计算的精度与 FP16 相当。
 

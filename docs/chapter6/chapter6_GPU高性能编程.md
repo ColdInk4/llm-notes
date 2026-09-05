@@ -485,7 +485,7 @@ PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微�
 ## 来源与更新记录
 
 - 来源：本章以 CUTLASS 3.x 源码、Triton 文档、PTX ISA 与 NVIDIA H100/B200 datasheet 为主；`triton_gelu-ptx.txt` 等 PTX 一手输出物仅作可访问示例引用。
-- 硬件规格：[CUDA C++ Best Practices — Blackwell Tuning Guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html)（register file 64K 32-bit registers/SM、max 255 registers/thread、portable cluster size 8 与 B200 的非 portable cluster size 16），查阅日期 2026-09-05，状态：官方。
+- 硬件规格：[Blackwell Tuning Guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html)（register file 64K 32-bit registers/SM、max 255 registers/thread、portable cluster size 8 与 B200 的非 portable cluster size 16；shared memory 容量 256 KB/SM，max 228 KB/SM carveout，max 227 KB/CTA），查阅日期 2026-09-05，状态：官方。
 - Tensor Memory：[CUDA PTX ISA — Tensor Memory](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#tensor-memory) 与 Colfax Research 的 Blackwell TMEM GEMM 教程（256 KB/SM、128 lane × 512 column、`tcgen05.alloc` / `tcgen05.dealloc` 由单个 warp 发起），查阅日期 2026-09-05，状态：官方 + 社区实现说明。
 - Wave / tile quantization：[NVIDIA Matrix Multiplication Background User's Guide](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html)（$256 \times 128$ tile、A100 108 SM 的一波 tile 数），查阅日期 2026-09-05，状态：官方。
 - Fused softmax 访存账本：[Triton fused softmax 教程](https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html)（朴素实现总访存 $8MN + 4M$、理想 $2MN$、理论加速约 4 倍），查阅日期 2026-09-05，状态：官方文档。

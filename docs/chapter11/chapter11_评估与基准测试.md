@@ -751,7 +751,7 @@ GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重�
 
 #### 路线 2：鼓励报告规范
 
-[Language model developers should report train-test overlap](https://arxiv.org/abs/2410.08385) 提倡模型提供者应报告训练集与测试集的重叠情况
+[Language model developers should report train-test overlap](https://arxiv.org/abs/2410.08385) 提倡模型提供者应报告训练集与测试集的重叠情况。
 
 #### 路线 3：使用新鲜评估集
 
