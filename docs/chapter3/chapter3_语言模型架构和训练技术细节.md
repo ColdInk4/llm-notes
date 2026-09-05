@@ -785,7 +785,7 @@ DeepSeek-V2 报告中，MLA 通过显著减少生成所需的 KV cache 来提升
 
 *图 3.2-18 MHA、GQA、MQA 与 MLA 的差异集中在 K/V head 数量和缓存表示方式上*
 
-传统 Transformer 采用多头注意力（MHA），每个注意力头需独立缓存 Key 和 Value 向量。对一条上下文长度为 $S$ 的请求，层数为 $L$ 、attention heads 数为 $n_h$ 、每个 head 维度为 $d_h$ 时，KV cache 的元素数量为 $O(S \cdot L \cdot n_h \cdot d_h)$ ，成为长序列推理的主要瓶颈。
+传统 Transformer 采用多头注意力（MHA），每个注意力头需独立缓存 Key 和 Value 向量。对一条上下文长度为 $S$ 的请求，层数为 $L$ 、attention heads 数为 $h$ 、每个 head 维度为 $d_k$ 时，KV cache 的元素数量为 $O(S \cdot L \cdot h \cdot d_k)$ ，成为长序列推理的主要瓶颈。
 
 MLA 的核心是将所有注意力头的 Key 和 Value 联合压缩到一个共享的低维潜在空间。给定当前 hidden state $h_t$（维度 $d_{\text{model}}$），先用下投影 $W_D^{\mathrm{KV}} \in \mathbb{R}^{d_c \times d_{\text{model}}}$ 构造一个 KV latent：
 
@@ -799,9 +799,9 @@ $$
 k_t^C = W_U^K c_t^{\mathrm{KV}}, \quad v_t^C = W_U^V c_t^{\mathrm{KV}}
 $$
 
-其中 $W_U^K, W_U^V \in \mathbb{R}^{n_h d_h \times d_c}$ 是上投影矩阵，把压缩 latent 复原到 $n_h d_h$ 的总维度。
+其中 $W_U^K, W_U^V \in \mathbb{R}^{h d_k \times d_c}$ 是上投影矩阵，把压缩 latent 复原到 $h d_k$ 的总维度。
 
-推理缓存只保存 $c_t^{\mathrm{KV}}$ 这一个共享 latent。对每层每个 token，基础缓存从 MHA 的 $2 n_h d_h$ 个元素缩小到约 $d_c$ 个元素；这里 $n_h$ 是 attention heads 数， $d_h$ 是每个 head 的维度。
+推理缓存只保存 $c_t^{\mathrm{KV}}$ 这一个共享 latent。对每层每个 token，基础缓存从 MHA 的 $2 h d_k$ 个元素缩小到约 $d_c$ 个元素；这里 $h$ 是 attention heads 数， $d_k$ 是每个 head 的维度。
 
 图 3.2-18 中的 MLA 把需要缓存的 K/V 信息压到较低维 latent 表示中，再在 attention 路径上吸收或合并相关上投影。它重新定义了模型的缓存表示，训练和推理都需使用同一套结构。
 
@@ -813,7 +813,7 @@ $$
 
 MLA 在 attention 路径中增加了投影或重构计算。KV cache 和 HBM bandwidth 已成为瓶颈时，这些额外计算可以换取更低的显存占用和读取量。
 
-RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_h^R$ ，其中 $d_c$ 是 shared KV latent 的维度、$d_h^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_h^R = d_h / 2$ 即每个 head dim 的一半用于位置编码）。
+RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_k^R$ ，其中 $d_c$ 是 shared KV latent 的维度、$d_k^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_k^R = d_k / 2$ 即每个 head dim 的一半用于位置编码）。
 
 ![图 3.2-19 MLA 实验](images/3-2-19-mla-experiment.png)
 

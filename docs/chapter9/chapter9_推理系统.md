@@ -438,7 +438,7 @@ PagedAttention 面向在线服务中 KV cache 的生命周期管理。传统做�
 - 内部碎片：请求实际生成很短，却占了最大长度的空间。
 - 外部碎片：多个请求释放后留下零散空洞，总空闲显存够，但找不到足够大的连续块。
 
-KV cache 的硬件预算与 HBM 容量约束已在 [第 5 章 §5.8 KV cache 管理](../chapter5/chapter5_GPU和GPU相关优化.md) 给出，本节继续讲服务侧的调度问题。
+KV cache 的硬件预算与 HBM 容量约束已在 [第 5 章 §5.8 KV cache：HBM 上的另一笔账](../chapter5/chapter5_GPU和GPU相关优化.md) 给出，本节继续讲服务侧的调度问题。
 
 ![图 9.5-2 PagedAttention fragmentation](images/9-5-2-paged-attention-fragmentation.png)
 

@@ -40,7 +40,7 @@
 
 *图 11.1-2 Artificial Analysis 能力与成本对比*
 
-第三种定义是**人类更偏好它的回答**。Chatbot Arena / LM Arena 通过匿名两两比较来估计偏好，但偏好会混合正确性、风格、长度、礼貌程度和用户分布。
+第三种定义是**人类更偏好它的回答**。Chatbot Arena（现改名 LMArena）通过匿名两两比较来估计偏好，但偏好会混合正确性、风格、长度、礼貌程度和用户分布。
 
 ![图 11.1-3 LM Arena 人类偏好榜单](images/11-1-3-lmarena-preference-leaderboard.png)
 
@@ -408,7 +408,7 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ### 11.5.1 Chatbot Arena
 
-[Chatbot Arena](https://arxiv.org/abs/2403.04132)（现改名 LMArena / Arena AI）采用“盲测”和 ELO 评分系统。真实用户提交提示，同时收到两个匿名模型的回复，并选择更优者。优点是输入动态、能容纳新模型。问题在于评估者是网站访客，样本可能存在偏差；ELO 分数可能被策略性操纵。
+[Chatbot Arena](https://arxiv.org/abs/2403.04132)（现改名 LMArena）采用”盲测”和 ELO 评分系统。真实用户提交提示，同时收到两个匿名模型的回复，并选择更优者。优点是输入动态、能容纳新模型。问题在于评估者是网站访客，样本可能存在偏差；ELO 分数可能被策略性操纵。
 
 ![图 11.5-1 Chatbot Arena 分数排行榜](images/11-5-1-chatbot-arena-leaderboard.png)
 

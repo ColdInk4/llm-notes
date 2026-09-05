@@ -19,7 +19,7 @@ GPU 高性能编程先从一条可复用的排查链开始：
 
 读完本章后，应当能把一段高层 PyTorch 代码拆成三层问题：Python 表达式触发了哪些 kernel；这些 kernel 在 GPU 上受哪些硬件约束；需要下探时，Triton program、thread block 和 PTX 信号如何对应到实际执行。
 
-硬件基础参见 [第 5 章 GPU 体系结构](../chapter5/chapter5_GPU和GPU相关优化.md)；本章侧重编程模型、benchmark / profile 流程和 Triton / PTX 的工程落点。
+硬件基础参见 [第 5 章 GPU 和 GPU 相关的优化](../chapter5/chapter5_GPU和GPU相关优化.md)；本章侧重编程模型、benchmark / profile 流程和 Triton / PTX 的工程落点。
 
 正文中的代码片段保留核心结构，省略的 import、helper 和检查函数不影响主线。
 
@@ -40,8 +40,8 @@ GPU 高性能编程先从一条可复用的排查链开始：
 | SM 数 | 108 | 132 | 148 |
 | 每 SM register | 256 KB | 256 KB | 256 KB |
 | 每 SM L1 + shared memory | 192 KB | 256 KB | 256 KB |
-| L2 cache | 40 MB | 50 MB | 96-126 MB |
-| HBM 容量 | 80 GB | 80 GB | 192 GB |
+| L2 cache | 40 MB | 50 MB | 单颗 GB200 / B200 GPU（全封装，含 2 个 GB100 die）L2 = 126 MB（[NVIDIA Blackwell tuning guide §1.4.2.2](https://docs.nvidia.com/cuda/blackwell-tuning-guide/)）；折算每 GB100 die ≈ 63 MB |
+| HBM 容量 | 80 GB | 80 GB | 192 GB（HGX B200 公开口径 180 GB HBM3e；GB200 NVL72 datasheet 按总 HBM3e 13.4 TB / 72 GPU 推回 186 GB） |
 | HBM 带宽量级 | 2 TB/s | 3.35 TB/s | 8 TB/s |
 
 *表 6.1 A100/H100/B200 硬件数量级*

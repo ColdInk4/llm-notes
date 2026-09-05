@@ -82,7 +82,7 @@ per-expert balancing 和 per-device balancing 解决两个层级的问题。前�
 
 图 4.1-2 展示的是 DeepSeek-V3 一类 aux-loss-free balancing 的核心动作：每个 expert 维护一个 bias，routing 时用 $s_{i,t}+b_i$ 参与 top-k。近期负载偏高的 expert 会被降低偏置，负载偏低的 expert 会被提高偏置。这样做把均衡压力放到在线调度变量上，减少它对语言模型主损失的直接干扰；边界条件是它仍需要序列级或设备级约束防止极端倾斜。
 
-假设一共有 $N$ 个专家，输入为 $x$ ，门控函数为 $G(\cdot)$ 用于决定每个专家的权重， $E_i(\cdot)$ 表示第 $i$ 个专家的输出，则 token-choice routing 和 expert-choice routing 的通用门控机制可以写成：
+假设一共有 $E$ 个专家，输入为 $x$ ，门控函数为 $G(\cdot)$ 用于决定每个专家的权重， $E_i(\cdot)$ 表示第 $i$ 个专家的输出，则 token-choice routing 和 expert-choice routing 的通用门控机制可以写成：
 
 $$
 y = \sum_{i \in \mathcal{T}} G_i(x) E_i(x)
@@ -91,7 +91,7 @@ $$
 实现稀疏化的关键步骤是确定集合 $\mathcal{T}$ 。无论是 token-choice 还是 expert-choice， $G(x)$ 的计算过程都包含两个步骤：
 
 - **打分：** 计算 routing score $h(x) = x \cdot W_g$ 。
-- **稀疏化：** 仅保留分数最高的 $k$ 个 experts 或 token，并对这些分值进行 softmax 归一化。未被选中的 $N - k$ 个 experts 权重被置零，它们在本次前向传播中不参与计算，从而在总参数很大的情况下控制实际 FLOPs。
+- **稀疏化：** 仅保留分数最高的 $k$ 个 experts 或 token，并对这些分值进行 softmax 归一化。未被选中的 $E - k$ 个 experts 权重被置零，它们在本次前向传播中不参与计算，从而在总参数很大的情况下控制实际 FLOPs。
 
 > [!NOTE]
 > $W_g$ 是 router 中的可学习线性投影层，会把每个 token 的特征映射为与 expert 数量相同的 logits。TC 模式下是 token 主动选择 experts，EC 模式下是 expert 主动选择 token。
@@ -992,7 +992,7 @@ v3 则强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 
 
 DeepSeek-V3 论文在 MoE 之外同时披露了两项与 MoE 并列的核心架构创新，本节统一吸收：
 
-- **Multi-Head Latent Attention（MLA）**：把 K/V 压缩到低秩潜空间后再做注意力，相比 MHA 大幅压缩 KV cache（DeepSeek-V3 每 token 每层 MHA 需缓存 $2 n_h d_h = 2 \times 128 \times 128 = 32768$ 个元素，MLA 只缓存 $d_c + d_h^R = 512 + 64 = 576$ 个；细节见 [第 9 章 §9.3.2](../chapter9/chapter9_推理系统.md)）。MLA 与本节 MoE 路线在 DeepSeek-V3 中同时启用，是 V3 在长上下文与高吞吐推理两个方向都能维持竞争力的关键。
+- **Multi-Head Latent Attention（MLA）**：把 K/V 压缩到低秩潜空间后再做注意力，相比 MHA 大幅压缩 KV cache（DeepSeek-V3 每 token 每层 MHA 需缓存 $2 h d_k = 2 \times 128 \times 128 = 32768$ 个元素，MLA 只缓存 $d_c + d_k^R = 512 + 64 = 576$ 个；细节见 [第 9 章 §9.3.2](../chapter9/chapter9_推理系统.md)）。MLA 与本节 MoE 路线在 DeepSeek-V3 中同时启用，是 V3 在长上下文与高吞吐推理两个方向都能维持竞争力的关键。
 - **Multi-Token Prediction（MTP）**：训练目标中允许模型一次预测未来多个 token，可以作为辅助训练信号提升数据效率，也能在 decoding 时作为 speculative decoding 的草稿使用。MTP 在大多数主流开源模型里尚未普及，目前主要在 DeepSeek 系列内部规模化使用。
 - **MoE fine-tuning 易过拟合**：MoE 专家数量大时 fine-tune 全部专家常常引发严重 overfitting；常见做法是只 fine-tune attention 层或 dense FFN 层，把 routed experts 冻结。这一经验在 V3 / V4-Pro 等大规模 MoE 后训练阶段尤其需要复现。
 

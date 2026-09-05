@@ -63,7 +63,7 @@ GPU 的历史背景只需要抓住一条主线：它最初为图形渲染中的�
 | 每 SM 寄存器 | 256 KB | 256 KB | 256 KB | 256 KB |
 | 每 SM L1 + shared memory | 192 KB | 256 KB | 256 KB | 256 KB |
 | L2 cache | 40 MB | 50 MB | 50 MB | 单颗 GB200 / B200 GPU（全封装，含 2 个 GB100 die）L2 = 126 MB（[NVIDIA Blackwell tuning guide §1.4.2.2](https://docs.nvidia.com/cuda/blackwell-tuning-guide/)）；折算每 GB100 die ≈ 63 MB |
-| HBM 容量 | 80 GB | 80 GB | 141 GB HBM3e | B200 SXM5 HBM3e 192 GB 是 NVIDIA 公开产品 SKU；[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) 写 "up to 180 GB" 对应部分配置 |
+| HBM 容量 | 80 GB | 80 GB | 141 GB HBM3e | B200 HBM3e 192 GB（HGX B200 公开口径 180 GB HBM3e；GB200 NVL72 datasheet 按总 HBM3e 13.4 TB / 72 GPU 推回 186 GB）[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) |
 | HBM 带宽量级 | 2 TB/s | 3.35 TB/s | ~4.8 TB/s | 8 TB/s |
 
 从编程角度看，可以把它们理解成同一类 GPU 执行模型的几代演化：**A100 是理解 Ampere 时代 kernel 优化的基线，H100 增强了 shared memory、异步执行和 FP8 路径，H200 在 H100 计算能力上把显存换成更大带宽的 HBM3e，B200 则把 HBM/L2 容量和 Blackwell 低精度路径再往前推了一代**。上表数值均为 dense 训练口径；若启用结构化稀疏（Structured Sparsity，俗称 2:4 sparsity），Tensor Core 路径理论峰值翻倍——A100/H100 公开 datasheet 在 "with sparsity" 一列单独列出 2× 系数（[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)）。
@@ -357,7 +357,7 @@ TPU 和 GPU 在高层结构上很像：都有轻量控制逻辑、矩阵乘法�
 
 TPU 的 MXU（Matrix Multiply Unit）通常是 $128 \times 128$ 的 systolic array，每个 cycle 完成一块 $128 \times 128$ 矩阵乘。配套的 Vector Unit 负责非矩阵乘法操作（LayerNorm、Softmax、embedding lookup、elementwise 算子）。"TPU TensorCore" 在很多材料里指包含 MXU + Vector Unit + 片上内存的处理器级单元；NVIDIA GPU 语境里的 Tensor Core 通常指 SM 内部的较小矩阵乘法单元（不同代际尺寸不同，例如 Hopper Tensor Core 支持 FP8）。
 
-实际计数方式也常被混淆。每颗 TPU v5p 芯片包含 **2 个 TensorCore**（TPU 语境下，"TensorCore" 指处理器级单元，约等于 GPU 的 SM），每个 TensorCore 内部含 **4 个 MXU**（$128 \times 128$ systolic array）、1 个 Vector Unit 和 1 个 Scalar Unit，合计**每个 TensorCore 共 6 个单元、每芯片 12 个单元**（[Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p)）。这与"一颗 H100 = 132 SM × 528 Tensor Core（矩阵乘法单元）" 的多而小路线形成对照：TPU 走"少而大"，GPU 走"多而小"。看到"TFLOP/s"时需要先确认它是按 MXU 周期计算还是按 SM 整体平均计算，二者差几个数量级。
+实际计数方式也常被混淆。每颗 TPU v5p 芯片包含 **2 个 TensorCore**（TPU 语境下，"TensorCore" 指处理器级单元，约等于 GPU 的 SM），每个 TensorCore 内部含 **4 个 MXU**（$128 \times 128$ systolic array）、1 个 Vector Unit 和 1 个 Scalar Unit，合计**每个 TensorCore 共 6 个单元、每芯片 12 个单元**（[Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p)）。这与"一颗 H100 = 132 SM，每 SM 4 个 Tensor Core（矩阵乘法单元），合计 528 个 Tensor Core" 的多而小路线形成对照：TPU 走"少而大"，GPU 走"多而小"。看到"TFLOP/s"时需要先确认它是按 MXU 周期计算还是按 SM 整体平均计算，二者差几个数量级。
 
 Canonical batch floor 也由 MXU 形状决定。$128 \times 128$ 的 systolic array 要求输入张量至少有一维是 128 的倍数；不足时 MXU 会被 padding 填满，浪费算力。Google Cloud TPU 性能文档把"feature dim 128 整倍数"列为高效 MXU 利用的硬性 padding 要求；batch sweep 实验中实际可运行的下限约是 64，是 XLA 编译器在硬件约束下的实际下限（tpu tensor core refuses to accept anything smaller than a 64 dimensional input there），与 MXU 几何学上的 128 不属同一维度。GPU 一侧对应的是 warp size = 32（kernel launch 要求每个 block 的线程数是 32 的倍数）与 SM warp 驻留上限（典型 64 warp），它和 TPU 的 MXU batch floor 分别由 SIMT 调度模型与 systolic array 几何形状决定，不能直接换算。
 
@@ -424,7 +424,7 @@ Roofline 给出的训练判断很直接：低 arithmetic intensity 的算子先�
 ## 5.6 性能优化技术
 
 > [!NOTE]
-> **Per-kernel 算术强度速查（H100 dense BF16 口径）**：reLU / GeLU / Softmax 等逐元素算子 ≈0.25 FLOPs/byte（≈4 bytes/FLOP），落在 memory-bound 区域；matvec（`B=1`）≈1 FLOP/byte，仍 memory-bound；matmul（`B ≥ 295`）compute-bound（H100 roofline：约 989.5 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs/byte）。这条 [判定线](https://jax-ml.github.io/scaling-book/roofline/)决定了 kernel fusion / tiling 能否把执行从 memory-bound 推到 compute-bound。
+> **Per-kernel 算术强度速查（H100 dense BF16 口径）**：ReLU 等单指令逐元素算子 ≈0.25 FLOPs/byte（≈4 bytes/FLOP），落在 memory-bound 区域；GeLU（tanh 近似，约 20 FLOPs/element）≈5 FLOPs/byte，仍 memory-bound；Softmax（按 5MN 读 / 3MN 写 + 几次 reduction 估算）约 1-3 FLOPs/byte；matvec（`B=1`）≈1 FLOP/byte，仍 memory-bound；matmul（`B ≥ 295`）compute-bound（H100 roofline：约 989.5 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs/byte）。这条 [判定线](https://jax-ml.github.io/scaling-book/roofline/)决定了 kernel fusion / tiling 能否把执行从 memory-bound 推到 compute-bound。
 
 ### 5.6.1 避免串行执行
 
@@ -470,7 +470,7 @@ GPU采用SIMT（单指令多线程）执行架构，**同一线程束（Warp）�
 | **BF16** | 16 位 | $3.8 \times 10^{38}$ | AI 训练首选 | **16×**（Tensor Core 312 TFLOP/s） |
 | **INT8** | 8 位 | 2⁸ ≈ 256 | 量化推理 | **32×**（Tensor Core 624 TOPS） |
 | **INT4** | 4 位 | 2⁴ = 16 | 极致推理 | **64×**（Tensor Core 1,248 TOPS） |
-| **FP8** | 8 位 | 动态范围 | Hopper/Blackwell | **约 50-100×**（H100 Tensor Core FP8 dense 约 1,979 TFLOP/s） |
+| **FP8** | 8 位 | 动态范围 | Hopper/Blackwell | **约 30×**（H100 Tensor Core FP8 dense 约 1,979 TFLOP/s ÷ H100 FP32 67 TFLOP/s，H100 自身对照口径） |
 
 > [!WARNING]
 > 上表给出的「加速倍数」是 A100 上 Tensor Core dense 峰值除以 FP32 CUDA Core 19.5 TFLOP/s 的理论比值；实际训练可达加速取决于 kernel 实现、是否启用 FP32 master weight、累加器精度和数值稳定性。混合精度（FP32 master copy + FP16/BF16 计算）端到端常见 2-3× 加速，与峰值比 16× 之间留有显著差距。
@@ -974,4 +974,4 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 ## 来源与更新记录
 
 
-- 本节硬件数字（B200 L2 ≈ 60 MB/die、GB200 superchip package 126 MB、OCP MXFP8 / MXFP4 每 32 元素共享一个 E8M0 scale factor、NVIDIA Blackwell NVFP4 每 16 元素共享一个 E4M3 microexponent scale、TPU v5p 每芯片 2 个 TensorCore × 4 个 MXU、MXU 128×128 systolic array、batch 64 / feature 128 padding）以 NVIDIA Blackwell tuning guide、NVIDIA H100 datasheet、NVIDIA A100 whitepaper（INT4 Tensor Core 1248/2496 TOPS、FP32 CUDA core 总数 6912、SM 108、die 826 mm²、7nm N7）、OCP Microscaling Formats specification 与 Google Cloud TPU v5p 文档为一手出处。MXFP4 与 NVFP4 在元素块大小上不同：OCP MX 规范定义 MXFP4 为 32 元素块 + E8M0 缩放；NVIDIA Blackwell 实际部署的 4-bit 路径是 NVFP4 变体（16 元素块 + E4M3 microexponent + 每张量额外 FP32 全局缩放）。笔记中"MXFP4 / 1 per 16"指 NVIDIA Blackwell NVFP4 部署口径，不是 OCP MXFP4 规范的块大小。FlashAttention V3 FP8 attention 的 matmul 累加器为 FP32、中间 softmax 统计量（ $m_i, l_i$ ）保留在 FP32（参考 [FlashAttention-3 论文 §3.1-3.2](https://arxiv.org/abs/2407.08608)）；本章已据此修正 5.7.3 与 5.7.4 中的累加器精度描述。查阅日期：2026-09-05。
+- 本节硬件数字（B200 L2 ≈ 63 MB/GB100 die、GB200 superchip package 126 MB、OCP MXFP8 / MXFP4 每 32 元素共享一个 E8M0 scale factor、NVIDIA Blackwell NVFP4 每 16 元素共享一个 E4M3 microexponent scale、TPU v5p 每芯片 2 个 TensorCore × 4 个 MXU、MXU 128×128 systolic array、batch 64 / feature 128 padding）以 NVIDIA Blackwell tuning guide、NVIDIA H100 datasheet、NVIDIA A100 whitepaper（INT4 Tensor Core 1248/2496 TOPS、FP32 CUDA core 总数 6912、SM 108、die 826 mm²、7nm N7）、OCP Microscaling Formats specification 与 Google Cloud TPU v5p 文档为一手出处。MXFP4 与 NVFP4 在元素块大小上不同：OCP MX 规范定义 MXFP4 为 32 元素块 + E8M0 缩放；NVIDIA Blackwell 实际部署的 4-bit 路径是 NVFP4 变体（16 元素块 + E4M3 microexponent + 每张量额外 FP32 全局缩放）。笔记中"MXFP4 / 1 per 16"指 NVIDIA Blackwell NVFP4 部署口径，不是 OCP MXFP4 规范的块大小。FlashAttention V3 FP8 attention 的 matmul 累加器为 FP32、中间 softmax 统计量（ $m_i, l_i$ ）保留在 FP32（参考 [FlashAttention-3 论文 §3.1-3.2](https://arxiv.org/abs/2407.08608)）；本章已据此修正 5.7.3 与 5.7.4 中的累加器精度描述。查阅日期：2026-09-05。
