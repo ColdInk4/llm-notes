@@ -253,7 +253,7 @@ Fusion 的收益来自数据路径：朴素版本每个中间 op 都可能读 HB
 
 ## 6.4 Triton：从 elementwise 到 reduction
 
-本节用四个递进的 Triton 例子展示 block 级 program 的写法：GeLU（一段连续向量一个 program）、softmax（一行一个 program，reduction 在 program 内完成）、row sum（一行太长时 program 内循环 tile）、matmul（沿 K 维二维 tile 复用）。读完后应能用 `tl.program_id` / `tl.arange` / mask 三件套解释不同模式的 program 划分策略。
+本节用三个递进的 Triton 例子展示 block 级 program 的写法：GeLU（§6.4.1，一段连续向量一个 program）、softmax（§6.4.2，一行一个 program，reduction 在 program 内完成）、row sum（§6.4.3，一行太长时 program 内循环 tile）。读完后应能用 `tl.program_id` / `tl.arange` / mask 三件套解释不同模式的 program 划分策略；matmul 把这套二维 tile 思想推到矩阵乘，在 §6.5 展开。
 
 > [!TIP]
 > **Triton program 与 CUDA 线程的对应**：在 Triton 里写 `tl.program_id(axis=0)` 拿到的就是 CUDA PTX 中的 `%ctaid.x`（block id）；`tl.arange(0, BLOCK)` 是该 program 内部要处理的一段 tile；kernel 编译时 Triton 会自动把这段 tile 拆成 warp × thread 的向量化指令，程序员不必直接管 thread id（对应 `%tid.x`）。这是 Triton 与手写 CUDA 的最大区别——把 block 级逻辑显式写出，把 thread 级调度交给编译器。

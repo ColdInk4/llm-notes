@@ -335,5 +335,5 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 - 来源：本专题与第 9 章的 serving / inference systems 分工互补；具体案例链接见上方「参考资料」一节。
 - 课程映射：提供后训练、RLHF、DPO、RLVR 和现代推理模型案例背景；CoT、多路径解码、DTR、工具增强等主题主要依赖上方公开论文和专题材料。
 - 材料边界：rollout、训练 infra 和 serving 成本等系统侧细节由第 9 章与第 13 章承载；本专题只引用其结论，不重复系统账本。
-- 跨章引用：[第 13 章 §13.4 R1-Zero / Dr.GRPO 案例](../chapter13/chapter13_可验证奖励的强化学习.md) 与本专题 §2 RLVR 副作用部分共享同一组证据（"RL 不必然增加新能力，更可能重排基座模型的轨迹概率"）；[第 14 章 多模态模型](../chapter14/chapter14_多模态模型.md) 在章末把多模态 agent trace 与 RLVR 验证指向本专题。
+- 跨章引用：[第 13 章 §13.4 R1-Zero / Dr.GRPO 案例](../chapter13/chapter13_可验证奖励的强化学习.md) 与本专题 §3 RLVR 副作用部分共享同一组证据（"RL 不必然增加新能力，更可能重排基座模型的轨迹概率"）；[第 14 章 多模态模型](../chapter14/chapter14_多模态模型.md) 在章末把多模态 agent trace 与 RLVR 验证指向本专题。
 - 查阅日期：2026-09-05。覆盖 CS336 2026 Lecture 10（inference）与 Lecture 15 / 16 后训练背景；外部论文按 arXiv 提交日期记录。

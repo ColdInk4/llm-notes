@@ -40,7 +40,7 @@ token id 序列  ──►  进入训练侧 / 推理侧
 | §1.1 | `encode` / `decode` 接口、压缩率 | 接口契约和效率视角 |
 | §1.2 | 字符 / byte / 词 三种基础策略 | 各把哪个指标推到极端 |
 | §1.3 | byte-level BPE、vocab、merges | 完备与高效同时满足 |
-| §1.4 | 质量检查清单 | 训练前如何验收 |
+| §1.4 | 质量检查清单 | 训练前后如何验收与扩表兼容 |
 | §1.5 | DeepSeek-R1 实例 | 把上面的概念落到一份真实词表上 |
 
 ## 1.1 分词器的接口与效率视角
@@ -61,7 +61,7 @@ token id 序列  ──►  进入训练侧 / 推理侧
 
 *图 1.1-2 GPT tokenizer 将字符串编码为 token id*
 
-图 1.1-2 展示了 GPT-5（tiktoken `o200k_base`）对 `"Stanford was founded in 1885."` 的切分。9 个 token id 对应同一字符串，序列下方的高亮片段说明 tokenizer 学到的是训练语料中的统计片段，不是人类直觉里的词边界：前导空格经常和 `Stan` 一起成为单独 token（id 93447）；同一个 `Stanford` 在句首被切成 `Stan`+`ford` 两个 token，而带前置空格的 ` founded`、in 等又各占一个 token；年份 `1885` 作为 4 位数字整体成为 id 13096，体现了"数字常按几位一组切分"的规律。
+图 1.1-2 展示了 GPT-5（tiktoken `o200k_base`）对 `"Stanford was founded in 1885."` 的切分。9 个 token id 对应同一字符串，序列下方的高亮片段说明 tokenizer 学到的是训练语料中的统计片段，与人类直觉里的词边界不完全对齐：`Stanford` 在句首被切成 `Stan` (id 93447) + `ford` (id 9201) 两个 token；前导空格与 `was`、`founded`、`in` 又各合成单独 token (` was` id 673 / ` founded` id 24303 / ` in` id 306)；句中孤立空格单独成 id 220；年份 `1885` 被切成 `188` (id 13096) + `5` (id 20) 两个 token，句号 `.` 单独成 id 13。`1885` 没有以 4 位数整体作为一个 token，而是被切成 3 位 + 1 位两段，说明 o200k_base 在数字上更倾向于固定位数的常见组合，"数字常按几位一组切分"这一观察在这里不严格。
 
 衡量压缩效率的一个简单指标是 bytes per token：
 
@@ -129,7 +129,7 @@ Byte Pair Encoding（BPE）算法最早由 Philip Gage 在 1994 年的数据压�
 
 *图 1.3-1 tokenizer 训练从语料到 vocab 与 merges 的流程*
 
-图 1.3-1 沿着语料 → 基础单位 → pair 合并 → 产物这条流水线展开。从工程角度看，训练得到的不只是 `vocab` 与 `merges` 两份表，merge 的先后顺序也直接决定编码时的合并优先级——这一点在 §1.3 的 trace 例子中会再次出现。
+图 1.3-1 沿着语料 → 基础单位 → pair 合并 → 产物这条流水线展开。从工程角度看，训练得到的不只是 `vocab` 与 `merges` 两份表，merge 的先后顺序也直接决定编码时的合并优先级——下面的 BPE trace 按 rank 顺序给出合并过程。
 
 一个极简 BPE 示例可以从字符串 `the cat in the hat` 开始。初始状态先把字符串转成 UTF-8 byte id，每个 byte 都是一个 token。训练时反复统计相邻 token pair，选择频率最高的 pair 合并，并把新 token 加入词表。BPE 训练循环可以用下面的伪代码描述：
 
@@ -159,7 +159,7 @@ $$
 
 *图 1.3-2 vocab 与 merges 共同决定 token id 序列*
 
-图 1.3-2 展示了一份实际 token id 序列是如何同时依赖 `vocab` 和 `merges` 的：单看 `vocab` 只能回答"id 对应的字节片段是什么"，单看 `merges` 只能回答"训练时按什么顺序合并"——两者合在一起才能解释编码。例如同一个空格片段在词表中可能对应多个 id，差异常来自前导空格和标点后空格在 `merges` 中的合并顺序不同。完整 round-trip 需要两份表同时参与：编码时按 `merges` 顺序把 byte 序列逐步合并成 token id，解码时按 `vocab` 把每个 id 还原成 byte 片段再拼回字符串。
+图 1.3-2 把同一段文本 `"你好，hello, world!🟢!"` 送进 DeepSeek-R1 tokenizer，给出了 12 个 token id（`30594, 10695, 33310, 14, 223, 2058, 4050, 223, 73369, 240, 223, 1175`）与对应的彩色片段。`vocab` 单独只回答"id 对应的字节片段是什么"；`merges` 单独只回答"训练时按什么顺序合并"。两者合在一起才能解释编码——譬如 id 223 在该词表下是空格片段，序列里三次出现分别对应 `hello,` 后、`world!` 后和 `🟢!` 前的空格，说明前导空格和标点后的空格在训练时被并入了同一片段。完整 round-trip 需要 `vocab` 和 `merges` 同时参与：编码时按 `merges` 顺序把 byte 序列逐步合并成 token id；解码时按 `vocab` 把每个 id 还原成 byte 片段再拼回字符串。
 
 现代 tokenizer 还需要处理三个工程细节。
 

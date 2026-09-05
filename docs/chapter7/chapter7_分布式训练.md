@@ -436,7 +436,7 @@ Rank 3 [after all-gather]: input = tensor([18.], device='cuda:3'), output = tens
 
 ## 7.3 通信性能与 benchmark
 
-这一节用一段最小 benchmark 看 collective 在真实运行中花多少时间，并把 NCCL 报的"有效带宽"换算公式拆开：先讲 $\text{algorithm bandwidth} = S/t$、再讲 bus-bw 修正系数，从而建立"为什么不能直接用字节数除以耗时"的工程直觉。
+这一节用一段最小 benchmark 看 collective 在真实运行中花多少时间，并把 benchmark 按 [nccl-tests](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md) `bus bandwidth` 口径算出的"有效带宽"换算公式拆开：先讲 $\text{algorithm bandwidth} = S/t$、再讲 bus-bw 修正系数，从而建立"为什么不能直接用字节数除以耗时"的工程直觉。
 
 
 理解 collective 的语义之后，还要看它在真实运行中花多少时间。一个小 benchmark 就可以展示通信耗时和有效带宽的基本观察方式。
@@ -834,7 +834,7 @@ $$
 
 ## 7.6 ZeRO / FSDP
 
-朴素 DP 复制参数、梯度和优化器状态，扩卡只能加算力、不能扩展单卡模型容量。这一节沿"逐步把复制状态换成分片状态"的路线展开 ZeRO 三个阶段：先分片 optimizer state（ZeRO-1），再分片梯度（ZeRO-2），最后连参数也按需 all-gather（FSDP / ZeRO-3）；并把每阶段的通信代价与内存收益写到同一张表里。
+朴素 DP 复制参数、梯度和优化器状态，扩卡只能加算力、不能扩展单卡模型容量。这一节沿"逐步把复制状态换成分片状态"的路线展开 ZeRO 三个阶段：先分片 optimizer state（ZeRO-1），再分片梯度（ZeRO-2），最后连参数也按需 all-gather（FSDP / ZeRO-3）；并把每阶段的内存收益写到同一张表里（通信代价另在正文里给出：ZeRO-1/2 约 $2\Psi$，ZeRO-3 约 $3\Psi$）。
 
 ### 7.6.1 ZeRO 解决 DP（数据并行）的内存开销问题
 
@@ -1284,7 +1284,7 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 
 ## 7.11 代表性大规模训练配置
 
-这一节把前面所有抽象落到公开报告的真实数字：Llama 3 405B 三阶段（标准 / 长上下文）的 TP/PP/CP/DP、DeepSeek-V3 的 PP16 + EP64 + ZeRO-1（TP 压到 1）、Mixtral / Gemma 2 / Qwen3 / Nemotron 3 Super 的公开并行度。表里 `?` 字段表示一手源未公开，不在笔记里凭手感补全。
+这一节把前面所有抽象落到公开报告的真实数字：Llama 3 405B 标准上下文（DP=64/128 两档集群规模）与 128K 长上下文（DP=8）的 TP/PP/CP/DP、DeepSeek-V3 的 PP16 + EP64 + ZeRO-1（TP 压到 1）、Mixtral / Gemma 2 / Qwen3 / Nemotron 3 Super 的公开并行度。表里 `?` 字段表示一手源未公开，不在笔记里凭手感补全。
 
 下表汇总公开来源给出的代表性大规模训练配置（`?` 表示对应论文 / 官方文档未公开的字段）：
 
@@ -1333,7 +1333,7 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 - 同模型换到 MoE（8 专家、top-2），activation 是否仍按 dense 估算？all-to-all 的 split size 在不同 micro-batch 上波动多少时仍算 balanced？
 - 同一段 `dist.all_reduce` 在 `world_size=4` 单节点 NVLink 与 `world_size=128` 双层 fat-tree 上的有效带宽差几倍？哪部分差距来自拓扑，哪部分来自消息大小？
 - §7.6 给出 ZeRO-3 总通信量约 $3\Psi$；如果参数预取能藏掉一半通信 wall time，是否仍要把 FSDP 通信系数视为 1.5× DDP？换言之"通信代价"指的是 byte 总量还是 wall time？
-- §7.10.4 决策流程中"先解决显存，再匹配通信频率，最后用 batch 调利用率"——这个顺序在长上下文（>32K）或超大 vocab（>200K）场景下是否仍是最优？哪一步需要前置？
+- §7.10 决策流程中"先解决显存，再匹配通信频率，最后用 batch 调利用率"——这个顺序在长上下文（>32K）或超大 vocab（>200K）场景下是否仍是最优？哪一步需要前置？
 
 ## 来源与更新记录
 

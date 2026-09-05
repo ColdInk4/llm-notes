@@ -326,7 +326,7 @@ DPO 的目标是把 pairwise preference data 直接写成监督式损失。给�
 
 本节回答三个问题：DPO 损失怎么从偏好对直接推导出来、DPO 与 PPO 的工程边界在哪里、SimPO 与 length-normalized DPO 等变体改变了什么。
 
-表 12.5 是 §12.4 PPO 与本节 DPO / SimPO 的工程对照，覆盖训练路径、数据形式、参考模型与典型风险。
+表 12.5 是 §12.4 PPO 与本节 DPO / SimPO / length-normalized DPO 的工程对照，覆盖数据形式、reward model、参考模型、rollout、长度归一化、主要风险与工程代价七个维度。
 
 | 维度 | PPO（§12.4） | DPO | SimPO | length-normalized DPO |
 | --- | --- | --- | --- | --- |

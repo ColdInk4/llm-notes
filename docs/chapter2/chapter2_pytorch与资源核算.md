@@ -8,12 +8,12 @@
 2. **Memory capacity**：参数、梯度、优化器状态、activation、临时 buffer 分别占多少显存。
 3. **Memory bandwidth**：同样的 FLOPs 为什么在大 batch matmul 中很快，在 decode 或逐元素算子中却可能很慢。
 
-### 本章主线
+## 本章主线
 
 按以下顺序阅读，每一节给读者一个可用的工程判断：
 
 1. **§2.1 资源核算的入口**：用两个 napkin math 例子（70B / 15T / 1024 H100、8 H100 / AdamW 显存）建立数量级直觉，落到三类约束（compute / memory capacity / memory bandwidth）与 roofline。
-2. **§2.2 张量（PyTorch 基础）**：shape / dtype / stride / view / contiguity / einsum / einops，把后续资源账本用到的 PyTorch API 集中放在这里。可以先快速浏览，等读到具体 API 疑问再回来查。
+2. **§2.2 张量（PyTorch 基础）**：shape / dtype / stride / view / contiguity / 矩阵乘法 / 逐元素算子 / einops，把后续资源账本用到的 PyTorch API 集中放在这里。可以先快速浏览，等读到具体 API 疑问再回来查。
 3. **§2.3 内存（dtype 与存储机制）**：FP32 / FP16 / BF16 / FP8 / NVFP4 的字节数与权衡，stride 与 storage 怎样决定实际占用，CPU↔GPU 移动的代价。
 4. **§2.4 计算效率**：把 `6 N D` 的 FLOPs 账本套到具体算子，给出 arithmetic intensity / MFU 的来源。
 5. **§2.5 模型构建与训练基础**：把 §2.1.3 的 4 元素账本（parameter / gradient / optimizer state / activation）落地到代码与训练循环，附 activation checkpointing 的最小实现。

@@ -1066,7 +1066,7 @@ MoE 稳定性通常需要同时处理路由更新、激活异常值和损失尖�
 - **SwiGLU clamping**：对 SwiGLU 中容易产生异常值的分支做范围限制，例如将线性分量限制在 `[-10, 10]`，并限制门控分量上界（[DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 中的 `swiglu_limit: 10.0` 即此参数；DeepSeek-V3 config 没有该字段，gpt-oss-120b 取的是 `swiglu_limit: 7.0`）。这样可以降低 activation outlier 和 loss spike 风险，但是否值得使用仍取决于模型规模、精度和训练设置。
 
 > [!NOTE]
-> 这类 MoE 稳定性技巧目前更多来自工程经验和消融实验；使用前应核对目标模型的训练栈与精度设置是否与提出方一致，再决定是否照搬。”必然有效””不损害性能”这类结论需要在同尺度、同数据、同精度的复现里验证。
+> 这类 MoE 稳定性技巧目前更多来自工程经验和消融实验；同一技巧在同尺度、同数据、同精度的训练栈里通常只能给出边际稳定，跨规模、跨精度的迁移效果需要重新消融。”必然有效””不损害性能”一类无条件结论缺乏公开复现支撑。
 
 ## 4.4 MoE 与深度学习
 
@@ -1177,7 +1177,7 @@ expert parallelism 的意义在于把专家维度也变成可切分资源：atte
 
 **本节解决什么前置问题**：在 §4.5 横向罗列各家 MoE 配置之后，本节沿 DeepSeek 一家纵向看 V1 → V2 → V3 → V4 的 MoE 设计演进——专家数如何从 64 → 384 扩张，路由约束如何从 device-limited 收紧到 node-limited，平衡策略如何从纯 auxiliary loss 迁移到 aux-loss-free + seq-wise balance。
 
-下表展示 DeepSeek 从 V1 → V2 → V3 在 MoE 设计上的主要演进。
+下表展示 DeepSeek 从 V1 → V2 → V3 → V4-Pro 在 MoE 设计上的主要演进。
 
 | 版本 | 总参数 | 激活参数 | expert 配置 | 关键创新 | 来源 |
 | --- | --- | --- | --- | --- | --- |

@@ -1206,7 +1206,7 @@ Qwen3-Coder-Next 是 agentic RL 的代表性案例。按 [Hugging Face 模型卡
 
 *图 13.4-26 Qwen3-Coder-Next 的专家蒸馏路线*
 
-图 13.4-26 把 Web dev / UX / Single-turn QA / SWE 四位专家模型作为数据源，蒸馏到 Qwen3-Next Coder 基座上，专家模型在执行环境之外提供「代码是否满足需求」的判断，与 §13.4.6 中的环境反馈 verifier 形成互补。
+图 13.4-26 把 Web dev / UX / Single-turn QA / SWE 四位专家模型作为数据源，蒸馏到 Qwen3-Coder-Next 上，专家模型在执行环境之外提供「代码是否满足需求」的判断，与 §13.4.6 中的环境反馈 verifier 形成互补。
 
 ## 本章总结与下章衔接
 

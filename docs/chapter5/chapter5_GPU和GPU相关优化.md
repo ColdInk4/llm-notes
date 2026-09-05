@@ -381,7 +381,7 @@ Canonical batch floor 也由 MXU 形状决定。$128 \times 128$ 的 systolic ar
 ### 5.4.3 TPU 网络拓扑与 pod 视角
 
 > [!NOTE]
-> **本节为补充内容**：§5.4.1 已点出 TPU 与 GPU 的「互联网络差异会在分布式训练章节展开」。本节给出 TPU pod 的硬件拓扑与编译抽象，配合第 7 章分布式训练一起读。
+> **本节为补充内容**：§5.4.1 已点出 TPU 与 GPU 的「互联网络差异会在分布式训练章节展开」。本节给出 TPU pod 的硬件拓扑与编译抽象，相关硬件拓扑对照见 [第 7 章 §7.1.4 GPU、TPU 和数据中心拓扑](../chapter7/chapter7_分布式训练.md)。
 
 TPU pod 把多颗 TPU 芯片用高带宽、低延迟的专用互联（典型拓扑为 2D / 3D torus 或 mesh）组织在一起。pod 内任意两颗 TPU 之间的 all-reduce / all-gather 都走同一套互联，因此模型并行可以放到比 NVLink 域更大的范围。TPU 程序（XLA / jax.jit / pjrt）通常让编译器决定 collective 路径与通信 / 计算重叠，因此使用者感受到的"网络拓扑"是被编译器抽象过的。
 

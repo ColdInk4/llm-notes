@@ -64,7 +64,7 @@
   跨章节衔接 --> 第 10 章 数据工程 / 第 13 章 可验证奖励的强化学习 / topics/reasoning_behavior
 ```
 
-四条统一判断维度（weight memory / KV cache / scheduler 空闲 / 采样成本）每节都会被复用一次；§9.6 与 §9.1–§9.5 是补充关系，不属于主线。
+章首那四类问题（优化对象是哪类资源、收益落在 latency 还是 throughput、是否改变输出分布、依赖哪些 workload 假设）在每一节都会被复用一次；§9.6 与 §9.1 到 §9.5 是补充关系，不属于主线。
 
 ## 9.1 Inference Workload：为什么推理不同于训练
 
@@ -456,7 +456,7 @@ Medusa 和 EAGLE 都是在改进 draft token 的生成方式。Medusa 给 target
 
 ## 9.5 Dynamic Serving：Continuous Batching 与 PagedAttention
 
-本节把前 4 节「单请求视角」的优化搬到真实在线服务上。ragged workload（请求到达、长度、结束时间各异，还可能共享前缀）让静态 batching 既拖慢首请求又浪费显存。本节依次给出三件工程基础设施：`continuous batching` 让每个 generation step 都重排 batch；`PagedAttention` 把 KV cache 像 OS 虚拟内存一样按块管理，让外部 / 内部碎片不再阻塞吞吐；`prefix sharing` 配合 `copy-on-Write` 让共享前缀按 block 粒度复用、写入时分叉。读完后，读者应能把单请求算术强度和显存账本平移到「同时跑几千条请求」的服务系统，并指出 block 粒度调度对 attention kernel 的影响。
+本节把前 4 节「单请求视角」的优化搬到真实在线服务上。ragged workload（请求到达、长度、结束时间各异，还可能共享前缀）让静态 batching 既拖慢首请求又浪费显存。本节依次给出三件工程基础设施：`continuous batching` 让每个 generation step 都重排 batch；`PagedAttention` 把 KV cache 像 OS 虚拟内存一样按固定大小的 block 管理，块等大消除了外部碎片，按需分配把内部碎片限制在每个请求的最后一个 block 内；`prefix sharing` 配合 `copy-on-write` 让共享前缀按 block 粒度复用、写入时分叉。读完后，读者应能把单请求算术强度和显存账本平移到「同时跑几千条请求」的服务系统，并指出 block 粒度调度对 attention kernel 的影响。
 
 真实在线服务更像不断变化的请求流。请求到达时间不同、prompt 长度不同、generation 长度不同、结束时间不同，还可能共享 system prompt 或对同一 prompt 采样多条回答。这种 workload 是 ragged 的。
 
@@ -652,7 +652,7 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 
 3. Speculative sampling 和 speculative cascades 都用小模型，但为什么前者可以强调 exact sampling，后者更像质量/成本路由？
 
-4. 一个小模型只有 GQA 但 batch=1 的 generation 步骤明显比 batch=32 慢得多。从 arithmetic intensity 角度解释，为什么 MLP generation 在 batch=1 时容易 memory-bound，而在 batch=32 时更可能 compute-bound？attention generation 在两种 batch 下都接近 memory-bound 的原因是什么？
+4. 一个服务把 generation batch 从 1 提到 32，单步 latency 的增幅远小于 batch 的增幅，总 throughput 因此接近线性提升。从 arithmetic intensity 角度解释：MLP generation 的算术强度为什么随 $B$ 增长，而 $B = 32$ 在 H100 上仍处在 memory-bound 区间？attention generation 在两种 batch 下都停在 memory-bound 的原因又是什么？
 
 5. 一个在线服务希望把多条共享 system prompt 的对话塞进同一 batch。直接把它们当作独立请求合并，KV cache 会怎样浪费？PagedAttention 的 block table + prefix sharing + copy-on-write 如何把这份浪费变成可回收的物理块？
 

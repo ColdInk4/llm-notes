@@ -8,7 +8,7 @@
 - 用 Chinchilla / IsoFLOP / critical batch size / tokens per parameter 这些概念读懂公开 scaling report。
 - 在给定 FLOPs 预算下，决定模型规模、训练 token 数、batch size 和 learning rate 的起点。
 - 判断 train-optimal 与 inference-optimal 之间的取舍，并用 muP / WSD / optimizer scaling 处理超参数迁移。
-- 看到新模型架构或新数据集时，能套 §8.6.8 的检查表判断是否值得投入大规模预训练。
+- 看到新模型架构或新数据集时，能套 §8.1 末尾的检查表判断是否值得投入大规模预训练。
 
 ## 章节路线图
 
@@ -1078,7 +1078,7 @@ Stable phase 中的 learning rate 仍然较大，loss 可能比已经 decay 的 
 
 *图 8.6-12 MiniCPM WSD joint fit*
 
-图 8.6-12 是 joint fit 视角，把多组模型大小和数据量的 decayed checkpoint 一起拟合成一张 $L(N,D)$ 曲面（背景色 + 等高线），并标出实际黑点；和 §8.4.3 的 Chinchilla Method 3 同样需要把整张曲面看完。每个黑点是一组实际 decayed checkpoint；等高线和背景色来自拟合函数。MiniCPM 论文 §4.5 "Measuring the Scaling Law with WSD LRS" 给出的拟合结果是 $D_{opt}/N_{opt}\approx 192$，也就是"data size should be 192 times larger than the model size on average"，明显高于 Chinchilla 的约 20；同一曲面对 Llama 2 反推得到 $D_{opt}/N_{opt}\approx 70\text{–}100$（[arXiv:2404.06395](https://arxiv.org/abs/2404.06395)）。这个 192 来自拟合函数在整个曲面上的外推，没有对应某一档固定 compute 预算下的直接测量，证据强度弱于直接覆盖多档固定预算的 IsoFLOP sweep。
+图 8.6-12 是 joint fit 视角，把多组模型大小和数据量的 decayed checkpoint 一起拟合成一张 $L(N,D)$ 曲面（背景色 + 等高线），并标出实际黑点；和 §8.4.2 的 Chinchilla Method 3 同样需要把整张曲面看完。每个黑点是一组实际 decayed checkpoint；等高线和背景色来自拟合函数。MiniCPM 论文 §4.5 "Measuring the Scaling Law with WSD LRS" 给出的拟合结果是 $D_{opt}/N_{opt}\approx 192$，也就是"data size should be 192 times larger than the model size on average"，明显高于 Chinchilla 的约 20；同一曲面对 Llama 2 反推得到 $D_{opt}/N_{opt}\approx 70\text{–}100$（[arXiv:2404.06395](https://arxiv.org/abs/2404.06395)）。这个 192 来自拟合函数在整个曲面上的外推，没有对应某一档固定 compute 预算下的直接测量，证据强度弱于直接覆盖多档固定预算的 IsoFLOP sweep。
 
 这个比例绑定拟合函数、评测语料和指定 compute。MiniCPM 的 Method 1 / 3 曲线较平滑，但论文拟合得到的 exponent 与 Chinchilla 并不完全一致；论文对这次远距离外推也保持保留态度。
 
