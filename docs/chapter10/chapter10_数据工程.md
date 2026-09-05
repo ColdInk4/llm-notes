@@ -106,7 +106,7 @@ The Pile 把 Common Crawl、arXiv、GitHub、StackExchange、邮件列表等 22 
 > | LLaMA 1 训练语料 | 约 1.0T / 1.4T tokens（7B / 13B 训练 1.0T，33B / 65B 训练 1.4T；arXiv:2302.13971 表 1） | CCNet 处理的 CommonCrawl（67%）+ C4（15%）+ GitHub + Wikipedia + Books（Gutenberg 与 Books3）+ arXiv + Stack Exchange；质量分类器的正例取自 Wikipedia 页面引用指向的网页 |
 > | FineWeb | 15T tokens | 96 个 Common Crawl dumps（[arXiv:2406.17557](https://arxiv.org/abs/2406.17557)），MinHash 去重 + PII 匿名 |
 > | Dolma | v1.6 约 3.06T tokens；v1.7 全量 2.31T tokens，按来源比例采样后取 1.72T 子集训练 OLMo 7B-v1.7 | AI2 开源多来源混合（Reddit + PeS2o + C4 + Gutenberg + Wikipedia） |
-> | DCLM | DCLM-Pool 240T tokens（未过滤 Common Crawl）；DCLM-Baseline 4T tokens / 3B documents（fastText 质量过滤后） | [DataComp-LM arXiv:2406.11794](https://arxiv.org/abs/2406.11794)、[HF mlfoundations/dclm-baseline-1.0](https://huggingface.co/datasets/mlfoundations/dclm-baseline-1.0) |
+> | DCLM | DCLM-Pool 240T tokens / 200B documents（未过滤 Common Crawl，gzip 后 370 TB）；DCLM-Baseline 3.8T tokens（fastText 质量过滤后；论文公开口径） | [DataComp-LM arXiv:2406.11794](https://arxiv.org/abs/2406.11794)、[HF mlfoundations/dclm-baseline-1.0](https://huggingface.co/datasets/mlfoundations/dclm-baseline-1.0) |
 > | Nemotron-CC | 6.3T tokens（4.4T 真实去重 + 1.9T 合成；HQ 子集 1.1T） | HTML→text 选用 **jusText**：它抽出的 token 总量与高质量 token 数都高于 trafilatura，而下游精度基本持平 |
 > | The Stack v2 | 104.2M GitHub 仓库、3.28B unique files、67.5 TB 未压缩；供 StarCoder2-15B 使用的训练集含 913B+ unique tokens，模型实际训练 4.3T tokens | 代码数据 |
 > | CommonPile | 8TB | permissive-licensed only，探讨 license laundering 风险；包含 Comma v0.1-1T / 2T 两个 7B 验证模型 |
@@ -391,13 +391,13 @@ $$
 
 真实训练集通常由网页、书籍、代码、论文、数学、对话和多语言数据组成。数据混合回答的问题是：在固定训练 token budget 下，每个来源应该采样多少。训练实现里通常按样本或 sequence 选择来源来填充 batch，来源切换粒度通常不是单个 token。直觉上，高质量来源应该上调权重；工程上，小而高质量的来源很容易被重复采样过多，引发 overfitting 或记忆。
 
-下面这张表把本节反复提及的三个代表性多来源 web 语料（The Pile / FineWeb / DCLM-Baseline）横向并排，给出规模、来源、去重与过滤方式四列；后文 epoch 账本与混合方法直接用这张表的 token 数举例。
+下面这张表把本节反复提及的三个代表性多来源 web 语料（The Pile / FineWeb / DCLM-Baseline）横向并排，给出规模、来源、去重与过滤方式四列；后续 epoch 账本公式与 UniMax / RegMix 举例都直接引用这张表的 token 数。
 
 | 数据集 | 公开版本 / 论文 | 规模（tokens / 文档） | 来源构成 | 去重与过滤 |
 | --- | --- | --- | --- | --- |
 | The Pile | arXiv:2101.00027；HF `monology/pile-uncopyrighted` | ~334B tokens（GPT-NeoX tokenizer）；全局文档级去重后 ~207B tokens | 22 个来源混合：Common Crawl、Pile-CC、Books3、GitHub、arXiv、Wikipedia、StackExchange 等 | 全局文档级 exact-hash 去重；无模型质量分类器 |
 | FineWeb | arXiv:2406.17557；HF `HuggingFaceFW/fineweb` | 15T tokens | 96 个 Common Crawl dumps 拼接 | MinHash 文档级去重（5-gram、112 哈希、14 buckets、阈值 0.75）；自定义 PII 匿名；多种 quality 配置（FineWeb-Edu 教育分 ≥ 3；FineWeb-Edu-Score-2 教育分 ≥ 2） |
-| DCLM-Baseline | arXiv:2406.11794；HF `mlfoundations/dclm-baseline-1.0` | 3B 文档 / 4T tokens（fastText 过滤后）；DCLM-Pool 240T（未过滤） | Common Crawl 单源（多个 crawl dump 拼接） | fastText 质量分类器（正例取 OpenHermes 2.5 + r/ExplainLikeImFive 高赞帖；负例取 RefinedWeb 随机子样）+ hash 去重 + 启发式过滤；DataComp-LM 流程标准化 |
+| DCLM-Baseline | arXiv:2406.11794；HF `mlfoundations/dclm-baseline-1.0` | 3.8T tokens（fastText 过滤后，论文公开口径）；DCLM-Pool 240T tokens / 200B documents（未过滤） | Common Crawl 单源（多个 crawl dump 拼接） | fastText 质量分类器（正例取 OpenHermes 2.5 + r/ExplainLikeImFive 高赞帖；负例取 RefinedWeb 随机子样）+ hash 去重 + 启发式过滤；DataComp-LM 流程标准化 |
 
 三套语料的设计取向不同：The Pile 优先广覆盖能力面，FineWeb 优先给大规模研究提供可控的 Common Crawl 处理链，DCLM-Baseline 把质量分类器当作主入口、用单一 crawl 池子保证过滤信号干净。这三种取向也直接影响下游如何配比混合：Pile 类多源语料需要 UniMax 这类 epoch cap 控制小来源；FineWeb 这种大规模同质语料可以直接按 token 数比例采样；DCLM 这类已带质量分的语料则适合按 fastText 分桶再混合。
 
@@ -444,7 +444,7 @@ DoReMi（[Xie et al., 2023, *DoReMi: Optimizing Data Mixtures Speeds Up Language
 
 ### 10.2.4 后训练合成数据
 
-后训练数据按 “env → task → response → verifier” 的流程构造：先定义环境（代码沙盒 / 数学形式化 / agent 仓库）、任务（指令与约束）、响应（强模型生成或人工标注）、验证（自动判分或执行反馈），再通过过滤器筛掉不合格样本。数学与代码任务适合自动生成，因为答案、测试用例或环境反馈可以提供较强验证信号；通用 SFT 通常在指令格式的人工标注或合成指令上完成。这里构造出来的样本，在 [第 12 章 训练流程](../chapter12/chapter12_大模型基本训练流程.md) 的 SFT 阶段被当作监督目标使用，在 [第 13 章 RLVR](../chapter13/chapter13_可验证奖励的强化学习.md) 中则由 verifier 转成奖励信号。
+后训练数据按 “env → task → response → verifier” 的流程构造：先定义环境（代码沙盒 / 数学形式化 / agent 仓库）、任务（指令与约束）、响应（强模型生成或人工标注）、验证（自动判分或执行反馈），再通过过滤器筛掉不合格样本。数学与代码任务适合自动生成，因为答案、测试用例或环境反馈可以提供较强验证信号；通用 SFT 通常在指令格式的人工标注或合成指令上完成。这里构造出来的样本，在 [第 12 章 大模型基本训练流程](../chapter12/chapter12_大模型基本训练流程.md) 的 SFT 阶段被当作监督目标使用，在 [第 13 章 可验证奖励的强化学习](../chapter13/chapter13_可验证奖励的强化学习.md) 中则由 verifier 转成奖励信号。
 
 ![图 10.2-9 OpenThoughts 数据生成流程](images/10-2-9-openthoughts-pipeline.png)
 

@@ -50,7 +50,7 @@ DeepSeek、Kimi、Qwen、GLM、MiMo 等模型族都探索过 MoE 架构。MoE �
 
 ## 4.1 分析 MoE
 
-**本节解决什么前置问题**：MoE 的核心思想（条件计算 / 容量大但计算稀疏）和它的四种 routing 方向；Transformer 主干由 [第 3 章 语言模型架构和训练的技术细节](../chapter3/chapter3_语言模型架构和训练技术细节.md) §3.1 / §3.2 给出，本节直接回答「router 如何挑 expert」「负载如何均衡」「训练如何稳定」三个子问题，读完后能解释 token-choice vs expert-choice 的取舍、能复述 aux loss / per-expert bias / token dropping 的作用边界、能判断稀疏梯度为什么引发训练不稳定。
+**本节解决什么前置问题**：MoE 的核心思想（条件计算 / 容量大但计算稀疏）和它的四种 routing 方向；Transformer 主干由 [第 3 章 语言模型架构和训练的技术细节](../chapter3/chapter3_语言模型架构和训练技术细节.md) §3.1.2（多头注意力）与 §3.1.4（前馈网络）给出，本节直接回答「router 如何挑 expert」「负载如何均衡」「训练如何稳定」三个子问题，读完后能解释 token-choice vs expert-choice 的取舍、能复述 aux loss / per-expert bias / token dropping 的作用边界、能判断稀疏梯度为什么引发训练不稳定。
 
 MoE 通过将原本的单一前馈网络（如 MLP/FFN）替换为由多个并行子网络组成的 expert 集合，并通过 routing 在每次计算中仅激活少数 experts。其核心思想是：模型总体包含大规模参数，但每个输入只使用其中一小部分 experts，使得**容量大但计算稀疏**。
 
@@ -640,7 +640,7 @@ MoE 是一种可广泛嵌入各种神经网络结构的条件计算框架。它�
 
 ### 4.2.2 简易 LLM + MoE 实现
 
-**本节解决什么前置问题**：把 §4.1 讲过的 token-choice / expert-choice / top-k 路由落到一份可在 CPU 上跑通的 mini LLM + MoE 代码骨架。本节代码主要服务 MoE 自身的三个关键路径——字节级 tokenizer、self-attention、`MoELayer` 的 top-1 / top-2 dispatch；其中 tokenizer 与 self-attention 与 [第 3 章 语言模型架构和训练的技术细节](../chapter3/chapter3_语言模型架构和训练技术细节.md) §3.1 / §3.2.5 的标准 Transformer 实现完全一致，本节不再重讲字符与字节的关系、QKV 投影细节或 scaled dot-product 推导，需要时回看 ch3。下文重点放在 `MoELayer` 的容量检查、top-1 / top-2 桶分配与权重 combine 上。
+**本节解决什么前置问题**：把 §4.1 讲过的 token-choice / expert-choice / top-k 路由落到一份可在 CPU 上跑通的 mini LLM + MoE 代码骨架。本节代码主要服务 MoE 自身的三个关键路径——字节级 tokenizer、self-attention、`MoELayer` 的 top-1 / top-2 dispatch；其中 tokenizer 与 self-attention 与 [第 3 章 语言模型架构和训练的技术细节](../chapter3/chapter3_语言模型架构和训练技术细节.md) §3.1.2 / §3.1.4 的标准 Transformer 实现完全一致，本节不再重讲字符与字节的关系、QKV 投影细节或 scaled dot-product 推导，需要时回看 ch3。下文重点放在 `MoELayer` 的容量检查、top-1 / top-2 桶分配与权重 combine 上。
 
 **第一步：构建字节级分词器**
 ```python

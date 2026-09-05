@@ -632,7 +632,7 @@ GPT-1/2/3、OPT 等模型把位置编码改成可学习的 $u_i$：每个位置�
 相对嵌入直接把“相对距离”的信号送进 attention 计算里。T5、Gopher、Chinchilla 等模型在 attention logit 上加一个与 $i - j$ 相关的偏置项：
 
 $$
-e_{ij} = \frac{x_i W^Q (x_j W^K + a_{ij}^K)^\mathrm{T}}{\sqrt{d_z}}
+e_{ij} = \frac{x_i W^Q (x_j W^K + a_{ij}^K)^\mathrm{T}}{\sqrt{d_k}}
 $$
 
 其中 $a_{ij}^K$ 是按 key 端位置差查表得到的相对偏置。它的优势是直接建模相对位移，缺点是破坏了“embedding 的内积”结构，无法在 attention 之外复用。

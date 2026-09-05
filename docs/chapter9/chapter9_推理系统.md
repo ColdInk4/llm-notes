@@ -120,7 +120,13 @@ $$
 
 *图 9.1-2 Transformer decoder block*
 
-图 9.1-2 给出 Transformer decoder block 的标准结构：底部 token embedding 与 absolute position embeddings 拼成输入张量（shape `(batch_size, seq_len, d_model)`），向上经过若干 Transformer Block（每个 block 内含 causal multi-head self-attention、add & dropout、position-wise feed-forward、add & dropout），最终经过 norm、output embedding、softmax 得到输出概率。中间张量的形状记号采用 `B` (batch size)、`S` (已有上下文 token 数)、`T` (本次要处理或生成的 token 数)、`D` (model dim)、`F = 4D` (MLP up-projection dim)、`H` (head dim)、`N` (query head 数)。`B`、`S`、`T` 在张量里是 batch 维度，`D` / `F` / `H` 在张量里是 contracting / model 维度。注意力头记号采用 $N = K_{\mathrm{kv}} G$：$K_{\mathrm{kv}}$ 是 KV head 数，$G$ 是每个 KV head 对应的 query heads 数。后文把 key 张量仍记作 $K$，把 KV head 数固定写作 $K_{\mathrm{kv}}$，避免混淆。训练时通常可以把很多位置一起处理；推理 generation 时，$T = 1$，这正是后面 `arithmetic intensity` 下降的根源。
+图 9.1-2 给出 Transformer decoder block 的标准结构：底部 token embedding 与 absolute position embeddings 拼成输入张量（shape `(batch_size, seq_len, d_model)`），向上经过若干 Transformer Block（每个 block 内含 causal multi-head self-attention、add & dropout、position-wise feed-forward、add & dropout），最终经过 norm、output embedding、softmax 得到输出概率。
+
+中间张量的形状记号采用 `B` (batch size)、`S` (已有上下文 token 数)、`T` (本次要处理或生成的 token 数)、`D` (model dim)、`F = 4D` (MLP up-projection dim)、`H` (head dim)、`N` (query head 数)。`B`、`S`、`T` 在张量里是 batch 维度，`D` / `F` / `H` 在张量里是 contracting / model 维度。
+
+注意力头记号采用 $N = K_{\mathrm{kv}} G$：$K_{\mathrm{kv}}$ 是 KV head 数，$G$ 是每个 KV head 对应的 query heads 数。后文把 key 张量仍记作 $K$，把 KV head 数固定写作 $K_{\mathrm{kv}}$，避免混淆。
+
+训练时通常可以把很多位置一起处理；推理 generation 时，$T = 1$，这正是后面 `arithmetic intensity` 下降的根源。
 
 ![图 9.1-3 Naive inference](images/9-1-3-naive-inference.webp)
 
@@ -366,7 +372,11 @@ cache 存储量取决于实现方式。rolling buffer（循环缓冲区）会把
 
 *图 9.3-9 Native Sparse Attention*
 
-图 9.3-9 展示 Native Sparse Attention (NSA) 的结构。三条并行分支都从同一组 query 和 hidden state 出发：compression 分支把连续 token 块通过可学习 MLP（$\phi$）聚合成 block-level 表示，并叠加 block 内位置编码；selection 分支基于压缩后的 key 与 query 计算 block 级 importance scores，在 GQA group 内对分数求和后选 top-n 重要 block；sliding window 分支保留最近 $w$ 个 token 的局部 KV。三条分支各自维护一份独立的 KV，分别与 query 做 attention 之后，由一个作用于输入特征的 MLP + sigmoid 输出的门控分数做加权求和（论文 Equation 5），而不是把三路 key/value 拼接后再过一次共享 attention。这一选择把三路信息保留到 attention 之后的线性组合里，避免拼接带来的维度膨胀，也让 gate 权重可端到端联合优化。GQA、MLA、CLA、local attention 和 sparse attention 都在重写 KV cache 账本；它们能换速度和显存，也会改变模型保留长程信息的方式，所以需要和具体任务质量一起评估。
+图 9.3-9 展示 Native Sparse Attention (NSA) 的结构。三条并行分支都从同一组 query 和 hidden state 出发：compression 分支把连续 token 块通过可学习 MLP（$\phi$）聚合成 block-level 表示，并叠加 block 内位置编码；selection 分支基于压缩后的 key 与 query 计算 block 级 importance scores，在 GQA group 内对分数求和后选 top-n 重要 block；sliding window 分支保留最近 $w$ 个 token 的局部 KV。
+
+三条分支各自维护一份独立的 KV，分别与 query 做 attention 之后，由一个作用于输入特征的 MLP + sigmoid 输出的门控分数做加权求和（论文 Equation 5），而不是把三路 key/value 拼接后再过一次共享 attention。这一选择把三路信息保留到 attention 之后的线性组合里，避免拼接带来的维度膨胀，也让 gate 权重可端到端联合优化。
+
+GQA、MLA、CLA、local attention 和 sparse attention 都在重写 KV cache 账本；它们能换速度和显存，也会改变模型保留长程信息的方式，所以需要和具体任务质量一起评估。
 
 ### 9.3.5 Quantization、Pruning 与 Distillation
 

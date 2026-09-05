@@ -41,7 +41,7 @@ token id 序列  ──►  进入训练侧 / 推理侧
 | §1.2 | 字符 / byte / 词 三种基础策略 | 各把哪个指标推到极端 |
 | §1.3 | byte-level BPE、vocab、merges | 完备与高效同时满足 |
 | §1.4 | 质量检查清单 | 训练前后如何验收与扩表兼容 |
-| §1.5 | DeepSeek-R1 实例 | 把上面的概念落到一份真实词表上 |
+| §1.5 | DeepSeek tokenizer 案例（DeepSeek-R1 词表） | 把上面的概念落到一份真实词表上 |
 
 ## 1.1 分词器的接口与效率视角
 
@@ -603,7 +603,7 @@ class BPETokenizer:
 ```python
 import regex
 
-# deepseek tokenizer中使用的经典正则表达式（简化版）
+# DeepSeek 风格正则（教学简化版，非官方 tokenizer.json 原文）
 TOKENIZER_REGEX =  r"\p{L}+|\p{N}+|[^\p{L}\p{N}\s]+|\s+"
 
 # 压缩率计算

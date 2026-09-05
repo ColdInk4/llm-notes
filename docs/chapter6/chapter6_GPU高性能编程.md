@@ -245,7 +245,7 @@ check_equal_1d(naive_gelu, compiled_gelu)
 | `builtin_gelu` | 0.667 ms | `GeluCUDAKernelImpl` | 305.409 us |
 | `torch.compile(naive_gelu)` | 0.939 ms | `triton_poi_fused_add_mul_tanh_0` | 342.848 us |
 
-*表 6.6  GeLU 三种实现的 benchmark/profiler 对比（`dim=16384`，单卡 B200）*
+*表 6.6 GeLU 三种实现的 benchmark/profiler 对比（`dim=16384`，单卡 B200）*
 
 逐元素链条太碎时，先找 PyTorch builtin；没有合适 builtin 时，试 `torch.compile`。在这个案例里，编译器把朴素计算图收敛成一个 Triton fused kernel，性能接近内置实现，维护成本远低于手写 kernel。内置 GeLU 仍然更快——自动编译提供的是强基线，不保证总能超过专门优化过的库 kernel。
 
@@ -464,7 +464,7 @@ PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微�
 
 读完本章后应能做到：写一个可复用的 benchmark 和 `torch.profiler` 排查流程，在 Triton 里覆盖 elementwise / reduction / row-overflow / matmul tiling 四类 block 级 kernel，并在 PTX 文本中读出执行模型与 thread coarsening 信号。第 5 章 给出硬件数量级与优化原则，本章把同一套判断落到具体 kernel 和工具选择链上。
 
-下章进入 [第 7 章 分布式训练](../chapter7/chapter7_分布式训练.md)：单卡账本成立之后，把同一组账本扩展到跨卡——collective 语义、NCCL / torch.distributed 的实际接口、ZeRO / FSDP 的状态分片，以及 TP / PP / SP / CP / EP 在混合并行中的组合（EP 在 [第 7 章 §7.9 SP / CP / EP：Activation 与长上下文 / MoE 维度的并行](../chapter7/chapter7_分布式训练.md) 与 [第 4 章 混合专家模型](../chapter4/chapter4_混合专家模型.md) 章节交叉）。
+下章进入 [第 7 章 分布式训练](../chapter7/chapter7_分布式训练.md)：单卡账本成立之后，把同一组账本扩展到跨卡——collective 语义、NCCL / torch.distributed 的实际接口、ZeRO / FSDP 的状态分片，以及 TP / PP / SP / CP / EP 在混合并行中的组合（EP 在 [第 7 章 §7.9 SP / CP / EP：Activation 与长上下文 / MoE 维度的并行](../chapter7/chapter7_分布式训练.md) 与 [第 4 章 §4.4 MoE 与深度学习](../chapter4/chapter4_混合专家模型.md) 章节交叉）。
 
 ## 思考
 

@@ -56,7 +56,7 @@ Transformer 的核心抽象是 token 序列，因此每种非文本模态都要�
 这种目标把视觉分类问题改写成图文匹配问题。模型不需要固定类别表，而是学会把图像语义放到文本描述附近。下游做 zero-shot classification 时，可以把类别名写成文本 prompt，再比较图像 embedding 和这些文本 embedding 的相似度。
 
 > [!NOTE]
-> **CLIP 训练规模**：用约 4 亿 image-text pairs 训练 ViT-L/14@336px（best variant），文本编码器是 GPT-2 风格的 12 层 Transformer（约 63M）；在 ImageNet zero-shot 上超过在 1.2M ImageNet 图像上训练的 ResNet-50。CLIP 最大的 Vision Transformer 在 256 张 V100 GPU 上训练 12 天（[arXiv:2103.00020](https://arxiv.org/abs/2103.00020) §2.5 Training）。
+> **CLIP 训练规模**：用约 4 亿 image-text pairs 训练 ViT-L/14@336px（best variant），文本编码器是 GPT-2 风格的 12 层 Transformer（约 63M，512 宽、8 头）；在 ImageNet zero-shot 上达到与在 1.28M ImageNet 图像上训练的 ResNet-50 可比 / 略高的精度（论文原文 "matches the performance of the original ResNet-50 despite using none of the 1.28 million crowd-labeled training examples"）。CLIP 最大的 Vision Transformer 在 256 张 V100 GPU 上训练 12 天（[arXiv:2103.00020](https://arxiv.org/abs/2103.00020) §2.5 Training）。
 >
 > **SigLIP 训练规模**：把 softmax 对比损失换成 sigmoid 二分类，去掉 batch size 与 loss 的耦合；在 batch < 16K 时 sigmoid 损失明显优于 softmax；batch 变大时差距收敛。SigLIP 论文 Table 1 给出 B/16 在 32 张 TPUv4 + 32K batch 下：随机初始化（from-scratch）训练 2 天 / 72.1% 与 5 天 / 73.4% ImageNet zero-shot（两行都是随机初始化，Table 1 caption 明确写 "The last two rows show results with randomly initialized models"）；预训练 init 的版本是单独一行（71.0% / 16k batch / 16 TPUv4 / 3 days，初始权重为 ViT-Augreg-B/16 公开 checkpoint）([arXiv:2303.15343](https://arxiv.org/abs/2303.15343) Table 1）。
 >

@@ -127,7 +127,7 @@ $$
 
 资源核算同时看三类约束：
 
-- **Compute**：训练普通 dense Transformer 时，常用粗估是 $6 \times N \times N_{\text{token}}$ ，其中 $N$ 是非 embedding 参数量， $N_{\text{token}}$ 是训练 token 数。这个估算适合早期预算判断，但长上下文、MoE、扩散式语言模型或特殊注意力结构会改变细节。
+- **Compute**：训练普通 dense Transformer 时，常用粗估是 $6 \times N_{\text{param}} \times N_{\text{token}}$ ，其中 $N_{\text{param}}$ 是非 embedding 参数量， $N_{\text{token}}$ 是训练 token 数。这个估算适合早期预算判断，但长上下文、MoE、扩散式语言模型或特殊注意力结构会改变细节。
 - **Memory capacity**：参数、梯度、优化器状态和激活都要占显存。AdamW 朴素训练中，优化器状态常常比参数本身更大；checkpointing、ZeRO/FSDP 和低精度训练都是在不同位置减内存。
 - **Memory bandwidth**：推理、小 batch matmul 和逐元素算子经常受 HBM 带宽限制。roofline 分析用算术强度判断一个算子更可能是 compute-bound 还是 memory-bound。
 
@@ -1147,7 +1147,7 @@ assert x.size() == torch.Size([B, L]) # 验证输出张量的形状
 详细看下 `get_batch` 函数的内部处理逻辑：
 
 ```python
-def get_batch(data: np.array, batch_size: int, sequence_length: int, device: str) -> torch.Tensor:
+def get_batch(data: np.ndarray, batch_size: int, sequence_length: int, device: str) -> torch.Tensor:
     # 随机采样起始位置
     start_indices = torch.randint(len(data) - sequence_length, (batch_size,)) # 使用 torch.randint 在 [0, len(data) - sequence_length] 范围内随机生成 batch_size 个起始索引。这样可以确保每个序列都能完整地从数据中截取出来，不会越界
     assert start_indices.size() == torch.Size([batch_size]) # 断言验证了生成的索引数量正确
@@ -1467,10 +1467,6 @@ loaded_checkpoint = torch.load("model_checkpoint.pt")
 - **FP4/MXFP4**：更激进的低 bit 路线，更常见于推理或特定训练方案。它依赖分组缩放、异常值处理和 kernel 支持；位宽减半并不带来免费加速——实际收益依赖配套的精度策略与硬件 kernel 支持。
 
 AMP 的实用判断标准是：矩阵乘法和激活存储尽量低精度，归一化、loss、优化器状态、累加和缩放因子保留足够精度。这样才能同时获得速度、显存收益和训练稳定性。
-
-
-
----
 
 ### 2.5.10 Activation checkpointing 的最小实现
 

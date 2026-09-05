@@ -1135,7 +1135,7 @@ $$
 \text{Activations memory per layer} = \mathrm{sbh} \left(10 + \frac{24}{t} + 5\frac{as}{ht}\right)
 $$
 
-其中 $10\mathrm{sbh}$ 由三个逐点分量构成：两个 LayerNorm（4）+ Dropout（2）+ attention / MLP 输入（4）。它们计算便宜，但如果每个 rank 都保存完整序列维度，就会成为 TP 之后剩下的显存瓶颈。
+其中 $10\mathrm{sbh}$ 由三个逐点分量构成：LayerNorm（共 4，每个 LN 占 2）+ Dropout（2）+ attention / MLP 输入（4）。它们计算便宜，但如果每个 rank 都保存完整序列维度，就会成为 TP 之后剩下的显存瓶颈。
 
 ![图 7.9-3 sequence parallelism](images/7-9-3-sequence-parallelism.png)
 

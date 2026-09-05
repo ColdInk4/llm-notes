@@ -1273,7 +1273,7 @@ StepFun 还检查训练设置的鲁棒性。它把 MoE、不同 dataset 和不�
 
 *图 8.6-33 AdamH loss-spike under extrapolation*
 
-图 8.6-33 是一个工程案例，左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，并从约 $10^{21}$ 之后进入 held-out 外推区。外推区里实测点逐档偏离预测：$10^{21}$ 处高 0.8%， $10^{22}$ 处高 2.5%， $10^{23}$ 处这一档的 run 出现明显 loss spike。这组训练设置来自 Delphi open scaling suite，optimizer 是 AdamH（Adam with Hyperball，把投影权重约束在初始化时的 Frobenius 范数球面上），评估指标是 Paloma macro loss；spike 出现在一批重复文本 batch 上，加入 skip-bad-steps 逻辑（按 grad_norm 阈值跳过）后缓解，最终仍以 0.2% 误差落在预测区间内。这个案例来自 Open Athena / Marin 博客 [*Scaling Laws That Extrapolate 300 Past the Fit*](https://openathena.ai/blog/delphi)。
+图 8.6-33 是一个工程案例，左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，并从约 $10^{21}$ 之后进入 held-out 外推区。外推区里实测点逐档接近预测：$10^{21}$ 处高 0.5%， $10^{22}$ 处从 Delphi attempt 1 的 2.5% 改进到 +0.2%， $10^{23}$ 处这一档在加入 skip-bad-steps 后从原先的发散回到 +0.2%。这组训练设置来自 Delphi open scaling suite，optimizer 是 AdamH（Adam with Hyperball，把投影权重约束在初始化时的 Frobenius 范数球面上），评估指标是 Paloma macro loss；attempt 1 的 spike 出现在一批重复文本 batch 上，加入 skip-bad-steps 逻辑（按 grad_norm 阈值跳过）后缓解，最终仍以 0.2% 误差落在预测区间内。这个案例来自 Open Athena / Marin 博客 [*Scaling Laws That Extrapolate 300 Past the Fit*](https://openathena.ai/blog/delphi)。
 
 Volkova et al. [Towards Robust Scaling Laws for Optimizers, arXiv:2602.07712](https://arxiv.org/abs/2602.07712) 处理同一类问题的另一面：论文指出 per-optimizer 直接拟合 Chinchilla-style scaling law 是 ill-conditioned 的、拟合参数高度相关，因此改用“共享 power-law exponents + optimizer-specific rescaling factors”，并在 AdamW、Muon、Scion、Shampoo、SOAP 五种 optimizer、两种架构上验证。
 
@@ -1398,7 +1398,7 @@ $$
 \|\Delta W_l\|_* \sqrt{n_{l-1}} = \Theta(\sqrt{n_l})
 $$
 
-这就是 learning-rate scaling 的来源。在图 8.6-40 的简化线性层中，SGD 的 learning-rate factor 是 $n_l/n_{l-1}$ ，Adam 对矩阵参数则是 $1/n_{l-1}$ 。标准参数化在同一张表里的对应项是初始化标准差 $\Theta(1/\sqrt{n_{l-1}})$ 、learning rate $\Theta(1)$ ；两者的差别集中在 Adam 的 learning-rate 缩放，以及 fan-out 小于 fan-in 时的初始化项。具体规则取决于 optimizer 和参数类型；Transformer 的 embedding、attention / MLP matrices、output head、bias 与 norm 参数需要分别处理。
+这就是 learning-rate scaling 的来源。把 $\|\Delta W_l\|_* = \eta_l \|g_l\| \|h_{l-1}\|$（Adam 把 $\|g_l/\sqrt{v_l}\|_2$ 量级记为 $\|g_l\|$ 同样适用），代入 $\|g_l\| = \Theta(\sqrt{n_l})$、$\|h_{l-1}\| = \Theta(\sqrt{n_{l-1}})$，解 $\eta_l \sqrt{n_l n_{l-1}} = \Theta(\sqrt{n_l/n_{l-1}})$ 得到 $\eta_l = \Theta(1/n_{l-1})$。因此图 8.6-40 的简化线性层里，SGD 与 Adam 对矩阵参数的 learning-rate factor 都是 $1/n_{l-1}$；当相邻层等宽时退化为常见的 $1/n$，与 Tensor Programs V（[arXiv:2203.03466](https://arxiv.org/abs/2203.03466) §5.3–§5.4）给出的 muP LR 缩放一致。标准参数化在同一张表里的对应项是初始化标准差 $\Theta(1/\sqrt{n_{l-1}})$ 、learning rate $\Theta(1)$ ；两者差别集中在 per-parameter LR 缩放以及 fan-out 小于 fan-in 时的初始化项。具体规则取决于 optimizer 和参数类型；Transformer 的 embedding、attention / MLP matrices、output head、bias 与 norm 参数需要分别处理。
 
 ![图 8.6-40 muP mini recap](images/8-6-40-mup-mini-recap.png)
 

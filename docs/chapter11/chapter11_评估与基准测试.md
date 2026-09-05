@@ -820,7 +820,7 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 - [LAMBADA, arXiv:1606.06031](https://arxiv.org/abs/1606.06031)
 - [Jozefowicz 等, Exploring the Limits of Language Modeling, arXiv:1602.02410](https://arxiv.org/abs/1602.02410)
 - [Oren 等, Proving Test Set Contamination in Black Box Language Models, arXiv:2310.17623](https://arxiv.org/abs/2310.17623) — 用 permutation test 给出 black-box LLM 数据污染的可证明下界
-- [Schaeffer 等, Language model developers should report train-test overlap, arXiv:2410.08385](https://arxiv.org/abs/2410.08385)
+- [Andy K Zhang 等, Language model developers should report train-test overlap, arXiv:2410.08385](https://arxiv.org/abs/2410.08385)
 - [Chatbot Arena, arXiv:2403.04132](https://arxiv.org/abs/2403.04132)
 - [IFEval, arXiv:2311.07911](https://arxiv.org/abs/2311.07911)
 - [AlpacaEval 2.0 (length-controlled debiasing), arXiv:2404.04475](https://arxiv.org/abs/2404.04475)

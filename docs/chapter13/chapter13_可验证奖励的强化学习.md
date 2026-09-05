@@ -960,7 +960,7 @@ DeepSeek-R1 论文 [arXiv:2501.12948](https://arxiv.org/abs/2501.12948) §2.4 "D
 
 *图 13.4-13 LIMO 使用 800 个高质量样本提升数学推理*
 
-图 13.4-13 把 LIMO（800 条样本）和几组参照放在同一张表里：左边三列是 OpenAI-o1-preview、未微调的 Qwen2.5-32B-Instruct 和 QwQ-32B-preview，中间两列是用 OpenThoughts（114k）与 NuminaMath（100k）大规模数据微调的模型。表格分成 In Domain（AIME 2024、MATH-500、AMC 2023）和 Out of Domain（OlympiadBench、CHMath、Gaokao 等）两段。LIMO 在 AIME 2024 上从基座的 16.5 提到 63.3，平均分 78.1 高于用一百倍数据训练的 OpenThoughts（58.3）和 NuminaMath（32.3）。样本量不是决定性变量，题目难度选择和推理链质量才是。
+图 13.4-13 把 LIMO（800 条样本）和几组参照放在同一张表里：左边三列是 OpenAI-o1-preview、未微调的 Qwen2.5-32B-Instruct 和 QwQ-32B-preview，中间两列是用 OpenThoughts（114k）与 NuminaMath（100k）大规模数据微调的模型。表格分成 In Domain（AIME 2024、MATH-500、AMC 2023）和 Out of Domain（OlympiadBench、CHMath、Gaokao 等）两段。LIMO 在 AIME 2024 上从基座的 16.5 提到 57.1，平均分 78.1 高于用一百倍数据训练的 OpenThoughts（58.3）和 NuminaMath（32.3）。样本量不是决定性变量，题目难度选择和推理链质量才是。
 
 > [!WARNING]
 > 通过少量样本提高模型推理能力，对基座模型能力要求较高。s1 与 LIMO 的公开实验都在 Qwen2.5-32B-Instruct 上展示效果，两篇论文都没有报告更小基座（7B / 3B）上的同等增益。

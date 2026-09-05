@@ -16,19 +16,19 @@ LLM 推理能力既是可观察的生成行为，也是消耗系统预算的训�
 
 ## 推理能力的研究案例
 
-本节先用三个近期公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖图论与组合（2025 年 Knuth）、定理证明（2026 年 Brenner 等）和数学公式推导（2026 年 Feng）三类典型应用，后续小节再沿着五条主线拆解能力、概率与系统代价。
+本节先用三个近期公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖图论与组合（2025 年 Knuth）、定理证明（2026 年 Brenner 等）和数学公式推导（2026 年 Feng）三类典型应用，能力、概率与系统代价的拆解见后续 §3 预训练与解码、§4 后训练、§5 CoT、§6 Prompt 与 §7 外部工具搜索。
 
 - Anthropic 的 Claude 参与 Donald Knuth 研究过的图论猜想推导过程，记录见 [Knuth 的 PDF](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf)。
 - Brenner（Google Research 与 Harvard SEAS）、Cohen-Addad（Google Research）和 Woodruff（Google Research 与 Carnegie Mellon 联合）在 [arXiv:2603.04735 *Solving an Open Problem in Theoretical Physics using AI-Assisted Discovery*](https://arxiv.org/abs/2603.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
 - Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：核心数学内容（Type A / Type C / Type D 等经典群的 eigenweight 公式与证明）由内部推理代理（基于 Gemini Deep Think 构建）完整生成，Type B 沿用 prior work [FYZ25a] 计算；人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
 
-三个案例从不同角度展示同一类机制：模型负责生成推理轨迹和数学构造，作者负责设定目标、组织验证与最终叙述。这与本专题后面讨论的 CoT、多路径采样与工具扩展主题相互呼应：推理行为既可以由模型直接产生，也可以由作者代理作为中间环节。
+三个案例从不同角度展示同一类机制：模型负责生成推理轨迹和数学构造，作者负责设定目标、组织验证与最终叙述。CoT、多路径采样与工具扩展主题随后展开；推理行为既可以由模型直接产生，也可以由作者代理作为中间环节。
 
 ![专题图 1 简单数值比较中的过度推理示例](images/reasoning-01-api-number-comparison.png)
 
 *专题图 1 简单数值比较中的过度推理示例*
 
-专题图 1 的问题只是比较 $9.169$ 和 $9.6$ 的大小，但模型仍然可能生成一段分步解释。这类例子把能力问题和成本问题放在同一张账本里：推理文本可以提高可读性和可验证性，也会占用更多输出 token、更长上下文和更多 serving 资源。本专题余下部分沿着五条主线逐一展开，每条主线都会回到这个能力—成本账本。
+专题图 1 的问题只是比较 $9.169$ 和 $9.6$ 的大小，但模型仍然可能生成一段分步解释。这类例子把能力问题和成本问题放在同一张账本里：推理文本可以提高可读性和可验证性，也会占用更多输出 token、更长上下文和更多 serving 资源。下文 §3-§7 的五条主线都回到这个能力—成本账本。
 
 ## 预训练与解码：潜在推理如何被显式取出
 
@@ -248,7 +248,7 @@ Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。Mor Ge
 
 DTR 仍然是统计性指标。完整推理链需要浅层组织语言，也需要深层完成关键判断；未来如果要用 DTR 控制 CoT，还需要结合 token 不确定性、路径一致性、外部验证器和任务难度。Qwen 3 公开的混合思维模式（hybrid thinking modes）也沿着这条线索前进：通过 thinking 与 non-thinking 数据混合、特殊终止标记和 thinking budget，让模型在不同任务上调节推理长度。
 
-到这里，读者应能区分 CoT 长度、有效深度和外部奖励信号对最终行为的不同影响。下一节进入 prompt 这一轻量控制接口。
+到这里，读者应能区分 CoT 长度、有效深度和外部奖励信号对最终行为的不同影响。
 
 ## Prompt 引导：用输入结构约束模型行为
 
@@ -296,7 +296,7 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 > 检索增强和工具调用可以被理解为用“外部记忆”和“外部动作空间”扩展模型能力边界，
 > 使模型不再只依赖训练阶段写入参数的静态知识。
 
-工具搜索也会增加系统成本。一次回答可能包含多段 prompt prefill、多次 generation、长上下文 KV cache、工具返回内容压缩、引用去重和 scheduler 排队。能力上它接近“推理 + 搜索 + 验证”的组合；系统上则回到 [第 9 章 推理系统](../chapter9/chapter9_推理系统.md) 的 serving 账本。
+工具搜索也会增加系统成本。一次回答可能包含多段 prompt prefill、多次 generation、长上下文 KV cache、工具返回内容压缩、引用去重和 scheduler 排队。能力上它接近”推理 + 搜索 + 验证”的组合；系统上则回到 [第 9 章 §9.5 Dynamic Serving：Continuous Batching 与 PagedAttention](../chapter9/chapter9_推理系统.md) 的 serving 账本。
 
 ## 本专题小结
 
