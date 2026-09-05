@@ -231,6 +231,7 @@ prompt 要求 sub-agent 只报 `refuted + tentative`、**不再报 `confirmed`**
   4. **节首描述与正文自相矛盾**：ch7 L439「§7.3 NCCL 报的 GB/s」与正文「NCCL 并不回报这个数字」直接矛盾。
   5. **章节号归属错位**：方法 1/2/3 都在 §8.4.2 不在 §8.4.3（图 8.6-12 错引）；Method X 写在 §8.6.8 但实际在 §8.4.2（图说）。
   6. **元叙述 / 写作计划承诺残留**：「§1.3 接下来会再次出现」（forward-looking 承诺，ch1 L132）；「每章开头的『本章学习目标』会标出」但 14 章无一标注（不成立，preface L23）；「使用前应核对...再决定是否照搬」（搜证元句，ch4 L1069）。
+  7. **中段纯文字描述段漏扫**（fix verification 默认 scope 偏章首/图说/章末，**§X.2 / §X.3 / §X.4 中没有图、表格、引用的纯文字断言段容易被跳过**）。Phase 8 ch1 §1.3 L175 教训：b8773b4 写「GPT-2 预分词正则大致是... DeepSeek 系列则使用 `\p{L}+|...`」三处错（"大致是"作者声音 / openai_public.py 引用错 / "在词内或数字串中间发生 merge"反了 `\p{N}{1,3}` 的实际行为），fix verification 当时只抓了 §1.3-1 / §1.3-2 / §1.3-2 三处图说（同一节内但都属「带图」段），**完全漏掉 L175 这段没有图的纯文字描述**。fix verification prompt 必须显式要求 agent 逐字读 §X.2 / §X.3 / §X.4 全段，对每条断言性内容（"X 预分词正则 / Y 算法用 Z 公式 / N 模型用 M 配置"等）逐条 WebFetch 一手核证；agent 默认扫描容易跳过「没有图、没有表、只有一两段纯文字」的节中段。
   **每条都按方案 A 就地 Edit 修复**（不归到独立 round），并跑禁用句式 + 元叙述两类 rg 自检零命中才算完成。
 - **多 agent 并行 fix verification 经验**：单章节 fix verification 单独跑一次 agent，16 章节并行启动 16 个 agent，每个 agent 限定范围为「本 commit 引入的行」（`git show <hash> -- <file>` 与 `git diff HEAD~1 HEAD -- <file>`），不审历史问题。Schema 仍用简化版（findings_count / edits_applied / fixes / notes），避免 SO retry 超限。16 agent 并行总耗时约 13 分钟，比串行快 16×；findings 数量比单章节 fresh audit 少（focus 在本 commit 引入的范围），但每条都是「本轮真错」而非历史问题。
 
