@@ -15,7 +15,39 @@
 
 Tokenizer 在训练开始前就被固定下来，它一旦确定，后面所有训练和推理都要按它切出的序列长度付账。本章沿着这条因果关系推进：先建立 `encode` / `decode` 接口和压缩率指标，再看字符级、byte 级、词级三种基础策略各自卡在哪里，然后用 byte-level BPE 把"完备"和"高效"两个要求同时满足，最后落到训练完成后的质量检查和一个公开模型的实例观察。
 
+## 章首速查图
+
+从原始文本到训练侧 token id 序列的整条流水线如下。每一节对应流水线中的一段节点。
+
+```
+原始文本（Unicode 字符串）
+        │
+        ▼  encode
+UTF-8 byte 序列
+        │
+        ▼  预分词 + 合并规则
+字符级 / byte 级 / 词级 / byte-level BPE
+        │
+        ▼  vocab + merges
+token id 序列  ──►  进入训练侧 / 推理侧
+        │
+        ▼  decode
+还原字符串
+```
+
+| 节 | 节点 | 解决什么 |
+| --- | --- | --- |
+| §1.1 | `encode` / `decode` 接口、压缩率 | 接口契约和效率视角 |
+| §1.2 | 字符 / byte / 词 三种基础策略 | 各把哪个指标推到极端 |
+| §1.3 | byte-level BPE、vocab、merges | 完备与高效同时满足 |
+| §1.4 | 质量检查清单 | 训练前如何验收 |
+| §1.5 | DeepSeek-R1 实例 | 把上面的概念落到一份真实词表上 |
+
 ## 1.1 分词器的接口与效率视角
+
+> **本节解决**：tokenizer 在文本和模型之间承担什么接口、压缩率怎么量化、词表规模为什么不是越大越好。
+>
+> **读完能做**：用 `bytes per token` 解释一段 UTF-8 文本在某种 tokenizer 下序列会被压短多少，并判断词表大小对 embedding 稀疏度的影响。
 
 语言模型最终学习 token 序列上的概率分布。Tokenizer 位于原始文本和模型之间，提供两个基本操作：`encode` 把字符串变成 token id 序列，`decode` 把 token id 序列还原成字符串。普通文本的基础质量要求是 round-trip 成立：`decode(encode(x)) == x`。
 
@@ -55,6 +87,10 @@ Tokenizer-free 架构尝试直接在 byte 或动态 chunk 上建模，代表方�
 
 ## 1.2 Unicode、UTF-8 与基础分词策略
 
+> **本节解决**：在三种"切到底"的粒度——字符、byte、词——之间做一次完整的成本比较。
+>
+> **读完能做**：在给定语料和模型规模的前提下，估算任一策略的词表大小、序列长度和 OOV 风险。
+
 计算机中的文本通常先表示为 Unicode 字符串。Unicode 为字符分配码点，例如 `A` 是 `U+0041`，汉字和 emoji 也各有对应码点。UTF-8 是把这些码点写成 byte 序列的编码格式；ASCII 字符在 UTF-8 中占 1 个 byte，常见中文通常占 3 个 byte，许多 emoji 占更多 byte。
 
 有了 byte 序列这个共同底座，下一个问题是从多大的粒度开始切。下面三种基础策略各自把一个指标推到极端，也各自暴露一处瓶颈。
@@ -81,6 +117,10 @@ $$
 
 ## 1.3 BPE 的训练、编码与产物
 
+> **本节解决**：BPE 算法从 byte 出发如何反复合并相邻 pair、`vocab` 和 `merges` 各自承担什么职责、工程实现上还有哪些必须处理的细节。
+>
+> **读完能做**：读懂一份 byte-level BPE 词表（含 `vocab` 与 `merges`）的来源、合并优先级和 round-trip 路径；区分 BPE / WordPiece / Unigram / SentencePiece 的优化目标。
+
 三种基础策略的困境可以概括成一句话：固定粒度要么让词表失控，要么让序列失控。BPE 换了一个思路，让切分粒度由数据决定——高频片段合并成大 token，低频片段保留成小 token。
 
 Byte Pair Encoding（BPE）算法最早由 Philip Gage 在 1994 年的数据压缩文献中提出，后来被 Sennrich 等人用于神经机器翻译的子词切分（ACL 2016，arXiv:1508.07909），再被 GPT-2 等模型系列用于大规模语言模型的 tokenizer。它的核心操作很直接：从 byte 或字符等基础单位出发，反复把语料中最常见的相邻 pair 合并成新 token。
@@ -89,7 +129,7 @@ Byte Pair Encoding（BPE）算法最早由 Philip Gage 在 1994 年的数据压�
 
 *图 1.3-1 tokenizer 训练从语料到 vocab 与 merges 的流程*
 
-图 1.3-1 可以按四步理解。第一步准备覆盖目标任务的语料，并完成必要清洗、合规筛查和采样配比。第二步选择基础单位，byte-level BPE 通常从 256 个 byte token 开始。第三步统计当前 token 序列中的相邻 pair 频率，每轮合并最高频 pair，并把新 token 加入词表。第四步导出 `vocab` 和 `merges`，供后续编码、解码和训练使用。
+图 1.3-1 沿着语料 → 基础单位 → pair 合并 → 产物这条流水线展开。从工程角度看，训练得到的不只是 `vocab` 与 `merges` 两份表，merge 的先后顺序也直接决定编码时的合并优先级——这一点在 §1.3 的 trace 例子中会再次出现。
 
 一个极简 BPE 示例可以从字符串 `the cat in the hat` 开始。初始状态先把字符串转成 UTF-8 byte id，每个 byte 都是一个 token。训练时反复统计相邻 token pair，选择频率最高的 pair 合并，并把新 token 加入词表。BPE 训练循环可以用下面的伪代码描述：
 
@@ -119,7 +159,7 @@ $$
 
 *图 1.3-2 vocab 与 merges 共同决定 token id 序列*
 
-图 1.3-2 把同一段文本 `"你好，hello, world!🟢!"` 送进 DeepSeek-R1 tokenizer，给出了 12 个 token id 与对应的彩色片段。`vocab` 单独只回答"id 对应的字节片段是什么"；`merges` 单独只回答"训练时按什么顺序合并"。两者合在一起才能解释编码——譬如 id 223 在该词表下是空格片段，三次出现说明前导空格和标点后的空格分别被并入了同一片段。完整 round-trip 需要 `vocab` 和 `merges` 同时参与：编码时按 `merges` 顺序把 byte 序列逐步合并成 token id；解码时按 `vocab` 把每个 id 还原成 byte 片段再拼回字符串。
+图 1.3-2 展示了一份实际 token id 序列是如何同时依赖 `vocab` 和 `merges` 的：单看 `vocab` 只能回答"id 对应的字节片段是什么"，单看 `merges` 只能回答"训练时按什么顺序合并"——两者合在一起才能解释编码。例如同一个空格片段在词表中可能对应多个 id，差异常来自前导空格和标点后空格在 `merges` 中的合并顺序不同。完整 round-trip 需要两份表同时参与：编码时按 `merges` 顺序把 byte 序列逐步合并成 token id，解码时按 `vocab` 把每个 id 还原成 byte 片段再拼回字符串。
 
 现代 tokenizer 还需要处理三个工程细节。
 
@@ -149,6 +189,10 @@ $$
 
 ## 1.4 分词器质量检查与工程取舍
 
+> **本节解决**：训练 tokenizer 前要做什么、训练后要检查什么、扩展时又有哪些兼容风险。
+>
+> **读完能做**：拿到一份新训练的词表后，按可逆性、完备性、压缩效率、利用率、切分稳定性、兼容性六条逐项核对；判断一次扩表操作是否会破坏旧模型的 embedding 对齐。
+
 算法确定之后，tokenizer 的实际表现仍然由训练语料和验收标准决定。先看语料这一侧：训练 tokenizer 之前需要确定目标语料分布，多语言、代码、数学、URL、emoji 和专业术语的占比都会影响最终词表。如果语料被高资源语言主导，低资源语言的常见片段很难进入高频合并，推理时会被切成更多 token。常见做法是在训练前统计语言和数据类型占比，再按目标能力设定下采样、过采样或定向保留策略。
 
 清洗语料时，还要处理乱码、非法编码、重复模板、隐私和许可问题。电话号码、邮箱、身份证号、地址等高基数敏感信息会带来两类风险：合规风险和统计噪声。它们常以低频甚至单次出现的形式进入语料，容易消耗词表容量，却很少提供可复用语言结构。脱敏策略需要兼顾隐私保护和任务语义，信息抽取等任务可能需要保留实体类型或结构化占位符。
@@ -167,6 +211,10 @@ $$
 扩展 tokenizer 时要格外谨慎。直接重训可能破坏旧模型的 embedding 对齐；增量加入 merges 或新增领域 token 也需要回归测试，确认旧文本编码是否保持兼容、新 token 是否确实降低碎片化、特殊 token id 是否保持稳定。
 
 ## 1.5 DeepSeek tokenizer 案例
+
+> **本节解决**：把前四节的概念落到一份公开词表上，对照观察中文、英文、空格、emoji 的实际切分结果。
+>
+> **读完能做**：用 `transformers` 加载 `deepseek-ai/DeepSeek-R1` 词表后，对一段中英文混合文本做 round-trip 检查并按类型统计 token 数差异。
 
 公开模型的 tokenizer 可以作为健康检查对象。以 DeepSeek-R1（沿用 DeepSeek-V3 的 byte-level BPE 词表，vocab_size = 129,280）为例，面向代码和中英文混合文本的词表通常会覆盖缩进、常见标点组合、中文字词片段、数字串、URL 片段和 emoji。这样能减少 token 数，让固定上下文窗口容纳更多原始文本；低频语言或罕见符号如果语料覆盖不足，仍会被拆成更细片段。
 
@@ -215,7 +263,7 @@ token id 序列是模型接触张量之前的最后一步；进入训练侧后�
 ## 来源与更新记录
 
 - [Stanford CS336 lectures 仓库](https://github.com/stanford-cs336/lectures)
-- [CS336 2026 `gpt5_tokenizer_vocab.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/gpt5_tokenizer_vocab.txt)
+- [CS336 2026 `gpt5_tokenizer_vocab.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/gpt5_tokenizer_vocab.txt)（查阅日期 2026-09-05；课程材料）
 - [Hugging Face LLM Course: Tokenizers](https://huggingface.co/learn/llm-course/en/chapter6/1)
 - [Hugging Face Transformers: Tokenization algorithms](https://huggingface.co/docs/transformers/en/tokenizer_summary)
 - [Sennrich et al., 2016: Neural Machine Translation of Rare Words with Subword Units](https://arxiv.org/pdf/1508.07909)
@@ -225,6 +273,8 @@ token id 序列是模型接触张量之前的最后一步；进入训练侧后�
 - 论文正文口径，状态「论文」，查阅日期 2026-09-05：DeepSeek-V3 技术报告 §4.1 Data Construction https://arxiv.org/html/2412.19437v2（"The tokenizer for DeepSeek-V3 employs Byte-level BPE with an extended vocabulary of 128K tokens."）；Qwen3 技术报告 §2 Architecture https://arxiv.org/html/2505.09388v1（"byte-level byte-pair encoding (BBPE) with a vocabulary size of 151,669"）；Wu et al., 2016 §4.1 Wordpiece Model https://arxiv.org/pdf/1609.08144（"we adopt the wordpiece model (WPM) implementation initially developed to solve a Japanese/Korean segmentation problem"，其文献 [35] 为 Schuster and Nakajima, *Japanese and Korean voice search*, ICASSP 2012）；Sennrich et al. https://arxiv.org/abs/1508.07909（v1 提交日期 2015-08-31，ACL 2016 发表）。
 
 ## 附录：代码实验
+
+> 本节代码与正文 §1.1-1.5 配套用于可运行验证。§1.1 的 `bytes per token` 压缩率定义、§1.2 的字符级/byte 级/词级实现、§1.3 的 BPE 训练 trace 都在附录 2-7 中给出可运行版本。附录 1 的 NER 脱敏不直接参与 tokenizer 主线，但常作为 tokenizer 上游的数据预处理步骤出现——下游训练前，先把语料里的人名、地名、邮箱、电话等敏感实体替换成占位符，再交给 tokenizer 切 token，可以避免敏感信息以低频 token 形式占用词表容量。
 
 ### 附录 1：数据脱敏处理示例
 

@@ -31,6 +31,41 @@
 
 后文的每个优化都可以沿着这四个问题定位：先看它减少哪一类数据搬运或串行步骤，再看它把收益转化成 latency、throughput 还是 `TTFT`，最后检查质量和 workload 假设。
 
+## 本章主线与读图路径
+
+下面的 ASCII 速查图把推理系统主线拆成 6 节、每节回答一个问题。读者顺着这张图能快速判断当前读到哪一段、还剩什么没读：
+
+```text
+  推理系统主线                  每节核心账本                主要优化对象
+  ----------------------------------------------------------------------
+  §9.1  workload       -->    prefill vs generation      两阶段瓶颈定位
+        │
+        ▼
+  §9.2  arithmetic     -->    FLOPs / bytes              MLP / attention
+        intensity              vs hardware roofline       算术强度表
+        │
+        ▼
+  §9.3  KV cache       -->    memory traffic             GQA / MLA / CLA /
+        + 模型压缩              与表示能力                 local / sparse /
+        │                                              quantization
+        ▼
+  §9.4  speculative    -->    串行步数 vs 并行检查       draft / target /
+        sampling               + 分布保持                  Medusa / EAGLE
+        │
+        ▼
+  §9.5  dynamic        -->    batch × step × prefix     continuous batching /
+        serving                的 ragged 调度             PagedAttention /
+        │                                              prefix sharing
+        ▼
+  §9.6  扩展研究       -->    改输入 / 记忆 / 生成范式    prompt compression /
+        │                                              SSM / diffusion /
+        │                                              speculative cascades
+        ▼
+  跨章节衔接 --> 第 10 章 数据工程 / 第 13 章 可验证奖励的强化学习 / topics/reasoning_behavior
+```
+
+四条统一判断维度（weight memory / KV cache / scheduler 空闲 / 采样成本）每节都会被复用一次；§9.6 与 §9.1–§9.5 是补充关系，不属于主线。
+
 ## 9.1 Inference Workload：为什么推理不同于训练
 
 训练和推理都在执行 Transformer 前向计算，但它们面对的资源约束不同。训练更像“对整段 token 做大规模矩阵运算并保存 activation”；推理更像“反复读取权重和历史 KV cache，为下一个 token 做增量计算”。
@@ -130,6 +165,8 @@ $$
 KV cache 用显存换重复计算，让自回归推理可以流式部署；代价是长上下文和高并发会把瓶颈转移到 HBM bandwidth 与显存管理上。它适用于过去 token 表示不会被未来 token 改写的 causal generation。若输入上下文频繁被编辑、模型使用双向 attention，或者生成范式需要多轮重写同一批位置，缓存的 key/value 通常需要重新计算，或改用完全不同的缓存机制。
 
 ## 9.2 Arithmetic Intensity：为什么 generation 常常 memory-bound
+
+本节把上一节的「`prefill` 与 `generation` 资源约束不同」落到一条可计算的账本上：把每一步 FLOPs 除以每一步搬运的字节数，得到 `arithmetic intensity` $I$；把它和硬件 FLOP/s ÷ HBM bandwidth 这一比值对比，就能判断一段推理究竟被算力还是带宽卡住。本节先给 MLP 层，再给 attention 层，最后回到 latency / throughput 取舍；读完后，读者应能把任意一段 LLM 推理判断成 `compute-bound` 或 `memory-bound`，并指出瓶颈在权重读取、KV cache 还是两者。
 
 `arithmetic intensity` 衡量每搬运 1 byte 数据做多少 FLOPs：
 
@@ -242,6 +279,8 @@ $$
 表中的 latency 和 throughput 是理想带宽下界与上界；实际服务还要为 activation、CUDA graph、kernel launch、内存池、并行通信和调度保留空间。它说明 batch 增大可以摊薄权重读取，但收益会逐渐变小，KV cache 容量会先成为硬约束。
 
 ## 9.3 模型与 KV cache 压缩：减少每步数据搬运
+
+本节解决「attention generation 的算术强度低于 1」这一硬约束。GQA / MQA 减少 KV head 数；MLA 把 KV 压到低维 latent 再按需展开；CLA 把共享维度从 head 之间推到 layer 之间；local / sparse attention 直接减少每步需要读取的历史 token；quantization / pruning / distillation 则同时压缩权重、activation 和 KV cache 的 dtype 或规模。每条路径都同时改变 memory traffic、模型表示和输出质量，因此本节每个小节末尾都回到「速度 / 显存 vs 质量」这条单一权衡上。
 
 前面已经看到，inference 的关键瓶颈通常是 memory traffic，尤其是 generation attention 的 KV cache。本节的共同目标是让每一步搬运更少数据，并同时检查质量。
 
@@ -417,6 +456,8 @@ Medusa 和 EAGLE 都是在改进 draft token 的生成方式。Medusa 给 target
 
 ## 9.5 Dynamic Serving：Continuous Batching 与 PagedAttention
 
+本节把前 4 节「单请求视角」的优化搬到真实在线服务上。ragged workload（请求到达、长度、结束时间各异，还可能共享前缀）让静态 batching 既拖慢首请求又浪费显存。本节依次给出三件工程基础设施：`continuous batching` 让每个 generation step 都重排 batch；`PagedAttention` 把 KV cache 像 OS 虚拟内存一样按块管理，让外部 / 内部碎片不再阻塞吞吐；`prefix sharing` 配合 `copy-on-Write` 让共享前缀按 block 粒度复用、写入时分叉。读完后，读者应能把单请求算术强度和显存账本平移到「同时跑几千条请求」的服务系统，并指出 block 粒度调度对 attention kernel 的影响。
+
 真实在线服务更像不断变化的请求流。请求到达时间不同、prompt 长度不同、generation 长度不同、结束时间不同，还可能共享 system prompt 或对同一 prompt 采样多条回答。这种 workload 是 ragged 的。
 
 ### 9.5.1 Continuous Batching 与 Selective Batching
@@ -492,6 +533,8 @@ PagedAttention 更强调显存分页和碎片管理，RadixAttention 更强调 p
 > 是否拆分是和硬件配置绑定的工程选择，单一硬件 / 负载下只有相对优解，没有跨场景的统一答案。
 
 ## 9.6 扩展研究：更换输入、记忆和生成范式
+
+本节收束四类与 §9.1–§9.5 主线不同的扩展研究：prompt compression 改输入长度；SSM / linear attention / hybrid attention 改记忆结构，从「显式保存所有历史 KV」换成「递推状态 + 周期性 softmax attention」；diffusion language model 改生成范式，从逐 token 自回归换成块内并行去噪；speculative cascades 改大小模型协作策略，从保持 target distribution 换成风险感知路由。本节所有方向都按「优化哪个瓶颈、留下什么质量风险」的同一把尺读，与 §9.4 的 speculative sampling 和 §9.5 的 prefix sharing 形成对照。
 
 前面是推理系统主线。本节收束几类扩展研究：prompt compression、SSM / linear attention、diffusion language model 和 speculative cascades。它们都有价值，但要和主线分开读：有些改输入长度，有些改记忆结构，有些改生成范式，有些改大小模型协作策略。
 
@@ -608,6 +651,10 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 2. 如果一个模型使用 GQA 后 throughput 提升，但某些长上下文任务变差，这说明压缩了哪个资源，可能损失了什么能力？
 
 3. Speculative sampling 和 speculative cascades 都用小模型，但为什么前者可以强调 exact sampling，后者更像质量/成本路由？
+
+4. 一个小模型只有 GQA 但 batch=1 的 generation 步骤明显比 batch=32 慢得多。从 arithmetic intensity 角度解释，为什么 MLP generation 在 batch=1 时容易 memory-bound，而在 batch=32 时更可能 compute-bound？attention generation 在两种 batch 下都接近 memory-bound 的原因是什么？
+
+5. 一个在线服务希望把多条共享 system prompt 的对话塞进同一 batch。直接把它们当作独立请求合并，KV cache 会怎样浪费？PagedAttention 的 block table + prefix sharing + copy-on-write 如何把这份浪费变成可回收的物理块？
 
 ## 参考文献
 

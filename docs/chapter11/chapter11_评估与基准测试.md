@@ -22,7 +22,39 @@
 
 一个评估在比较之前要先定义 rules of the game：比较的是裸模型、模型加工具、agent scaffold，还是完整产品系统；允许哪些 prompt、采样参数、工具和预算；分数如何聚合。规则不同，榜单分数和案例结论就不能直接横向比较。
 
+下面这张速查图把本章七类评估与对应小节对齐，方便阅读时随时定位当前段落。
+
+```text
+                  ┌────────────────────────────────────────────────┐
+                  │  第 11 章 评估与基准测试 — 七类评估速查            │
+                  └────────────────────────────────────────────────┘
+
+  ┌─ 抽象层：什么是「好」              ┌─ 指标层：用什么分数衡量
+  │  § 11.1  四类「好模型」定义        │  § 11.3  perplexity（分布拟合）
+  │  § 11.2  difficulty / realism /   │  § 11.4  exam（MMLU / MMLU-Pro /
+  │           validity 三维度          │           GPQA / HLE）
+  │  § 11.11 method vs model/system   │  § 11.5  chat（Arena / AlpacaEval /
+  │           rules of the game       │           IFEval / WildBench）
+  └───────────────────────────────────┴────────────────────────────────────
+                                       │
+                                       ▼
+  ┌─ 任务层：模型在做什么              ┌─ 风险层：评估本身的可信度
+  │  § 11.6  agent（SWE-bench /      │  § 11.8  safety（HarmBench /
+  │           Terminal-Bench /        │           AIR-Bench / GCG jailbreak）
+  │           Cybench / MLE-bench）   │  § 11.9  realism（GDPval / Clio /
+  │  § 11.7  纯推理（ARC-AGI）        │           MedHELM）
+  └───────────────────────────────────┴────────────────────────────────────
+                                       │
+                                       └─→ § 11.10  contamination / 标注噪声
+                                              跨七类的共同失真来源
+```
+
+阅读顺序建议：先读 §11.1-§11.2 建立 evaluation 的目标与三维度框架，再沿指标层（§11.3-§11.5）逐类看分数如何被构造，最后看任务层（§11.6-§11.7）和风险层（§11.8-§11.9）；§11.10 与 §11.11 放在最后，是跨七类评估的共同约束。
+
 ## 11.1 简介
+
+> [!NOTE]
+> 本节解决三个前置问题：「好模型」有几种常见定义、公开榜单截图能在多大程度上传递信息、社区案例观察为什么不能替代系统评估。读完后，读者应能在看到任何一份 LLM 评估材料时，先定位它属于哪一类，再追问它测到了什么。
 
 当你打开任何一个大语言模型（LLM）的评测网站或论文时，最容易看到的是一串分数、一张排行榜或几条社交媒体上的惊艳案例。本节先把这些表象拆成四类问题，再追问它们各自到底测到了什么。
 
@@ -122,6 +154,9 @@ Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会�
 
 ## 11.2 如何看待评估
 
+> [!NOTE]
+> 本节回答一个总框架问题：给定一个评估结果，应该按哪三个维度反复审视它？读完后，读者应能用 difficulty / realism / validity 三维度直接拆解任一 benchmark 的可信度，并理解四类使用场景（用户 / 研究者 / 政策 / 开发者）对评估设计的不同要求。
+
 评估是一个服务明确目标的设计框架。它从要测量的抽象构念出发，再选择足够贴近该构念的输入、调用方式、评分规则和解释方式；输入提示词、得到输出、计算平均分只是执行层面的最后一步。
 
 > [!NOTE]
@@ -179,6 +214,9 @@ Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会�
 忽略这些问题，仅凭一个分数做判断，是评估中最大的误区。
 
 ## 11.3 困惑度
+
+> [!NOTE]
+> 本节介绍评估语言模型最基础的指标 perplexity：它如何定义、为什么需要在测试集上测量、经典数据集的历史作用、为什么今天仍然是预训练阶段的连续监控信号，以及何时不该用 perplexity。读完后，读者应能在看到任何 perplexity 数字时，准确说出它的口径、置信区间和局限。
 
 ### 11.3.1 什么是 Perplexity（困惑度）？
 
@@ -345,6 +383,9 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ## 11.4 知识类基准
 
+> [!NOTE]
+> 本节覆盖四类知识型考试基准：MMLU / MMLU-Pro / GPQA / Humanity's Last Exam。读完后的能力：能区分「知识广度基准」与「高难度专家基准」的设计取舍，能读懂题目来源、难度档位和 contamination 防护。
+
 这类基准旨在衡量模型所掌握的事实性知识。
 
 ### 11.4.1 MMLU (Massive Multitask Language Understanding)
@@ -403,6 +444,9 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 [HLE 官方站点](https://agi.safe.ai/)提供持续更新的结果。HLE 仍然远未饱和，跟踪其时间序列可观察模型在多学科高难题上的增量进展。HLE 使用私有 held-out 测试集 + 公开开发集，避免训练流直接覆盖评测。
 
 ## 11.5 指令遵循基准
+
+> [!NOTE]
+> 本节覆盖聊天偏好、显式约束、长度归一化与真实用户分布四类指令遵循评估：Chatbot Arena / IFEval / AlpacaEval / WildBench，以及 LLM-as-judge 的四类偏差。读完后的能力：能在看到任意聊天基准分数时，定位它的评分机制（盲测 / 规则 / LLM judge），并指出对应的偏差来源与缓解方式。
 
 这类基准评估模型是否“听话”，能否按照用户的要求进行输出。
 
@@ -465,13 +509,16 @@ LLM-as-judge 把评估成本压低到可大规模运行的级别，但也把 jud
 - **长度偏差（length bias）**：judge 模型倾向给更长回答更高分，无论内容质量是否真的更高；这是 AlpacaEval、AlpacaEval 2.0 等基于 LLM-as-judge 的指标最被反复讨论的问题 ([Zheng et al., 2023, arXiv:2306.05685](https://arxiv.org/abs/2306.05685))。缓解办法包括按字符 / token / 段落长度归一化分数、报告 length-controlled win rate，或在 prompt 中显式要求 judge 忽略长度。
 - **位置偏差（position bias）**：当 judge 同时看到两个回答时，倾向给第一个出现的回答更高分；多轮交换位置后取平均可以分离这一效应。
 - **自我偏好（self-preference bias）**：judge 模型给同家族模型更高分；常见缓解是引入多 judge 集成或与人类标注的校准。
-- **风格与格式偏差**：judge 可能被 markdown 标题、bullet 列表、emoji 等表面格式影响；控制 rubric 中显式排除这些信号。
+- **风格与格式偏差（style / format bias）**：judge 可能被 markdown 标题、bullet 列表、emoji 等表面格式影响；控制 rubric 中显式排除这些信号。
 
 工程做法通常同时叠加：多 judge 投票（pairwise 偏好下用 majority vote）、length-controlled win rate、judge ensemble 与 human spot check。JudgeBench ([arXiv:2410.12784](https://arxiv.org/abs/2410.12784)) 等基准则直接评估 judge 模型本身的判别能力，而不是被评模型的能力。
 
 LLM-as-judge 与 RLHF / RLVR 的连接在第 12 章偏好优化和第 13 章 verifier-as-reward 中再次出现：reward model 的偏差直接决定偏好优化的目标偏差，因此 judge 与 reward 的偏差清单需要一起维护。
 
 ## 11.6 智能体基准
+
+> [!NOTE]
+> 本节介绍四类 agent 基准：SWE-bench / Terminal-Bench / Cybench / MLE-bench，并明确一个关键边界：这些基准评估的是「模型 + agent scaffold」的系统能力，而非裸模型。读完后的能力：能在看到任一 agent benchmark 分数时，识别它对应的 scaffold 假设、工具权限与运行预算。
 
 这类基准评估模型作为智能体（Agent） 的能力，即在复杂环境中通过工具调用和迭代规划完成任务。
 
@@ -539,6 +586,9 @@ Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 �
 
 ## 11.7 纯推理基准
 
+> [!NOTE]
+> 本节聚焦 ARC-AGI 系列：1 / 2 / 3 三代的任务形态与 o1/o3 test-time compute 范式对纯推理任务的改变。读完后的能力：能解释为什么 reasoning model 的出现把 ARC-AGI 这类「剥离语言的归纳推理」基准从「无法解」推到「接近饱和」，以及 ARC-AGI-3 引入交互环境后带来的新维度。
+
 这类基准试图剥离知识，仅评估模型的抽象推理能力。
 
 ### 11.7.1 ARC-AGI (Abstraction and Reasoning Corpus for Artificial General Intelligence)
@@ -577,6 +627,9 @@ ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到�
 *图 11.7-5 ARC-AGI-3 结果*
 
 ## 11.8 安全基准
+
+> [!NOTE]
+> 本节覆盖四类安全评估视角：HarmBench（行为拒答率）/ AIR-Bench（监管与政策对齐）/ Jailbreaking（绕过对齐的攻击）/ 部署前测试（监管机构预审）。读完后的能力：能区分「能力」（capability）与「倾向」（propensity）两类风险评估口径，以及 dual-use 场景下安全边界对评估设计的约束。
 
 对于 AI 来说，安全意味着什么？
 
@@ -634,6 +687,9 @@ ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到�
 
 ## 11.9 真实性
 
+> [!NOTE]
+> 本节回答一个核心问题：现有考试型 benchmark 与真实使用场景的距离有多大？通过 GDPval / Clio / MedHELM 三个案例，展示「真实任务 + 真实分布」评估的工程成本与隐私边界。读完后的能力：能在「考试型」与「职业型」评估之间做出选择权衡。
+
 语言模型在实践中被广泛应用：
 
 ![图 11.9-1 OpenAI 模型使用量案例](images/11-9-1-openai-usage.png)
@@ -673,6 +729,9 @@ GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重�
 *图 11.9-5 MedHELM 构建流程*
 
 ## 11.10 有效性
+
+> [!NOTE]
+> 本节覆盖两类「让分数失真」的源头：训练-测试重叠（contamination，§11.10.1 的四条路线）与数据集质量（题目噪声、scaffold 漏洞、§11.10.2）。读完后的能力：能在面对任一 benchmark 分数时，系统检查「题是否干净」「模型是否可能见过题」「scoring 是否真的奖励了目标行为」三步。
 
 评估的有效性面临两大核心挑战。数据污染的源头在训练侧——具体去重与过滤方案在 [第 10 章 §10.2.2](../chapter10/chapter10_数据工程.md) 详细展开，本节只关注"如何在评估时检测并控制 contamination"。
 
@@ -718,6 +777,9 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 ## 11.11 我们到底在评估什么？
 
+> [!NOTE]
+> 本节回到 evaluation 最底层的边界问题：评估对象是「方法」（method）还是「模型/系统」（model/system）？两种范式对应不同的科学价值与工程价值。读完后的能力：能在引用任何榜单或论文实验结果前，先定位它属于哪一种范式，再判断结论适用范围。
+
 评估对象必须先说清楚：当前比较的是方法还是模型/系统。这个边界就是评估的 rules of the game。
 
 - 过去：在 ImageNet 时代，我们评估的是方法（method），即在固定数据集和训练协议下，新算法的优劣。
@@ -733,18 +795,19 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 ## 本章总结与下章衔接
 
-本章围绕"如何评估一个模型到底有多好"展开，把评估拆成四个维度（task / dataset / metric / format）× N 种 benchmark：perplexity 测分布匹配，exam 测知识（MMLU / GPQA / HLE），chat 测偏好（Arena / AlpacaEval / WildBench），agent 测任务能力（SWE-bench / Terminal-Bench / Cybench），推理测专门能力（ARC-AGI），安全测对齐（HarmBench / AIR-Bench / GCG jailbreak）。每类 benchmark 都有 contamination、difficulty、realism、validity 四个共同问题，nanoGPT speedrun 作为 sanity check 经常出现。
+评估设计本身的工程判断可以收成三条规则。第一，**单一分数不足以支撑结论**——perplexity、exam、chat、agent、推理、安全、真实使用这七类评估各回答一个独立问题，任何一份模型评估材料都应先定位它属于哪一类，再判断结论的适用边界。第二，**评估的规则优先于分数本身**——相同的「78%」分数在不同 prompt 范围、采样参数、工具权限、agent scaffold 下含义不同，比较前必须先确认 rules of the game 一致（§11.2 与 §11.11）。第三，**评估与训练相互定义**——LM-as-judge 的偏差清单（§11.5.5）直接决定偏好优化目标（[第 12 章](../chapter12/chapter12_大模型基本训练流程.md) §12.5）和 RLVR 验证信号（[第 13 章](../chapter13/chapter13_可验证奖励的强化学习.md) §13.3）的偏差结构，judge 与 reward 的偏差需要一起维护。
 
-评估对象粒度分 method 与 model/system 两档，§11.11 把这个边界单独拆开讲。LM-as-judge 的偏差与缓解见 §11.5.5，Chatbot Arena 与 AlpacaEval 的裁判设置见 §11.5.1 与 §11.5.3。LLM judge 的 length / position / self-preference / style 四类偏差可以通过多 judge ensemble、按 prompt 模板分层、控制 token 预算缓解，单一 judge 的判断应与人类 judge 的相关系数报告同时呈现。
-
-下章进入 [第 12 章 大模型基本训练流程](../chapter12/chapter12_大模型基本训练流程.md)：评估方法定下来后，再回到训练流水线——pre-training → mid-training → SFT → RLHF/PPO/DPO 的后训练，对应的 SFT/RLHF/PPO/DPO 案例在第 12 章展开。
+下章进入 [第 12 章 大模型基本训练流程](../chapter12/chapter12_大模型基本训练流程.md)：评估方法定下来后，训练流水线按 pre-training → mid-training → SFT → RLHF/PPO/DPO 组织；其中 RLHF 与 DPO 的偏好数据来源与 judge 偏差控制直接对应本章 §11.5.5 的四类偏差。
 
 ## 思考
 
-- 当前训练数据是否与 MMLU / GPQA / HLE 等评测存在 overlap？是否做了 contamination 检查？
-- 一个 5 分的 win-rate 差距在 Chatbot Arena 的统计噪声内吗？confidence interval 是多少？
-- 同一个模型在 chat benchmark 与 exam benchmark 的表现，相关性如何？这种相关性在不同代际间是否稳定？
-- safety benchmark (HarmBench / AIR-Bench) 与 safety 部署表现的相关性如何？是否需要额外的 red-team？
+下列问题分别对应本章学习目标的 5 条；每条先写一个具体场景，再追问「如何用 benchmark 给出可复核的判断」。
+
+- **四类「好模型」定义（对应学习目标 1）**：当前正在采购一个对话产品用于客服。四个候选模型在 Artificial Analysis 能力榜、OpenRouter 使用量榜、LMArena 偏好榜与真实 NPS 上分别排名 A/B/C/D。哪一个排名才是该场景的合适信号？哪些排名在这个场景下根本不该用？
+- **perplexity 的边界（对应学习目标 2）**：手上有一份待评估模型的测试集 perplexity 报告，它在 PTB / WikiText-103 / 1BW 上分别给出 18 / 12 / 22。如果下游任务是开放域问答与多轮对话，这两个数字能告诉你什么、不能告诉你什么？
+- **exam 基准与 contamination（对应学习目标 3）**：当前训练语料与 MMLU / GPQA / HLE 三档考试存在部分来源重叠。哪一档最容易通过「收集更多训练数据」绕过？哪一档最依赖 §11.10.1 的四条 contamination 控制路线？
+- **chat 与 agent 基准差异（对应学习目标 4）**：一个 5 分的 win-rate 差距在 Chatbot Arena 的统计噪声内吗？confidence interval 是多少？同样的差距换到 SWE-bench Verified 上意味着什么？
+- **rules of the game（对应学习目标 5）**：safety benchmark（HarmBench / AIR-Bench）与 safety 部署表现的相关性如何？是否需要额外的 red-team？把同一份安全评估放在闭源 API 模型与开源基础模型上，规则有什么不同（参看 §11.8.5 的「倾向性 vs 能力」边界）？
 
 ## 参考文献
 

@@ -43,6 +43,8 @@
 
 ## 7.1 为什么需要分布式训练与硬件层级
 
+这一节从单卡的两个硬约束（显存容量和单卡 FLOP/s）出发，建立"为什么必须把训练步骤拆到多个 rank"的物理理由；并把硬件拓扑按 L1 → HBM → NVLink → InfiniBand 的速度梯度铺平，作为后续 collective 与并行策略落点的参照系。
+
 ### 7.1.1 单卡瓶颈：内存和算力
 
 ![图 7.1-1 GPU 的算力增强曲线](images/7-1-1-gpu-compute-growth.png)
@@ -83,7 +85,7 @@
 
 从快到慢看，可以先记住这条粗略层级：单 GPU 的 L1 / shared memory，单 GPU 的 HBM，同节点 GPU 间的 NVLink / NVSwitch，跨节点网络。越往后越应该减少通信频率，或把通信做成更大的 collective。
 
-后面会先用 `torch.distributed` 把 collective 语义跑通，再看简单 benchmark 如何估算通信带宽，最后用小型 MLP 代码锚定 DP、TP 和 PP 的实现差异。
+下面先用 `torch.distributed` 把 collective 语义跑通，再用一段小 benchmark 看通信代价的真实量级，最后用最小 MLP 代码锚定 DP、TP、PP 三种切分在代码上的差异。
 
 ### 7.1.4 GPU、TPU 和数据中心拓扑
 
@@ -136,6 +138,8 @@ PyTorch 里的 `torch.distributed` 是更高一层的接口。写训练代码时
 
 
 ## 7.2 通信编程模型
+
+这一节定义最底层的"积木"：rank / world_size / process group 是什么，collective 各自把张量从一种分片状态搬到另一种状态。后面 §7.3 的 benchmark 与 §7.4 的并行代码都建立在这套语义之上。
 
 ### 7.2.1 Rank、world_size 与 process group
 
@@ -277,7 +281,6 @@ spawn(collective_operations_main, world_size=4)
 ```python
 
 def setup(rank: int, world_size: int):
-    # 指定主服务器所在位置（排名 0），用于协调（实际数据通过 NCCL）
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "15623"
     if torch.cuda.is_available():
@@ -289,28 +292,28 @@ def cleanup():
     torch.distributed.destroy_process_group()
 
 def collective_operations_main(rank: int, world_size: int):
-    """此函数针对每个进程（rank = 0, ..., world_size - 1）异步运行。"""
+    """Run asynchronously for each process (rank = 0, ..., world_size - 1)."""
     setup(rank, world_size)
 
     # all-reduce
-    dist.barrier()  # Waits for all processes to get to this point (in this case, for print statements)
-    tensor = torch.tensor([0., 1, 2, 3], device=cuda_if_available(rank)) + rank  # Both input and output
+    dist.barrier()
+    tensor = torch.tensor([0., 1, 2, 3], device=cuda_if_available(rank)) + rank
     print(f"Rank {rank} [before all-reduce]: {tensor}", flush=True)
-    dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM, async_op=False)  # Modifies tensor in place
+    dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM, async_op=False)
     print(f"Rank {rank} [after all-reduce]: {tensor}", flush=True)
 
     # reduce-scatter
     dist.barrier()
-    input = torch.arange(world_size, dtype=torch.float32, device=cuda_if_available(rank)) + rank  # Input
-    output = torch.empty(1, device=cuda_if_available(rank))  # Allocate output
+    input = torch.arange(world_size, dtype=torch.float32, device=cuda_if_available(rank)) + rank
+    output = torch.empty(1, device=cuda_if_available(rank))
     print(f"Rank {rank} [before reduce-scatter]: input = {input}, output = {output}", flush=True)
     dist.reduce_scatter_tensor(output=output, input=input, op=dist.ReduceOp.SUM, async_op=False)
     print(f"Rank {rank} [after reduce-scatter]: input = {input}, output = {output}", flush=True)
 
     # all-gather
     dist.barrier()
-    input = output  # Input is the output of reduce-scatter
-    output = torch.empty(world_size, device=cuda_if_available(rank))  # Allocate output
+    input = output
+    output = torch.empty(world_size, device=cuda_if_available(rank))
     print(f"Rank {rank} [before all-gather]: input = {input}, output = {output}", flush=True)
     dist.all_gather_into_tensor(output_tensor=output, input_tensor=input, async_op=False)
     print(f"Rank {rank} [after all-gather]: input = {input}, output = {output}", flush=True)
@@ -432,6 +435,8 @@ Rank 3 [after all-gather]: input = tensor([18.], device='cuda:3'), output = tens
 最后当进程运行结束时，只需进行清理即可。
 
 ## 7.3 通信性能与 benchmark
+
+这一节用一段最小 benchmark 看 collective 在真实运行中花多少时间，并把 NCCL 报的"有效带宽"换算公式拆开：先讲 $\text{algorithm bandwidth} = S/t$、再讲 bus-bw 修正系数，从而建立"为什么不能直接用字节数除以耗时"的工程直觉。
 
 
 理解 collective 的语义之后，还要看它在真实运行中花多少时间。一个小 benchmark 就可以展示通信耗时和有效带宽的基本观察方式。
@@ -568,6 +573,8 @@ reduce-scatter 只留下每个 rank 对应的 shard，而 all-reduce 最终让�
 通过对比可见，reduce-scatter 和 all-gather 各自都不含简化估算里的 2 倍系数；两者叠加才对应 all-reduce 的两阶段通信。这些公式只是用于读懂同一份 benchmark 的有效带宽口径；真实性能由 NCCL 算法、拓扑和实测决定。
 
 ## 7.4 最小并行代码实践
+
+这一节用同一个深度 MLP 把 DP / TP / PP 三种切分落到可运行代码上：DP 切 batch、TP 切 hidden、PP 切 layer。代码不追求训练出好模型，只为把"切哪一维"对应到"在哪些位置必须交换张量"看清。
 
 我们将通过一个深度 MLP 的简易实现演示每种策略。代码只是最小工作负载，但 MLP 矩阵乘在语言模型里通常占很大计算量，因此足以说明 DP、TP、PP 的切分和通信差异。
 
@@ -787,11 +794,13 @@ def pipeline_parallelism_main(rank: int, world_size: int, data: torch.Tensor, nu
 
 上面的代码示例只是在最小工作负载上演示“沿哪个维度切、在哪些位置通信”。真实 Transformer 训练还要处理参数注册、梯度 bucket、通信计算重叠、重计算、optimizer state 分片和异步调度，因此生产级实现通常直接依赖 Megatron-LM、DeepSpeed、PyTorch FSDP 或 JAX/Levanter 这类框架。
 
-7.4 用最小代码展示了三种切分方向：DP 切 batch，TP 切 hidden / width，PP 切 layer / depth。下面开始把这些方向放进训练系统的资源账本里：哪些状态被复制，哪些状态被分片，哪些通信可以和计算重叠，哪些瓶颈仍然会留下来。
+7.4 用最小代码展示了三种切分方向：DP 切 batch，TP 切 hidden / width，PP 切 layer / depth。这些切分方向最终要落回训练系统的资源账本：哪些状态被复制，哪些状态被分片，哪些通信可以和计算重叠，哪些瓶颈仍然会留下来。
 
 先看数据并行和它的分片版本。朴素 DDP 复制完整模型和优化器状态，只沿 batch 维分片数据；ZeRO / FSDP 则继续把 optimizer states、gradients、parameters 逐步分片。ZeRO 原始论文：Rajbhandari et al., *ZeRO: Memory Optimizations Toward Training Trillion Parameter Models*, [arXiv:1910.02054](https://arxiv.org/abs/1910.02054)（2020）；PyTorch FSDP 文档：[pytorch.org/docs/stable/fsdp.html](https://pytorch.org/docs/stable/fsdp.html)。之后再讨论模型并行和 activation memory，因为模型做大、序列拉长后，光处理参数状态还不够。
 
 ## 7.5 数据并行（DDP）
+
+这一节回到朴素随机梯度下降：模型复制、batch 沿样本维切分、用一次 all-reduce 同步梯度。先把朴素 DP 的"16 字节 / 参数"账本写清楚，作为后面 §7.6 ZeRO / FSDP 减存量、§7.7+ 模型并行切模型的对照基准。
 
 核心思想是复制模型，分片数据批次。
 
@@ -813,7 +822,7 @@ $$
 
 数据并行的吞吐扩展来自更大的并行 batch：如果有 $M$ 个 rank，每个 rank 会分到约 $B/M$ 个样本。当 batch 足够大时，每张 GPU 都能获得相当规模的本地数据，计算量足以掩盖一部分梯度 all-reduce 成本。
 
-它的限制也很直接：每个 GPU 都完整复制参数、梯度和 optimizer states。扩卡可以增加并行计算，但不会自动降低单卡上的模型状态显存；模型继续变大或序列继续变长时，显存瓶颈仍然会出现。因此下面的 §7.6 ZeRO / FSDP 会把问题改写成：哪些状态必须复制，哪些状态可以分片，并用通信把它们在需要时临时恢复出来。
+它的限制也很直接：每个 GPU 都完整复制参数、梯度和 optimizer states。扩卡可以增加并行计算，但不会自动降低单卡上的模型状态显存；模型继续变大或序列继续变长时，显存瓶颈仍然会出现。因此问题改写成：哪些状态必须复制，哪些状态可以分片，并用通信把它们在需要时临时恢复出来。这正是 §7.6 ZeRO / FSDP 的处理对象。
 
 ![图 7.5-1 朴素数据并行中的内存使用情况](images/7-5-1-naive-data-parallel-memory.png)
 
@@ -824,6 +833,8 @@ $$
 后面 “Pure BF16 training with Kahan summation” 的表格使用 **12 B/param** 作为另一个精度/优化器假设；常数会随训练设置变化，核心问题始终是哪些状态在每个 rank 上复制，哪些状态可以分片。
 
 ## 7.6 ZeRO / FSDP
+
+朴素 DP 复制参数、梯度和优化器状态，扩卡只能加算力、不能扩展单卡模型容量。这一节沿"逐步把复制状态换成分片状态"的路线展开 ZeRO 三个阶段：先分片 optimizer state（ZeRO-1），再分片梯度（ZeRO-2），最后连参数也按需 all-gather（FSDP / ZeRO-3）；并把每阶段的通信代价与内存收益写到同一张表里。
 
 ### 7.6.1 ZeRO 解决 DP（数据并行）的内存开销问题
 
@@ -977,6 +988,8 @@ ZeRO 的意义是在不要求模型结构改写的前提下，把 DDP 的复制�
 
 ## 7.7 流水线并行（Pipeline Parallelism，PP）
 
+朴素按层切分会留下大量空闲窗口：前一阶段没发出 activation，下一阶段只能等。这一节从"为什么朴素 layer-wise 浪费算力"出发，把 pipeline 切到 micro-batch 这一刀，再把 bubble 占比写成 $(n_\mathrm{stages}-1) / n_\mathrm{micro}$；最后看 zero-bubble 这类用通信与调度进一步压缩空闲窗口的进阶做法。
+
 DP 和 ZeRO/FSDP 先从 batch 和模型状态下手：DP 沿 batch 维复制模型，ZeRO/FSDP 把参数、梯度和优化器状态分片。但全局 batch 不能无限放大，且 activation memory 仍可能成为主瓶颈。模型并行开始切模型本身，最常见的另一条路线是沿深度切的流水线并行（PP），与下面 §7.8 张量并行（TP）形成对照。
 
 ![图 7.7-1 逐层并行](images/7-7-1-layerwise-parallelism.png)
@@ -1042,6 +1055,8 @@ zero-bubble pipeline 直接利用 backward 的依赖结构。反向传播里有�
 
 ## 7.8 张量并行（Tensor Parallelism，TP）
 
+TP 沿矩阵乘法的宽度切分：把大矩阵切成子块在不同 rank 上算，再在边界处合并。与 PP 比，TP 没有 pipeline bubble，但每个 Transformer block 都会产生 activation-sized collective。这一节从 columnwise / rowwise 的对偶结构出发，写出每层通信量级 $8bsh (n_\mathrm{devices}-1) / n_\mathrm{devices}$，并解释为什么 TP 通常被限制在 NVLink 域内。
+
 流水线并行沿网络深度切分，张量并行则沿矩阵乘法的宽度切分。LLM 的大部分参数和 FLOPs 都集中在 attention projection 和 MLP projection 这些矩阵乘法里，因此把大矩阵拆成多个子矩阵是很自然的模型并行方式。
 
 ![图 7.8-1 宽度维度模型并行](images/7-8-1-tensor-parallel-width.png)
@@ -1083,6 +1098,8 @@ GPU 训练里通常把 TP 限制在节点内 NVLink / NVSwitch 域；TPU 的 mes
 这些策略也可以组合。常见做法是节点内使用 TP 处理宽度方向的大矩阵，跨节点再叠加 PP 或 DP。DeepSeek-V3 这类系统更强调 PP/EP 和通信重叠；稠密模型则常见 TP、PP、DP 的组合。核心判断仍是：模型是否放得下，通信是否能跟上，batch 是否足够隐藏 bubble。
 
 ## 7.9 SP / CP / EP：Activation 与长上下文 / MoE 维度的并行
+
+参数状态分片切完之后，剩余的 activation 显存、长序列 KV 和 MoE experts 又会接替成为瓶颈。这一节给出三条继续切分 activation 的路线：sequence parallelism 让 pointwise 项沿序列维度分摊、context parallelism / ring attention 让 attention 在长序列上 ring 通信、expert parallelism 让 MoE 的 experts 沿设备维度分布。
 
 ### 7.9.1 Activation Memory 与 Sequence Parallelism
 
@@ -1199,6 +1216,8 @@ Megatron 的 MoE parallel folding 体现了这种解耦：attention layers 可�
 
 ## 7.10 混合并行与大规模训练组合
 
+单条策略都不能同时满足显存、通信和 batch 三类约束。这一节把它们放回同一张资源表，并给出一条经验决策顺序：先判断显存瓶颈（参数 / optimizer state / activation），再选高频通信该落在哪层拓扑（NVLink vs InfiniBand），最后用 DP / gradient accumulation 把剩余算力扩满。
+
 ![图 7.10-1 LLM 并行策略表](images/7-10-1-llm-parallel-strategy-table.png)
 
 *图 7.10-1 LLM 并行策略表*
@@ -1265,6 +1284,8 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 
 ## 7.11 代表性大规模训练配置
 
+这一节把前面所有抽象落到公开报告的真实数字：Llama 3 405B 三阶段（标准 / 长上下文）的 TP/PP/CP/DP、DeepSeek-V3 的 PP16 + EP64 + ZeRO-1（TP 压到 1）、Mixtral / Gemma 2 / Qwen3 / Nemotron 3 Super 的公开并行度。表里 `?` 字段表示一手源未公开，不在笔记里凭手感补全。
+
 下表汇总公开来源给出的代表性大规模训练配置（`?` 表示对应论文 / 官方文档未公开的字段）：
 
 | 模型 | TP | PP | CP | EP | DP | ZeRO | 备注 |
@@ -1297,6 +1318,22 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 更实用的结论可以压缩成一句话：**先让模型放得下，再让通信跟得上，最后再追求满算力。** 具体到策略选择时，通常先判断参数、optimizer state、activation 谁是主瓶颈，再根据节点内外带宽决定 TP、PP、DP、SP、CP、EP 的组合；“标准并行方案”只能作为起点，最终仍要由资源账本和 benchmark 校准。
 
 资源账本只能回答"训练会不会爆"和"算力跑满没有"，不能回答"这个规模训下来是什么 loss"。下一章把视角从"训得起"切到"训得对"：[第 8 章 Scaling Laws](../chapter8/chapter8_Scaling_Laws.md) 用 IsoFLOP、Chinchilla、muP 等方法把 compute budget 拆成最优的模型规模和数据量。
+
+对照章首学习目标，读到这里应能：
+
+- 说出 `all-reduce`、`reduce-scatter`、`all-gather`、`all-to-all` 各自的输入输出和典型用例（§7.2）。
+- 写出 DDP、ZeRO-1/2/3、FSDP 各自复制 / 分片参数、梯度、优化器状态的范围（§7.5–§7.6）。
+- 区分 TP 沿宽度、PP 沿深度、SP/CP 沿序列三种切模型的维度和通信来源（§7.7–§7.9）。
+- 列出 MoE 系统里 router → dispatch → expert compute → combine 四步对应的 collective（§7.9.2）。
+- 在给定 NVLink / InfiniBand 拓扑下，从 §7.10 的决策流程出发组合 TP/PP/EP/DP/CP，并写出每张卡的模型状态、activation、token 路由账本（§7.10–§7.11）。
+
+## 思考
+
+- 给定一个 70B dense 模型 + 8×A100-80G 节点，参数状态先选 DDP 还是 FSDP？如果改成 16 节点 + NVLink-only 域内通信，4D 并行的第一刀切哪里？
+- 同模型换到 MoE（8 专家、top-2），activation 是否仍按 dense 估算？all-to-all 的 split size 在不同 micro-batch 上波动多少时仍算 balanced？
+- 同一段 `dist.all_reduce` 在 `world_size=4` 单节点 NVLink 与 `world_size=128` 双层 fat-tree 上的有效带宽差几倍？哪部分差距来自拓扑，哪部分来自消息大小？
+- §7.6 给出 ZeRO-3 总通信量约 $3\Psi$；如果参数预取能藏掉一半通信 wall time，是否仍要把 FSDP 通信系数视为 1.5× DDP？换言之"通信代价"指的是 byte 总量还是 wall time？
+- §7.10.4 决策流程中"先解决显存，再匹配通信频率，最后用 batch 调利用率"——这个顺序在长上下文（>32K）或超大 vocab（>200K）场景下是否仍是最优？哪一步需要前置？
 
 ## 来源与更新记录
 

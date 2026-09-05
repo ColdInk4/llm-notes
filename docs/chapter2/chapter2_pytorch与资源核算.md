@@ -8,7 +8,19 @@
 2. **Memory capacity**：参数、梯度、优化器状态、activation、临时 buffer 分别占多少显存。
 3. **Memory bandwidth**：同样的 FLOPs 为什么在大 batch matmul 中很快，在 decode 或逐元素算子中却可能很慢。
 
-本章的 PyTorch 代码可以按“形状账本”来读：每个 tensor 的 shape 决定元素数和矩阵乘维度，每个 dtype 决定 bytes，每个中间激活是否保留决定反向传播显存。写一行 tensor 代码时，最好顺手问三件事：它会触发多少矩阵乘、会搬多少字节、反向传播还要保留什么。这样后面学习 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md)、[第 7 章 §7.6 ZeRO / FSDP](../chapter7/chapter7_分布式训练.md) 和 [第 9 章 §9.3 模型与 KV cache 压缩](../chapter9/chapter9_推理系统.md) 时，才不会把性能问题只理解成“代码慢”。
+### 本章主线
+
+按以下顺序阅读，每一节给读者一个可用的工程判断：
+
+1. **§2.1 资源核算的入口**：用两个 napkin math 例子（70B / 15T / 1024 H100、8 H100 / AdamW 显存）建立数量级直觉，落到三类约束（compute / memory capacity / memory bandwidth）与 roofline。
+2. **§2.2 张量（PyTorch 基础）**：shape / dtype / stride / view / contiguity / einsum / einops，把后续资源账本用到的 PyTorch API 集中放在这里。可以先快速浏览，等读到具体 API 疑问再回来查。
+3. **§2.3 内存（dtype 与存储机制）**：FP32 / FP16 / BF16 / FP8 / NVFP4 的字节数与权衡，stride 与 storage 怎样决定实际占用，CPU↔GPU 移动的代价。
+4. **§2.4 计算效率**：把 `6 N D` 的 FLOPs 账本套到具体算子，给出 arithmetic intensity / MFU 的来源。
+5. **§2.5 模型构建与训练基础**：把 §2.1.3 的 4 元素账本（parameter / gradient / optimizer state / activation）落地到代码与训练循环，附 activation checkpointing 的最小实现。
+
+返回路径：需要时通过「见 §X.Y」回查具体概念。
+
+本章的 PyTorch 代码可以按”形状账本”来读：每个 tensor 的 shape 决定元素数和矩阵乘维度，每个 dtype 决定 bytes，每个中间激活是否保留决定反向传播显存。写一行 tensor 代码时，最好顺手问三件事：它会触发多少矩阵乘、会搬多少字节、反向传播还要保留什么。这样后面学习 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md)、[第 7 章 §7.6 ZeRO / FSDP](../chapter7/chapter7_分布式训练.md) 和 [第 9 章 §9.3 模型与 KV cache 压缩](../chapter9/chapter9_推理系统.md) 时，才不会把性能问题只理解成”代码慢”。
 
 阅读本章代码时，建议把变量名当成账本列： $B$ 通常表示 batch， $S$ 表示 sequence length， $D$ 表示 hidden dim（与 [第 3 章](../chapter3/chapter3_语言模型架构和训练技术细节.md) 写作中的 $d_{\text{model}}$ 同义）， $d_k$ 表示 attention 头维度， $h$ 表示 attention 头数。一个 `einsum` 或 `matmul` 是否昂贵，取决于这些维度相乘后会产生多少元素、多少 FLOPs、多少中间张量。后文示例会沿用 `cuda_if_available()` 管理设备回退。
 
@@ -43,11 +55,13 @@ $$
 
 #### 第二步：计算硬件算力
 
-查阅 [NVIDIA H100 的白皮书](https://www.nvidia.com/en-sg/data-center/h100/)，其 FP16/BF16 的峰值算力约为 **1979 TFLOP/s**（每秒万亿次浮点运算）。
+查阅 [NVIDIA H100 的白皮书](https://www.nvidia.com/en-sg/data-center/h100/)，其 FP16/BF16 的峰值算力约为 **1979 TFLOP/s**（每秒万亿次浮点运算）。下面三张图按"数字总览 → 性能明细 → 稀疏路径"三个子问题展开。
 
 ![图 2.1-1 H100 数值细览](images/2-1-1-h100-spec-overview.png)
 
 *图 2.1-1 H100 数值细览*
+
+图 2.1-1 给出 H100 各精度的总览峰值（dense / 2:4 sparse 两条口径），是后续查 H100 数字的入口。
 
 但是要注意，这个值是 NVIDIA H100 GPU 在使用 FP16 或 BF16 数据类型、且启用结构化稀疏（Structured Sparsity）时可达到的理论最大计算吞吐量（[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)）。训练普通的稠密 Transformer（dense，无结构化稀疏）时，应按 dense 峰值估算，约为稀疏峰值的一半，即约 989.5 TFLOP/s。
 
@@ -55,9 +69,13 @@ $$
 
 *图 2.1-2 H100 性能明细*
 
+图 2.1-2 把图 2.1-1 拆到 FP64 / FP32 / TF32 / BF16 / FP16 / FP8 / INT8 几条横向赛道，并区分 Tensor Core 与 CUDA Core。粗估训练时间时只需对照 BF16 / FP16 Tensor Core 那一行。
+
 ![图 2.1-3 三类稀疏剪枝对比](images/2-1-3-structured-sparsity.png)
 
 *图 2.1-3 三类稀疏剪枝对比（非结构化、结构化、N:M 半结构化）*
+
+图 2.1-3 解释 H100 的 1,979 TFLOP/s 为什么是"含 2:4 稀疏"的数字：1,979 走的是右图 N:M 半结构化路径，dense Transformer 不能直接套这个峰值。
 
 按剪枝粒度，常见稀疏方式分成三类（图 2.1-3 从左到右）：
 
@@ -169,6 +187,8 @@ $$
 这两个技巧解决的是不同问题：gradient accumulation 调整 batch 的显存峰值和优化器更新频率；activation checkpointing 减少单次前向/反向必须保留的中间状态。二者常同时使用。
 
 ## 2.2 张量 (Tensors)
+
+本节是 PyTorch 入门参考：把后续资源账本用到的张量基础 API 集中放在这里——shape / dtype / stride / view / contiguity / 矩阵乘法 / 逐元素算子 / einops。资源核算的主线是 §2.1、§2.3、§2.4、§2.5；本节服务于它们，读者可先按"目录层级"快速浏览，等读到具体算子或操作时再回来查代码形态与正确性。
 
 ### 2.2.1 张量基础
 
@@ -1251,11 +1271,11 @@ class AdaGrad(torch.optim.Optimizer):
 
 ### 2.5.6 资源核算
 
-这部分旨在教你如何估算一个模型在训练过程中所需的内存和计算资源。
+本节把 §2.1.3 给出的四元素账本（参数 / 梯度 / optimizer state / activation）落到深度线性网络的具体公式与代码：4 元素如何按层数 $L$ 与维度 $D$ 计数，FLOPs 怎样回到 `6 N D` 的形式。完整的 dtype / mixed-precision 字节数表已写在 §2.1.3，本节不重复展开。
 
 #### 内存占用分析
 
-对于一个深度线性模型，总内存需求由四部分组成：
+对于一个深度线性模型，总内存需求由四部分组成（定义见 §2.1.3）：
 
 - 参数（parameters）：模型中所有可学习权重的数量。
 - Activation：前向传播过程中产生的中间结果，需要保存下来用于反向传播。

@@ -25,13 +25,13 @@ GPU 高性能编程先从一条可复用的排查链开始：
 
 ## 6.1 GPU 编程模型和硬件约束
 
-单 GPU kernel 优化要同时看两件事：程序员写下的并行抽象，以及硬件能同时驻留多少工作、从哪一级内存取数。PyTorch 可以把许多细节藏起来；一旦开始 profile 或写 Triton，这些细节会重新出现。
+本节先看两个层面的约束：程序员写下的并行抽象，以及硬件能同时驻留多少工作、从哪一级内存取数。读完应能在 SM / warp / memory hierarchy 的视角下读懂后续 benchmark 和 profiler 的输出。
 
 ![图 6.1-1 GPU memory hierarchy](images/6-1-1-gpu-memory-hierarchy.png)
 
 *图 6.1-1 GPU memory hierarchy*
 
-图 6.1-1 把单 GPU 拆成两类资源：左侧是 GPU chip 上的多个 SM、每个 SM 内部的 registers 与 L1/shared memory，以及芯片级 L2；右侧是容量更大的 HBM。优化 kernel 时，最常见的收益来自把数据从 HBM 读入更近的层级后复用，或者减少中间结果写回 HBM 的次数。
+图 6.1-1 左侧是 SM 及其内部 registers、L1/shared memory 与芯片级 L2，右侧是容量更大的 HBM。优化 kernel 时最常见的收益来自把数据从 HBM 读入更近的层级后复用，或减少中间结果写回 HBM 的次数。
 
 硬件速查表把 A100、H100 和 B200 放在一起，用来建立数量级直觉。后面的 trace 和 PTX 观察主要按 B200 / Blackwell 语境理解。
 
@@ -97,7 +97,7 @@ Occupancy 有两个常见含义：
 
 *图 6.1-2 wave quantization*
 
-图 6.1-2 展示了 block occupancy 的工程后果。横轴是矩阵尺寸，两条散点是同一 GEMM 在各尺寸下的实测性能，曲线呈周期性锯齿。取 $256 \times 128$ 的输出 tile：尺寸为 1792 时 tile 数是 $(1792 / 256) \times (1792 / 128) = 7 \times 14 = 98$ ；尺寸增到 1793 后两个方向都要向上取整，tile 数跳到 $8 \times 15 = 120$ 。
+图 6.1-2 的横轴是矩阵尺寸，两条散点是同一 GEMM 在各尺寸下的实测性能，曲线呈周期性锯齿。取 $256 \times 128$ 的输出 tile：尺寸为 1792 时 tile 数是 $(1792 / 256) \times (1792 / 128) = 7 \times 14 = 98$ ；尺寸增到 1793 后两个方向都要向上取整，tile 数跳到 $8 \times 15 = 120$ 。
 
 A100 有 108 个 SM，120 个 tile 无法在一波内全部执行，尾波只剩 12 个 block，其余 SM 空转，性能曲线上就出现周期性的下跌。
 
@@ -114,11 +114,11 @@ Bank conflict 常出现在 tile 被写入 shared memory 后又按另一种方向
 
 ## 6.2 Benchmark 和 profiler 的工作流
 
-高性能代码的第一步是先测量。Benchmark 回答“这段操作总共花多久”；profiler 回答“时间落在哪些 op、CUDA kernel 和同步点上”。这两类证据要成对出现：只看 benchmark 容易猜错瓶颈，只看 profiler 又缺少端到端收益口径。
+本节走完一次最小排查循环：先写一个可复用的 benchmark 函数测端到端时间，再用 `torch.profiler` 把这段端到端时间拆到具体 CUDA kernel。读完应能解释为什么 benchmark 和 profiler 必须成对使用，以及 `cutlass3x_sm100_simt_sgemm_64x64x16` 这类 kernel 名字里每一段分别对应什么信息。
 
 ### 6.2.1 Benchmark 流程
 
-下面的 benchmark 函数用 CUDA event 计量 GPU 时间。关键步骤是 warmup、事件计时、多次 trial 和 `torch.cuda.synchronize()`。
+本小节用一个最小 benchmark 函数（CUDA event 计时 + warmup + 多次 trial + `torch.cuda.synchronize`）测端到端时间，并用矩阵乘法扫一组维度观察耗时从「近似常数」过渡到「三次方增长」的拐点。读完后应能自己写一个可复用 benchmark 并解释每一行的作用。
 
 ```python
 def run_operation2(dim: int, operation: Callable) -> Callable:
@@ -216,7 +216,7 @@ def profile(run: Callable, num_warmups: int = 1):
 
 ## 6.3 Kernel fusion：GeLU 作为最小案例
 
-Kernel fusion 的目标是减少中间张量写回 HBM 和重复 kernel launch。GeLU 很适合做最小案例：数学公式不复杂，朴素 PyTorch 写法却会拆成多个逐元素 op。
+本节用 GeLU 作为最小案例，对比朴素 PyTorch、PyTorch builtin 和 `torch.compile` 三种实现，并解释为什么 fusion 能从「多个 kernel 多次 HBM 往返」压成「一个 kernel 一次往返」。读完应能用 benchmark + profiler 的证据链判断一个算子是否值得 fusion。
 
 ```python
 def naive_gelu(x: torch.Tensor):
@@ -253,14 +253,14 @@ Fusion 的收益来自数据路径：朴素版本每个中间 op 都可能读 HB
 
 ## 6.4 Triton：从 elementwise 到 reduction
 
-Triton 是面向 GPU kernel 的 Python DSL。它的核心抽象是 block 级 program：程序员描述一个 program 读取哪段数据、如何计算、写回哪里；编译器负责把这个 block 级描述降到线程、warp 和 PTX 形态。
+本节用四个递进的 Triton 例子展示 block 级 program 的写法：GeLU（一段连续向量一个 program）、softmax（一行一个 program，reduction 在 program 内完成）、row sum（一行太长时 program 内循环 tile）、matmul（沿 K 维二维 tile 复用）。读完后应能用 `tl.program_id` / `tl.arange` / mask 三件套解释不同模式的 program 划分策略。
 
 > [!TIP]
 > **Triton program 与 CUDA 线程的对应**：在 Triton 里写 `tl.program_id(axis=0)` 拿到的就是 CUDA PTX 中的 `%ctaid.x`（block id）；`tl.arange(0, BLOCK)` 是该 program 内部要处理的一段 tile；kernel 编译时 Triton 会自动把这段 tile 拆成 warp × thread 的向量化指令，程序员不必直接管 thread id（对应 `%tid.x`）。这是 Triton 与手写 CUDA 的最大区别——把 block 级逻辑显式写出，把 thread 级调度交给编译器。
 
 ### 6.4.1 Triton GeLU：一段连续向量一个 program
 
-Triton GeLU 的 wrapper 先检查输入，再分配输出，最后根据元素数和 block size 决定 grid。
+本小节看最简单的 Triton 写法：输入是一段连续向量，输出也是一段连续向量，最自然的切分就是「一个 program 负责 BLOCK_SIZE 个连续元素」。读完应能解释 wrapper 中的 grid 形状、`BLOCK_SIZE` 常量和 kernel 中的 mask 分别在做什么。
 
 ```python
 def triton_gelu(x: torch.Tensor):
@@ -309,13 +309,13 @@ def triton_gelu_kernel(x_ptr, y_ptr, num_elements, BLOCK_SIZE: tl.constexpr):
 
 ### 6.4.2 Triton softmax：一行一个 program
 
-Softmax 比 GeLU 多了 reduction。每个输出元素依赖整行最大值和整行分母，因此自然的切分是让一个 program 负责一行。
+Softmax 比 GeLU 多了 reduction。每个输出元素依赖整行最大值和整行分母，因此自然的切分是让一个 program 负责一行。本小节把 row max、减 max、`exp`、row sum、normalize 这五步收进同一个 program，并对照朴素实现的访存账本说明 fusion 的理论加速上限。
 
 ![图 6.4-1 Triton softmax row program](images/6-4-1-triton-softmax.png)
 
 *图 6.4-1 Triton softmax row program*
 
-图 6.4-1 展示了 row-wise softmax 的 block 级组织方式。左侧 `pid=1` 选择 row 1；右侧同一个 program 先 `tl.load` 整行，再做 `x - tl.max(x)` 减最大值（数值稳定性）、`tl.exp` 取指数、`tl.sum` 求分母和 normalize，最后 `tl.store` 回输出。row 之间没有共享状态，所以 grid 可以是一维的 `(M,)`。
+图 6.4-1 左侧 `pid=1` 选择 row 1，右侧同一个 program 先 `tl.load` 整行，再做 `x - tl.max(x)` 减最大值（数值稳定性）、`tl.exp` 取指数、`tl.sum` 求分母和 normalize，最后 `tl.store` 回输出。row 之间没有共享状态，所以 grid 可以是一维的 `(M,)`。
 
 ```python
 def triton_softmax(x: torch.Tensor):
@@ -332,10 +332,6 @@ def triton_softmax(x: torch.Tensor):
     )
     return y
 ```
-
-Kernel 内部和朴素 softmax 的数学结构很像，但访存结构完全不同。朴素 PyTorch 会经历 row max、减 max、`exp`、row sum、除法等多个 op，每一步都可能形成独立 kernel 和中间张量。
-
-以行数 $M$、列数 $N$ 为账本：朴素实现共 $5MN + 2M$ 次 HBM 读和 $3MN + 2M$ 次 HBM 写，合计 $8MN + 4M$ 次访存；理想情况下每个元素只读一次、写一次，只需 $2MN$ 次，两者相差约 4 倍。Triton fused softmax 把一行读入后，把 max/sum reduction 和 normalize 都留在同一个 program 内完成，把整条流水线收敛到每行约一次读加一次写，这 4 倍就是它的理论加速上限。
 
 ```python
 @triton.jit
@@ -362,15 +358,17 @@ def triton_softmax_kernel(x_ptr, y_ptr, x_row_stride, y_row_stride,
 
 `other=float("-inf")` 让越界列在 row max 和 `exp` 中保持安全：masked 位置不会影响最大值，指数后也不会贡献有效概率。这个 mask 处理是 Triton 代码里处理非整齐尺寸的常见模式。
 
+Kernel 内部和朴素 softmax 的数学结构很像，但访存结构完全不同。朴素 PyTorch 会经历 row max、减 max、`exp`、row sum、除法等多个 op，每一步都可能形成独立 kernel 和中间张量。以行数 $M$、列数 $N$ 为账本：朴素实现共 $5MN + 2M$ 次 HBM 读和 $3MN + 2M$ 次 HBM 写，合计 $8MN + 4M$ 次访存；理想情况下每个元素只读一次、写一次，只需 $2MN$ 次，两者相差约 4 倍。Triton fused softmax 把一行读入后，把 max/sum reduction 和 normalize 都留在同一个 program 内完成，把整条流水线收敛到每行约一次读加一次写，这 4 倍就是它的理论加速上限。
+
 ### 6.4.3 Triton row sum：行太长时分 tile 累加
 
-一行能放进一个 block 时，softmax 写法很直接。若一行长于 block size，就需要让同一个 program 在行内循环多个 tile。Row sum 是最小例子：每个 thread / lane 保持一个 accumulator，遍历 tile 后再做一次 reduction。
+一行能放进一个 block 时，softmax 写法很直接。若一行长于 block size，就需要让同一个 program 在行内循环多个 tile。本小节用 row sum 作为最小例子：每个 lane 保持一个 accumulator，遍历 tile 后再用 `tl.sum` 做一次 reduction；这里的 tile 在 program 内部循环，和 grid 中的多个 block 是两层概念。
 
 ![图 6.4-2 Triton row sum tiled accumulation](images/6-4-2-triton-row-sum.png)
 
 *图 6.4-2 Triton row sum tiled accumulation*
 
-图 6.4-2 中，block 1 负责 row 1，但 row 1 被分成多个 tile。前两轮 tile 更新每个位置的 `acc`，最后一轮用 mask 跳过越界列，再通过 `tl.sum(acc)` 得到一个标量输出。这里的 tile 属于同一个 program 内部循环；它和 grid 中的多个 block 是两层概念。
+图 6.4-2 中前两轮 tile 更新每个位置的 `acc`，最后一轮用 mask 跳过越界列，再通过 `tl.sum(acc)` 得到一个标量输出。这里的 tile 属于同一个 program 内部循环，和 grid 中的多个 block 是两层概念。
 
 ```python
 @triton.jit
@@ -392,7 +390,7 @@ GeLU 的 block 之间完全独立；softmax 的一行必须在一个 program 内
 
 ## 6.5 Matmul tiling、PTX 和工具选择
 
-Matmul 是深度学习中最重要的高算术强度算子。朴素写法为每个 $C_{m,n}$ 遍历 $K$ 维，每次从 HBM 读 $A_{m,k}$ 和 $B_{k,n}$。这样是正确的，但同一行的 $A$ 元素和同一列的 $B$ 元素会被反复读取。
+本节先把前面的 block / tile 思想推到矩阵乘：用一个 program 负责 $C$ 的一个 $(\mathrm{BLOCK\_M}, \mathrm{BLOCK\_N})$ 输出 tile，沿 $K$ 维循环加载 $A$ 和 $B$ 的 tile 累加；然后把编译后的 Triton kernel 对照 PTX 文本，读出 `.target` / `.reqntid` / `%ctaid.x` / `%tid.x` / `ld.global.v4.b32` 这些执行模型信号。读完后应能解释 thread coarsening 在 PTX 层体现为几条向量化指令。最后给出一条工具选择链：PyTorch builtin → `torch.compile` → Triton → CUDA C++ / PTX / SASS。
 
 理想路径是把 $A$ 和 $B$ 都放进 shared memory 后再计算 $C$，这样读次数能从 $O(MKN)$ 降到接近 $O(MK + KN)$。现实中矩阵太大，shared memory 放不下完整矩阵，所以采用 tiling：一个 program 负责 $C$ 的一个输出 tile，沿 $K$ 维逐段加载 $A$ tile 和 $B$ tile，累加 partial sum，最后写回 HBM。
 
@@ -400,7 +398,7 @@ Matmul 是深度学习中最重要的高算术强度算子。朴素写法为每�
 
 *图 6.5-1 GEMM tiling data reuse*
 
-图 6.5-1 把 GEMM 的复用关系画成三个矩阵。右侧橙色块是当前输出 tile；为了计算它，kernel 会沿 $K$ 维读取左侧 $A$ 的行 tile 和中间 $B$ 的列 tile。紫色块表示外层 tile 扫描，绿色块表示内层元素乘加。tile 越大，每次 HBM 读入后能服务更多乘加，算术强度越高；tile 太大会增加 shared memory 和 register 压力，降低可驻留 block 数。
+图 6.5-1 右侧橙色块是当前输出 tile；为计算它，kernel 沿 $K$ 维读取左侧 $A$ 的行 tile 和中间 $B$ 的列 tile。紫色块表示外层 tile 扫描，绿色块表示内层元素乘加。tile 越大，每次 HBM 读入后能服务更多乘加，算术强度越高；tile 太大会增加 shared memory 和 register 压力，降低可驻留 block 数。
 
 Triton 版 matmul + ReLU 的 wrapper 先确定 $M$、$K$、$N$，再启动二维 grid。每个 program 对应 $C$ 的一个 $(\mathrm{BLOCK\_M}, \mathrm{BLOCK\_N})$ tile。
 
@@ -464,9 +462,9 @@ PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微�
 
 ## 本章总结与下章衔接
 
-本章把 GPU 高性能编程拆成一条可复用的排查链：benchmark 端到端时间 → profiler 找到实际 kernel 与时间分布 → 决定 fusion 收益 → 在 Triton 里写 block 级 kernel → 通过 PTX 文本看到 compiler 把 block 拆到 thread/warp/指令后做了什么。当自动编译（`torch.compile`）不够用时，这套链可以定位到具体哪条 kernel 哪一行做错了。
+读完本章后应能做到：写一个可复用的 benchmark 和 `torch.profiler` 排查流程，在 Triton 里覆盖 elementwise / reduction / row-overflow / matmul tiling 四类 block 级 kernel，并在 PTX 文本中读出执行模型与 thread coarsening 信号。第 5 章 给出硬件数量级与优化原则，本章把同一套判断落到具体 kernel 和工具选择链上。
 
-下章进入 [第 7 章 分布式训练](../chapter7/chapter7_分布式训练.md)：单卡账本成立之后，把同一组账本扩展到跨卡——collective 语义、NCCL / torch.distributed 的实际接口、ZeRO / FSDP 的状态分片，以及 TP / PP / SP / CP / EP 在混合并行中的组合（EP 在第 7 章 §7.9 与第 4 章 MoE 章节交叉）。
+下章进入 [第 7 章 分布式训练](../chapter7/chapter7_分布式训练.md)：单卡账本成立之后，把同一组账本扩展到跨卡——collective 语义、NCCL / torch.distributed 的实际接口、ZeRO / FSDP 的状态分片，以及 TP / PP / SP / CP / EP 在混合并行中的组合（EP 在 [第 7 章 §7.9 SP / CP / EP：Activation 与长上下文 / MoE 维度的并行](../chapter7/chapter7_分布式训练.md) 与 [第 4 章 混合专家模型](../chapter4/chapter4_混合专家模型.md) 章节交叉）。
 
 ## 思考
 

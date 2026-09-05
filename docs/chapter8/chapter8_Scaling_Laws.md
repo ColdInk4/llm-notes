@@ -10,6 +10,22 @@
 - 判断 train-optimal 与 inference-optimal 之间的取舍，并用 muP / WSD / optimizer scaling 处理超参数迁移。
 - 看到新模型架构或新数据集时，能套 §8.6.8 的检查表判断是否值得投入大规模预训练。
 
+## 章节路线图
+
+把章内七节按学习路径连成一张速查表，方便随时回查哪一节解决哪类问题。
+
+| 节 | 解决什么训练决策 | 主要工具 | 关键概念 |
+| --- | --- | --- | --- |
+| §8.1 Scaling Workflow | 大训练前需要做哪些前置选择 | 小模型 sweep + IsoFLOP + 中等规模复核 | compute budget、$C \approx 6ND$ |
+| §8.2 缩放定律的历史与背景 | scaling 思路从何而来，怎样的曲线形式才可信 | learning curve、power law、irreducible error | VC 维、Bell Labs、Banko & Brill、Hestness |
+| §8.3 LLM 的 Scaling Behavior | data / model / compute / batch / LR / muP 各自的 scaling 形状 | 单变量 baseline + log-log 拟合 | data scaling、model scaling、critical batch size、muP |
+| §8.4 Joint Scaling | 固定 FLOPs 时，$N$ 与 $D$ 怎样分配；为什么 Kaplan 与 Chinchilla 会分叉 | joint fit + IsoFLOP sweep + lower envelope | tokens per parameter、train-optimal |
+| §8.5 扩散模型与其他 IsoFLOP 例子 | IsoFLOP 流程能否推广到 AR 之外 | 与 §8.4 同一套 sweep 流程 | diffusion LM、MoE 三轴网格 |
+| §8.6 Scaling in Practice | 公开报告怎样把前面的工具落到大训练上 | MiniCPM / DeepSeek / Qwen / Kimi K2 / Llama 3 / Hunyuan / StepFun / Cerebras-GPT / Muon | muP、WSD、lower envelope、sparsity、active parameters |
+| §8.7 本章总结与下章衔接 | 训练侧算力最优与 serving 侧成本最优如何衔接 | 与第 9 章推理系统对接 | train-optimal vs inference-optimal、KV cache |
+
+建议路径上，第一遍可按 §8.1 → §8.2 → §8.3 → §8.4 → §8.6 的顺序走完主线，§8.5 作为方法论扩展在需要时插入，§8.7 在读完所有大训练案例后回看。如果已经熟悉 Chinchilla / IsoFLOP，可以跳过 §8.1–§8.4 的概念铺陈，直接看 §8.6 的现代报告案例。
+
 ## 本章主线
 
 本章把 `scaling law` 当作大训练前的决策工具来学。目标训练很贵，很多选择不能等到大模型上反复试错；更实际的做法，是先用小模型和较短训练测出稳定关系，再决定模型做多大、数据喂多少、batch size 和 learning rate 怎么选。
@@ -83,6 +99,8 @@ Scaling workflow 先在小模型上找到“增大 batch 还划算”的区域�
 - 拟合对象是 pretraining loss、bits per byte、下游 benchmark，还是部署成本。
 - 数据是否发生重复、质量过滤或混合比例变化。
 - optimizer、learning rate scheduler、batch size 和模型宽深比是否随规模一起变化。
+
+这四个问题在 §8.6.8 还会以检查表形式重新出现，先在 §8.1 看到一次，再在读完所有大训练案例后回看。
 
 训练条件没有固定时，曲线会把数据清洗、scheduler、batch、optimizer 和模型结构的变化混在一起。这样的曲线仍然可能好看，但很难指导下一次更大的训练。
 
@@ -871,6 +889,9 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 ## 8.5 扩散模型与其他 IsoFLOP 例子
 
 这一节只说明一个实验流程：IsoFLOP 不限于 autoregressive LM。对每一档固定的训练 FLOP budget，扫描模型大小等配置，找出 validation loss 最低的点，再观察最优配置怎样随预算变化。扩散语言模型可以使用同一流程，但它的 compute-optimal 趋势不必和 autoregressive LM 相同。
+
+> [!NOTE]
+> 本节是方法论扩展。课程 lecture 9 / lecture 11 主线讲的是 autoregressive LM 的 scaling；diffusion 与 MoE 的 IsoFLOP 例子来自 Plaid 等公开论文，用于把同一套工作流推广到 AR 之外，**不是** lecture 9 / lecture 11 的内容。读者可以按"先看 §8.4 流程，再看 §8.5 推广"的顺序读。
 
 ![图 8.5-1 Diffusion IsoFLOP curves](images/8-5-1-diffusion-isoflop-curves.png)
 

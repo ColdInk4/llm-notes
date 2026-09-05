@@ -16,11 +16,11 @@ LLM 推理能力既是可观察的生成行为，也是消耗系统预算的训�
 
 ## 推理能力的研究案例
 
-下面三个 2026 年的研究案例展示了 LLM 推理能力在专业任务上的实际边界：
+本节先用三个 2026 年公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖程序合成、定理证明和数学公式推导三类典型应用，后续小节再沿着五条主线拆解能力、概率与系统代价。
 
 - Anthropic 的 Claude 参与 Donald Knuth 研究过的图论猜想推导过程，记录见 [Knuth 的 PDF](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf)。
-- Brenner（Google Research 与 Harvard SEAS）、Cohen-Addad（Google Research）和 Woodruff（Google Research 与 Carnegie Mellon 联合）在 [arXiv:2603.04735](https://arxiv.org/pdf/2603.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
-- Tony Feng 的 [arXiv:2601.23245](https://arxiv.org/abs/2601.23245) *Eigenweights for arithmetic Hirzebruch Proportionality* 在 *Declaration of AI Usage* 中写明：核心数学内容（Type A / Type C / Type D 等经典群的 eigenweight 公式与证明）由内部推理代理（基于 Gemini Deep Think 构建）完整生成，Type B 沿用 prior work [FYZ25a] 计算；人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
+- Brenner（Google Research 与 Harvard SEAS）、Cohen-Addad（Google Research）和 Woodruff（Google Research 与 Carnegie Mellon 联合）在 [arXiv:2603.04735 *Solving an Open Problem in Theoretical Physics using AI-Assisted Discovery*](https://arxiv.org/abs/2603.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
+- Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：核心数学内容（Type A / Type C / Type D 等经典群的 eigenweight 公式与证明）由内部推理代理（基于 Gemini Deep Think 构建）完整生成，Type B 沿用 prior work [FYZ25a] 计算；人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
 
 三个案例从不同角度展示同一类机制：模型负责生成推理轨迹和数学构造，作者负责设定目标、组织验证与最终叙述。这与本专题后面讨论的 CoT、多路径采样与工具扩展主题相互呼应：推理行为既可以由模型直接产生，也可以由作者代理作为中间环节。
 
@@ -200,7 +200,7 @@ Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。Mor Ge
 
 专题图 11 可以理解为搜索空间重加权。预训练模型已经覆盖了许多候选轨迹，其中既有正确推理，也有错误捷径、冗长模板和格式化噪声。RLVR 用可验证奖励提高正确轨迹的相对概率，使小规模采样更容易命中有效路径。
 
-但 Yue 等人的实验同时给出反向证据（专题图 11 Problem B 与右侧 Omni-MATH-Train 曲线）：对于基座模型原本就能找到正确路径的部分题目，RLVR 训练会把这些路径的概率压低，使对应题目在新策略下变成不可解；随着训练步数推进，平均 pass@1 在提升，但 pass@256 在下降，说明可解题集合在收缩。这与 §2.3 Pass@k 部分的结论一致——RLVR 的能力上限仍由基座模型的分布决定，它主要重排并稳定调用已有轨迹，副作用是在覆盖范围和平均性能之间做权衡。RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度偏差，还包括这一类能力边界收缩。
+但 Yue 等人的实验同时给出反向证据（专题图 11 Problem B 与右侧 Omni-MATH-Train 曲线）：对于基座模型原本就能找到正确路径的部分题目，RLVR 训练会把这些路径的概率压低，使对应题目在新策略下变成不可解；随着训练步数推进，平均 pass@1 在提升，但 pass@256 在下降，说明可解题集合在收缩。这与 §2.3 Pass@k 部分的结论一致——RLVR 的能力上限仍由基座模型的分布决定，它主要重排并稳定调用已有轨迹，副作用是在覆盖范围和平均性能之间做权衡。RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度偏差，还包括这一类能力边界收缩；与 [第 13 章 §13.4 R1-Zero](../chapter13/chapter13_可验证奖励的强化学习.md) 案例中"a-ha moment 在 base 模型中已出现"的观察共同指向同一个结论：基座模型已经把可解题的上限写在分布里，后训练主要是重排触达概率。
 
 后训练常见方法包括：
 
@@ -300,17 +300,11 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 
 ## 本专题小结
 
-LLM 推理能力可以从多个层次理解。预训练通过语言建模压缩大规模文本分布，形成参数记忆和可迁移表征；解码策略决定正确轨迹能否从输出分布中被取出；prompt 改变条件分布，让模型更容易进入合适的问题分解方式；后训练通过 SFT、RLHF、DPO、RLVR 和蒸馏改变搜索偏好、输出规范和奖励风险；外部工具把模型连接到实时信息和可执行动作。
+读完五条主线后，需要把能力、成本和工程判断放回同一张账本：CoT 增加 generation tokens，多路径采样增加 candidate trace，RLVR 需要大量 rollout，工具搜索会引入多轮调用和长上下文。能力提升和系统成本必须一起评估：正确率、稳定性、latency、throughput、KV cache、batching 和验证信号质量属于同一条工程链路。判断一条推理改进是否成立，至少要回答两件事：它激活的是哪一类预训练结构？它把什么代价压到了哪一段服务预算上？
 
-这些方法都会消耗推理预算。CoT 增加 generation tokens，多路径采样增加 candidate trace，RLVR 需要大量 rollout，工具搜索会引入多轮调用和长上下文。能力提升和系统成本必须一起评估：正确率、稳定性、latency、throughput、KV cache、batching 和验证信号质量属于同一条工程链路。
+随着高质量人类文本逐渐接近可获取上限，合成数据和自我改进会继续成为重要方向。这条路线可以借鉴 AlphaGo Zero 的闭环思想，但语言模型面对的大多数开放式任务没有完美规则验证器。数学、代码等可验证任务可以接入客观验证器，把对错信号直接喂给 RL；开放式任务缺乏稳定奖励函数，反复用自身生成数据训练时，reward hacking、分布收窄和模型坍塌三类失效模式会同时出现，能力随训练步数呈先升后降的曲线。借鉴自我博弈思想时，verifier 的稳定性与覆盖度直接决定可学习信号的有效性；不可验证领域的 reward model 始终是真实偏好的代理。
 
-随着高质量人类文本逐渐接近可获取上限，合成数据和自我改进会继续成为重要方向。这条路线可以借鉴 AlphaGo Zero 的闭环思想，但语言模型面对的大多数开放式任务没有完美规则验证器。数学、代码等可验证任务可以利用客观验证信号；开放式任务更多依赖人类偏好、模型互评和数据质量筛选，需要持续防范 reward hacking、分布收窄和模型坍塌。
-
-> [!WARNING]
-> 借鉴自我博弈思想时，验证机制的可靠性决定 RLVR 的收益上限——Verifier 的稳定性和覆盖度直接决定可学习信号的有效性。开放式语言任务缺少完美奖励函数，
-> 反复用自身生成数据训练模型时，必须监控分布偏移、答案多样性和验证器失效。
-
-推理能力的提升同时来自预训练中已经形成的潜在结构与后训练阶段对搜索、验证和表达方式的重新组织。预训练提供可迁移结构和候选轨迹；后训练、prompt、解码和工具系统决定这些轨迹以什么概率、成本和可靠性被调用。判断一个推理改进是否成立，需要同时回答：它激活的是哪一类预训练结构？它把什么代价压到了哪一段服务预算上？
+预训练提供可迁移结构和候选轨迹；后训练、prompt、解码和工具系统决定这些轨迹以什么概率、成本和可靠性被调用。这条主线贯穿五条具体路线，是本专题反复回到的同一判断。
 
 ## 参考资料
 
@@ -325,7 +319,7 @@ LLM 推理能力可以从多个层次理解。预训练通过语言建模压缩�
 - [Transformer 中前馈层网络的探究](https://aclanthology.org/2021.emnlp-main.446/)（[arXiv:2012.14913](https://arxiv.org/abs/2012.14913)）
 - [从生产语言模型中抽取训练数据](https://arxiv.org/abs/2012.07805)
 - [Stanford 与 Google 团队合作提出的类比推理](https://arxiv.org/pdf/2310.01714)
-- [Mind Lab 后训练 RL 微调 Kimi-K2 的研究](https://macaron.im/mindlab/research/building-trillion-parameter-reasoning-rl-with-10-gpus)
+- [Mind Lab 工程博客：在 1T 参数 Kimi-K2 上用 LoRA + RL 训练的经验](https://macaron.im/mindlab/research/building-trillion-parameter-reasoning-rl-with-10-gpus)
 - [第 13 章 可验证奖励的强化学习](../chapter13/chapter13_可验证奖励的强化学习.md)
 - [过犹不及：理解大语言模型中的思维链长度](https://arxiv.org/pdf/2502.07266)
 - [DTR 指标](https://arxiv.org/pdf/2602.13517)
@@ -341,4 +335,5 @@ LLM 推理能力可以从多个层次理解。预训练通过语言建模压缩�
 - 来源：本专题与第 9 章的 serving / inference systems 分工互补；具体案例链接见上方「参考资料」一节。
 - 课程映射：提供后训练、RLHF、DPO、RLVR 和现代推理模型案例背景；CoT、多路径解码、DTR、工具增强等主题主要依赖上方公开论文和专题材料。
 - 材料边界：rollout、训练 infra 和 serving 成本等系统侧细节由第 9 章与第 13 章承载；本专题只引用其结论，不重复系统账本。
+- 跨章引用：[第 13 章 §13.4 R1-Zero / Dr.GRPO 案例](../chapter13/chapter13_可验证奖励的强化学习.md) 与本专题 §2 RLVR 副作用部分共享同一组证据（"RL 不必然增加新能力，更可能重排基座模型的轨迹概率"）；[第 14 章 多模态模型](../chapter14/chapter14_多模态模型.md) 在章末把多模态 agent trace 与 RLVR 验证指向本专题。
 - 查阅日期：2026-09-05。覆盖 CS336 2026 Lecture 10（inference）与 Lecture 15 / 16 后训练背景；外部论文按 arXiv 提交日期记录。

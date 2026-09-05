@@ -2,19 +2,37 @@
 
 ## 本章主线
 
-本章的核心问题是：从 2017 年原始 Transformer 走到现代 decoder-only LLM，中间哪些设计已经变成默认骨架，哪些仍然是为了特定目标做的取舍？阅读时可以先把内容分成两层：第一层回顾位置编码、多头注意力、FFN、残差和归一化这些基础模块；第二层再看 Pre-norm、RMSNorm、SwiGLU、RoPE、GQA/MLA/CLA、NoPE/SWA 和 softmax 稳定化如何服务训练稳定性、推理成本和长上下文。
+从 2017 年原始 Transformer 走到现代 decoder-only LLM，哪些设计已经收敛为默认骨架，哪些仍然是为特定目标做的取舍？这一章沿同一条问题主线推进：现代默认骨架里每一项选择都在解决哪个具体瓶颈，它和原始 Transformer 的差异来自何处，又在什么场景下保留可调余地。本章把内容分成两层，第一层回顾位置编码、多头注意力、FFN、残差和归一化等基础模块（§3.1），第二层把这些模块换成 Pre-norm + RMSNorm + no bias + SwiGLU + RoPE 等现代默认并解释各自解决的问题（§3.2），随后把注意力变体按 KV cache、稀疏读取、线性时间三条线展开（§3.2.5），再用 §3.3 的超参数经验区间和 §3.4 的稳定性技巧，把这些默认骨架组合成可以读懂和复用的工程配置。
 
 ## 本章学习目标
 
-本章按“先会读 block，再会读现代配置”的顺序展开：
+读完后应能完成以下判断：
 
-1. 快速回顾原始 Transformer 的位置编码、multi-head attention、residual/norm 和 FFN。
-2. 对照现代 dense decoder 的常见默认配置，理解 Pre-norm、RMSNorm、SwiGLU、RoPE、GQA/MLA/CLA、NoPE/SWA 和 softmax 稳定化分别解决什么问题。
-3. 学会用超参数经验区间分析一个新模型：FFN expansion ratio、head dim、宽深比、vocab size、dropout 和 weight decay。
+1. 用 §3.1 复述位置编码、多头注意力、残差 + norm、FFN 在原始 Transformer 中的角色与公式账本。
+2. 用 §3.2 解释现代 dense decoder 默认骨架每一项（Pre-norm、RMSNorm、no bias、SwiGLU、RoPE、GQA/MLA/CLA、NoPE/SWA、softmax 稳定化）解决的具体瓶颈和成立条件。
+3. 用 §3.3 的经验区间（FFN expansion ratio、head dim、宽深比、vocab size、dropout、weight decay）解释一份新模型的配置选择。
+4. 把任意模型配置按训练稳定性、表达能力、推理成本、长上下文能力四类判断拆开，并把模块名放回具体工程取舍中理解。
 
-完成本章后，你应该能够把一份模型配置拆成训练稳定性、表达能力、推理成本和长上下文能力四类判断，并把模块名放回具体工程取舍中理解。
+## 读图路径
+
+```
+原始 Transformer (§3.1)
+  ├── 位置编码 / 多头注意力 / 残差 + norm / FFN   ← 历史基线
+  │
+现代默认骨架 (§3.2)
+  ├── 归一化层      Pre-norm + RMSNorm + QK norm / z-loss / soft-capping
+  ├── 前馈网络      no bias + GeLU / SwiGLU / GeGLU
+  ├── 位置编码      绝对 → RoPE → NoPE / SWA 组合
+  └── 注意力变体    MQA / GQA / MLA / CLA  ← KV 共享
+                  SWA / DSA / CSA / HCA   ← 稀疏读取
+                  linear attention / Mamba-2 / Gated DeltaNet  ← 线性时间
+超参数区间 (§3.3)   d_ff / d_model、head dim、宽深比、vocab、dropout
+稳定性技巧 (§3.4)   z-loss、QK norm、soft-capping
+```
 
 ## 3.1 标准 Transformer 架构速查
+
+这一节给出位置编码、多头注意力、残差 + 归一化和 FFN 四个基础模块的最小必要内容，作为 §3.2 现代默认骨架的历史基线。读完应能用一张公式账本复述原始 Transformer 各模块的输入输出、形状和它们组合成 block 的方式，并知道后续哪些位置会被 Pre-norm、RMSNorm、SwiGLU、RoPE 等替换。
 
 Transformer 模型的起源可以追溯到 2017 年，当时由 Google 研究团队在论文[《Attention Is All You Need》](https://arxiv.org/abs/1706.03762)中首次提出。该模型的核心创新是引入 self-attention，摒弃了传统的循环神经网络（RNN）和卷积神经网络（CNN）结构。self-attention 允许模型在处理序列数据时并行计算，从而提高计算效率，并改善长距离依赖建模。
 
@@ -325,11 +343,13 @@ ReLU 的**计算高效**，相比 Sigmoid/Tanh，ReLU 的导数计算简单（0 
 
 ## 3.2 Transformer 的现代变体及代表模型
 
+这一节按 block 的结构决策拆开看现代 dense decoder 的默认骨架：归一化位置与类型（§3.2.1）、前馈网络与激活函数（§3.2.2 / §3.2.3）、位置编码（§3.2.4）、注意力变体（§3.2.5）。每条决策都对应一组具体工程权衡（训练稳定性、数据移动、表达效率、KV cache 体积、长上下文能力），读完应能对「为什么这套默认」给出可迁移的解释，而不是只记住一组术语。
+
 原始 Transformer 论文给出了注意力、FFN、残差和归一化的基本骨架，但今天训练 decoder-only LLM 时，默认配置已经发生了明显变化。更稳妥的阅读方式是拆开看每个 block 的结构决策：norm 放在哪里、FFN 是否门控、位置编码如何注入、KV cache 如何压缩、softmax 如何保持稳定。
 
 ![图 3.2-1 语言模型架构配置对比](images/3-2-1-model-configs.png)
 
-*图 3.2-1 语言模型架构配置对比，用来观察 norm、FFN、位置编码和注意力设计的趋同趋势*
+*图 3.2-1 把多代模型的 norm、FFN、位置编码和注意力决策排成同一张表，横轴是模型代际或家族*
 
 图中的表格适合用来观察趋同趋势，不适合作为固定排行榜。许多模型都从 Post-LN、ReLU、绝对位置编码逐步转向 Pre-norm/RMSNorm、门控 FFN、RoPE 或其变体，并在推理侧引入 GQA、MLA、CLA、SWA、NoPE 等减小 KV cache 或改善长上下文的设计。
 
@@ -346,11 +366,11 @@ ReLU 的**计算高效**，相比 Sigmoid/Tanh，ReLU 的导数计算简单（0 
 
 ![图 3.2-2 现代 Transformer 默认骨架](images/3-2-2-modern-transformer-defaults.png)
 
-*图 3.2-2 现代 Transformer 默认骨架，把 Pre-norm、RMSNorm、no bias、SwiGLU 和 RoPE 放进同一个 dense decoder block*
+*图 3.2-2 把上述默认骨架串成单个 dense decoder block，标注每个组件的输入 / 输出形状与参数来源*
 
 ![图 3.2-3 架构设计取舍](images/3-2-3-architecture-design-decisions.png)
 
-*图 3.2-3 架构设计取舍，把学习效果、GPU 效率和训练稳定性放在同一组约束里考虑*
+*图 3.2-3 把学习效果、GPU 效率和训练稳定性三条曲线画在同一坐标平面，标注三者交叉的设计取舍区域*
 
 > [!TIP]
 > 看新模型配置时，可以先扫四项：norm 位置与类型、FFN/激活、位置编码、注意力 KV cache 设计。它们通常比“用了多少层多少头”更能解释训练稳定性和推理成本。
@@ -477,7 +497,7 @@ FFN 去除偏置项 b 的理由几乎和 RMSNorm 一致，去除偏置项的想�
 
 ![图 3.2-7 ReLU&GeLU](images/3-2-7-relu-gelu.png)
 
-*图 3.2-7 ReLU、GeLU 和门控激活对应不同模型族，体现 FFN 非线性从简单截断走向平滑和门控*
+*图 3.2-7 把 ReLU、GeLU、SwiGLU / GeGLU 的曲线和对应模型族放在同一坐标系，便于比较硬截断、平滑和门控三种非线性形态*
 
 **1. ReLU 函数**
 
@@ -569,7 +589,7 @@ Shazeer 的 GLU 变体实验（*GLU Variants Improve Transformer*, [arXiv:2002.0
 
 ![图 3.2-11 位置嵌入](images/3-2-11-position-embedding-types.png)
 
-*图 3.2-11 位置编码从输入端加绝对位置向量，逐步演化到在 attention 计算中注入相对位置信息*
+*图 3.2-11 沿同一坐标轴展示四类位置编码：sinusoidal / 可学习绝对 / T5 相对偏置 / RoPE，标注每条曲线注入位置信息的位置*
 
 **1. 绝对嵌入（Absolute Embedding）**
 
@@ -737,7 +757,7 @@ RoPE 把位置信息注入到 Q/K 上，使注意力分数显式依赖相对距�
 
 ![图 3.2-12 KV cache](images/3-2-12-kv-cache.png)
 
-*图 3.2-12 KV cache 复用历史 token 的 K/V，使 generation 阶段只为新 token 计算新的 Q/K/V*
+*图 3.2-12 把 KV cache 沿时间步铺成二维矩阵，每个新 token 只在最右侧追加一行 K/V，避免整张注意力矩阵的反复重算*
 
 自回归生成一次只产生一个新 token：模型读取已有上下文，输出下一个 token 的分布，再把新 token 接到上下文后继续生成。由于 generation 阶段不能像 prefill 那样完全并行，系统会缓存历史 token 的 K/V。这样生成新 token 时只需要为新 token 计算新的 Q/K/V，并复用历史 K/V，这个缓存就是 KV cache。
 
@@ -767,7 +787,7 @@ GQA（grouped-query attention）在 MHA 和 MQA 之间折中：多个 query head
 
 ![图 3.2-14 GQA 推理速度](images/3-2-14-gqa-speed.png)
 
-*图 3.2-14 GQA 推理速度，显示减少 K/V head 后 latency 与 throughput 可能同时受益*
+*图 3.2-14 把 GQA 推理速度与 KV head 数量画在同一张图上，标注 latency 与 throughput 的帕累托前沿*
 
 ### 3.2.5.5 MLA 多头潜在注意力（DeepSeek）
 
@@ -902,7 +922,7 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 ![图 3.2-25 DeepSeek V4 attention](images/3-2-25-deepseek-v4-attention.png)
 
-*图 3.2-25 DeepSeek V4 attention，把 CSA、HCA、sliding-window、共享 KV 和 grouped output projection 组合成面向长上下文推理的混合注意力*
+*图 3.2-25 标出每条分支承担的上下文尺度：CSA 高分辨率稀疏块、HCA 低分辨率全局背景、sliding-window 处理近邻、shared KV 与 grouped output projection 共同降低 cache 体积*
 
 CSA 和 HCA 混合注意力架构以 MQA 风格的共享 KV 为基础。核心逻辑是分工：CSA 用较低压缩率和 indexer 保留高分辨率关键块，HCA 用高压缩率提供低成本全局背景，滑动窗口分支负责最近上下文的细粒度依赖。
 
@@ -983,9 +1003,9 @@ $$
 
 ## 3.3 超参数考量与设计原则
 
-当你突然被要求训练一个新语言模型时，会对超参数产生很多疑问，因为它们的数量相当多。你应该意识到的一个关键点是：在不同成功模型中，实际上只有少数几个超参数会被调整。业界遵循着相当明确的经验法则和指导原则。比如前馈网络的尺寸应该扩大多少？注意力头数量该如何设定？词表规模多大合适？前馈层（FFN）大小应该比隐藏层大小大多少？有多少个头，num_heads 是否总是应该能整除隐藏层大小？人们是如何扩展这些模型的，是变得更深（deep）还是变得更宽（wide）？
+这一节给出训练一个新 dense decoder 时常用的几个超参数经验区间：FFN expansion ratio（§3.3.1）、head dim 与 model dim 的比例（§3.3.2）、宽深比（§3.3.3）、vocab size（§3.3.4）、dropout 与 weight decay（§3.3.5）。这些区间描述的是分布中心，不是固定常数；具体模型的层数、头数、$d_{\text{ff}}$ 与正则化设置写在各自的论文、模型卡和官方 config 里，读配置时按这些一手数字对照本节即可。
 
-这些问题都会在这一章解决！
+当你突然被要求训练一个新语言模型时，会对超参数产生很多疑问，因为它们的数量相当多。你应该意识到的一个关键点是：在不同成功模型中，实际上只有少数几个超参数会被调整。业界遵循着相当明确的经验法则和指导原则。比如前馈网络的尺寸应该扩大多少？注意力头数量该如何设定？词表规模多大合适？前馈层（FFN）大小应该比隐藏层大小大多少？有多少个头，num_heads 是否总是应该能整除隐藏层大小？人们是如何扩展这些模型的，是变得更深（deep）还是变得更宽（wide）？
 
 ### 3.3.1 前馈神经网络
 
@@ -1015,7 +1035,7 @@ $$
 
 ![图 3.3-1 d_ff&d_model](images/3-3-1-ffn-model-dim-ratio.png)
 
-*图 3.3-1 GLU 模型常把 $d_{\text{ff}}/d_{\text{model}}$ 调到约 $8/3$，以平衡门控分支带来的额外投影*
+*图 3.3-1 横轴为不同模型族，纵轴为 $d_{\text{ff}}/d_{\text{model}}$ 实测值，标注 GLU 经验值 $8/3$ 与非 GLU 经验值 $4$ 的位置*
 
 以 PaLM 为例，它虽然是 SwiGLU 模型，但把 $d_{\text{ff}}$ 直接设为 $4d_{\text{model}}$，没有做 2/3 缩放。LLaMA-2 70B 与 Mistral-7B v0.1 落在 3.5 倍附近：LLaMA-2 70B 的 `hidden_size = 8192`、`intermediate_size = 28672`，Mistral-7B v0.1 的 `hidden_size = 4096`、`intermediate_size = 14336`，两者都是 $d_{\text{ff}}/d_{\text{model}} = 3.5$。两个模型都用 GQA（`num_key_value_heads = 8`），共享 KV 省下的预算被重新分配给 MLP，于是在 $8/3$ 的基础上再乘约 1.33。
 
@@ -1095,7 +1115,7 @@ Google 的 Yi Tay 等人研究了深度与宽度在上游和下游任务中的�
 
 ![图 3.3-7 dropout ratio](images/3-3-7-dropout-weight-decay.png)
 
-*图 3.3-7 旧模型常在预训练中使用 dropout，较新的公开模型更常依赖 weight decay*
+*图 3.3-7 横轴按模型发布年份排布，纵轴分别给出 dropout 与 weight decay 的设置，圆点大小表示训练 token 量级*
 
 许多旧模型在预训练期间使用了 dropout：原始 Transformer、GPT-2、GPT-3、T5、OPT 与 Qwen 14B 的 dropout 都是 0.1，其中 GPT-2、GPT-3、OPT 与 Qwen 14B 同时配 weight decay 0.1，原始 Transformer 与 T5 的 weight decay 为 0。较新的模型把 dropout 记为 0，只保留 weight decay：T5 v1.1 与 PaLM 的 dropout 为 0，LLaMA 的 dropout 为 0、weight decay 为 0.1；Qwen 14B 是这一趋势里的例外。新模型的训练设置披露也常省略 dropout 这一项。
 
@@ -1112,6 +1132,8 @@ Google 的 Yi Tay 等人研究了深度与宽度在上游和下游任务中的�
 图 3.3-8 展示了不同权重衰减设置与学习率调度之间的交互：高权重衰减的模型初始进展较慢，但随着学习率降低（即冷却过程），loss 会快速下降。这说明优化器、weight decay 和 learning rate scheduler 之间存在耦合；训练末期的表现不能只由单个超参数解释。
 
 ## 3.4 模型的稳定性
+
+这一节给出三类 softmax 稳定化技巧：z-loss 控制输出层 softmax 的归一化项（§3.4.1）；QK norm 控制 attention softmax 的输入范围（§3.4.2）；soft-capping 用 tanh 把 logits 平滑限制在 $[-cap, +cap]$（§3.4.3）。三类技巧的目标都是把梯度范数从频繁尖峰的状态拉回更平滑、可控的区间，在更大模型、更长训练、更激进学习率下减少 loss spike。
 
 过去一年的核心架构变化不大，但许多发布版本都突出强调了称之为**稳定性技巧**的内容。这些技巧旨在以更稳定的方式训练模型。随着模型规模不断扩大，训练时间持续延长，这类稳定性问题愈发凸显。
 
@@ -1212,11 +1234,9 @@ $$
 
 ## 3.5 总结与下章衔接
 
-架构设计更像一组相互制约的工程选择。默认配置可以从 Pre-norm/RMSNorm、no bias、SwiGLU、RoPE、GQA/MLA/CLA 和 softmax 稳定化开始；随后根据目标上下文长度、推理成本、硬件 kernel、训练稳定性和 scaling 实验结果调整。
+到这里应能在「训练稳定性 / 表达能力 / 推理成本 / 长上下文能力」四类判断之间拆解任意 dense decoder 配置：默认骨架（Pre-norm + RMSNorm + no bias + SwiGLU + RoPE）解决稳定性与表达效率；KV cache 共享（MQA / GQA / MLA / CLA）解决推理成本；稀疏读取（SWA / DSA / CSA / HCA）与线性时间替代（linear attention / Mamba-2 / Gated DeltaNet）解决长上下文效率；超参数区间（§3.3）与稳定性技巧（§3.4）共同决定这套骨架在给定硬件和训练设置下能否稳定收敛。
 
-Transformer 的许多超参数存在经验区间，例如 GLU FFN 通常会降低 expansion ratio，head dim 常落在较稳定的硬件友好范围，dropout 在大规模预训练中逐渐减少使用。这些区间描述的是分布中心，具体模型的层数、头数、$d_{\text{ff}}$ 与正则化设置写在各自的论文、模型卡和官方 config 里，读配置时按这些一手数字对照本章的机制解释即可。
-
-本章把 attention 机制、position encoding 与稳定性技巧讲完。下一步是把 dense FFN 换成 routed experts——同一组 FFN 参数被切成多份，由 router 在每个 token 上挑选 top-k：[第 4 章 混合专家模型](../chapter4/chapter4_混合专家模型.md) 接管条件计算与负载均衡的系统视角。Attention alternatives 的工程实现（FlashAttention、PagedAttention、sparse attention）的执行视角在 [第 5 章 GPU](../chapter5/chapter5_GPU和GPU相关优化.md) 与 [第 9 章 推理系统](../chapter9/chapter9_推理系统.md) 中按"算力 vs 显存 vs 调度"展开。
+下一步是把 dense FFN 换成 routed experts——同一组 FFN 参数被切成多份，由 router 在每个 token 上挑选 top-k：[第 4 章 混合专家模型](../chapter4/chapter4_混合专家模型.md) 接管条件计算与负载均衡的系统视角。Attention alternatives 的工程实现（FlashAttention、PagedAttention、sparse attention）的执行视角在 [第 5 章 §5.8 KV cache：HBM 上的另一笔账](../chapter5/chapter5_GPU和GPU相关优化.md) 与 [第 9 章 推理系统](../chapter9/chapter9_推理系统.md) 中按"算力 vs 显存 vs 调度"展开。
 
 ## 来源与更新记录
 

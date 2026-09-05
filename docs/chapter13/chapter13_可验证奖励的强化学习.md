@@ -22,6 +22,39 @@
 
 RLVR 还会把推理系统带进训练循环：rollout 需要慢速 generation，长短不一的回答会形成 ragged batch，verifier 或执行环境会增加等待时间。训练框架和推理框架之间如何分工、rollout 能否复用、on-policy 稳定性和 off-policy 吞吐之间如何取舍，都是本章案例里的系统约束。
 
+## 章首速查图
+
+本章按算法演进 + 三个公开模型案例两条主线组织，每节对应主线上一个节点：
+
+```text
+                       第 13 章 可验证奖励的强化学习 — 主线速查
+                       ══════════════════════════════════════
+
+   主线 1：算法演进
+   ─────────────
+   PPO（§13.2.1）              DPO 边界（§13.2.2）
+   value model + GAE + clip    pairwise 偏好 → RLVR 不匹配
+        │                            │
+        └────────────┬───────────────┘
+                     ▼
+   GRPO（§13.3.1）            Dr. GRPO（§13.3.2）
+   组内 z-score 替代 value    去掉 std / |o_i| 两个分母
+        │                            │
+        └────────────┬───────────────┘
+                     ▼
+   训练中排查两类偏差（§13.3.3）
+
+   主线 2：公开模型案例
+   ─────────────
+   DeepSeek R1（§13.4.1-§13.4.3）  冷启动 + 多阶段 RL + 蒸馏
+   Kimi k1.5（§13.4.6）            long-CoT SFT + 长度奖励 λ∈[-0.5, 0.5]
+   Qwen 3（§13.4.7）               思考模式融合 + 3,995 条低数据 RLVR
+   + s1 / LIMO / LIMR（§13.4.4）   小数据推理路线
+   + R1 探索期不成功尝试（§13.4.5）  PRM / MCTS 落地难点
+```
+
+主线 1 解决「可验证奖励用什么算法更新策略」：先回顾 PPO 在语言模型后训练中的角色与痛点，再看 DPO 在 pairwise 偏好之外为什么不能直接复用，最后到 GRPO 与 Dr. GRPO 如何省掉 value model 并消除两个分母带来的偏差。主线 2 把算法接到三个公开模型案例上：DeepSeek R1 演示「纯 RL → 冷启动 → 蒸馏」完整流程，Kimi k1.5 演示「long-CoT SFT + 长度奖励 + 8 次猜测过滤」的成本控制，Qwen 3 演示「3,995 条 query-verifier pair 的低数据 RLVR + 思考模式融合 + agentic 蒸馏」。
+
 ## 13.1 为什么需要 RLVR？
 
 在 AlphaGo 或 AlphaFold 等领域，强化学习取得了巨大成功，因为训练任务拥有清楚的反馈：围棋可以判定胜负，结构预测可以用明确指标比较结果。
@@ -85,6 +118,8 @@ $$
 理解 DeepSeek-R1 等推理模型背后的 GRPO 算法，需要先回顾 PPO 在语言模型后训练中承担的角色，再看 GRPO 如何降低 value model、advantage estimation 和 rollout 调参成本。本节先讲 PPO 流程与实现痛点，再讲 DPO 的边界；下一节 (§13.3) 进入 GRPO 与 Dr. GRPO。
 
 ### 13.2.1 PPO 流程与实现痛点
+
+本节先回顾 PPO 怎么从 policy gradient / TRPO 演化到 clipped ratio，再把它落到语言模型后训练的代码路径上，回答「PPO 在 LLM 后训练里到底要维护多少链路」这个问题。读完后应能区分 PPO 的算法骨架（裁剪目标 + KL 约束）和 LLM PPO 的工程骨架（rollout + reward shaping + GAE + value loss + KL 统计），并能指出后者每一处对稳定性的影响。
 
 #### 强化学习中策略优化方法的发展脉络
 
@@ -402,6 +437,8 @@ def compute_loss(self, rollouts):
 
 ### 13.2.2 为什么还需要新的强化学习算法？
 
+本节回答「既然已有 PPO 和 DPO，为什么 RLVR 还要换算法」这个问题：从 PPO 的工程成本和 DPO 的适用边界两侧分别说明。读完后应能写出 PPO 价值模型 / 调参 / 显存三条主成本，以及 DPO pairwise 假设与 RLVR 标量奖励之间的不匹配点。
+
 **1. PPO 的工程成本。**
 PPO 是语言模型对齐中常见的在线强化学习方法，但它把多条链路绑在一起：rollout 采样、reward shaping、GAE / advantage 估计、KL 控制、value loss 和 policy loss 都会影响训练稳定性。
 
@@ -429,6 +466,8 @@ DPO（Direct Preference Optimization）把成对偏好数据直接写成监督�
 GRPO 与 Dr. GRPO 是当前 RLVR 的两大算法骨架。本节从 GRPO 的目标与实现出发，讲清它相对于 PPO 的简化，再讨论 group z-score 引入的 std / length 两类偏置和 Dr. GRPO 的修正。
 
 ### 13.3.1 GRPO：去掉了价值函数的 PPO
+
+本节回答「去掉 value model 之后，GRPO 用什么替代 GAE」这个问题：保留 PPO 的概率比、裁剪和 KL 约束，把 advantage 换成「同问题多条回复的 reward z-score」。读完后应能写出 GRPO 的目标函数、组内 z-score 的计算方式，以及「policy loss + KL 惩罚」这两条损失在代码里如何合并。
 
 **GRPO (Group Relative Policy Optimization)** 最早在 [DeepSeekMath](https://arxiv.org/pdf/2402.03300) 中提出，随后成为 [DeepSeek-R1](https://arxiv.org/abs/2501.12948) 的核心 RL 算法之一。
 
@@ -696,6 +735,8 @@ episodes = {
 
 ### 13.3.2 GRPO 的两类偏差：问题难度与响应长度
 
+本节回答「GRPO 省掉 value model 之后留下了什么偏差」这个问题：z-score 的分母 std 引入问题难度偏差，长度归一化项 $1/|o_i|$ 引入响应长度偏差。读完后应能分别写出两个分母对梯度的影响方向，并理解 Dr. GRPO 删掉两个分母后得到的近似 REINFORCE with leave-one-out 形式。
+
 GRPO 的简化带来明显工程收益，也在目标函数里留下两个需要单独处理的偏差。Dr. GRPO（[Liu et al. 2025](https://arxiv.org/abs/2503.20783)）§3.1 把它们分别称为 question-level difficulty bias 和 response-level length bias，来源正是 advantage 的两个分母。
 
 同一篇论文还检查了 R1-Zero 的“aha moment 由 RL 涌现”叙事。§2.3 标题为 *"Aha Moment Already Appears in Base Models Including DeepSeek-V3-Base"*，发现 DeepSeek-V3-Base 在 RL 训练之前就已经写出 self-reflection 关键词；§2.2 进一步指出 Qwen2.5 / Qwen2.5-Math base 模型在去掉 chat template 之后也能恢复强数学能力。两条证据合起来说明，被报告成“RL 涌现”的一部分行为来自 base 模型自身属性与提示模板的组合。
@@ -739,6 +780,8 @@ Dr. GRPO 对应的实现改动很小：在 `masked_mean` 里把 `mask.sum(axis=d
 
 ### 13.3.3 训练中如何排查这两类偏差
 
+本节给出两类偏差在训练日志上的可观察痕迹：长度偏差通过「按正确 / 错误分桶的响应长度」识别，难度偏差通过「组内奖励方差」识别。读完后应能在自己的训练日志里把这两项检查点跑起来，并区分「算法偏差导致的长度增长」和「format reward / verifier 被绕过导致的长度增长」。
+
 两类偏差在训练日志上留下的痕迹不同，排查时可以分开看。
 
 - 输出长度持续上涨，且增量主要来自答错的回复：优先怀疑长度归一化。把 output length 按正确 / 错误分开统计，就是图 13.3-5 中子图 3 与子图 4 的拆法。
@@ -762,6 +805,8 @@ Dr. GRPO 对应的实现改动很小：在 `masked_mean` 里把 `mask.sum(axis=d
 ![图 13.4-1 DeepSeek R1 引发的关注](images/13-4-1-deepseek-r1-attention.png)
 
 *图 13.4-1 DeepSeek R1 引发的关注*
+
+图 13.4-1 把 R1 发布前后一段时间里社交媒体与技术社区的关注度变化放在同一张图上，作为 R1 现象级的背景证据；技术细节与训练数据需要回到后面的小节单独看。
 
 R1 案例要点可以分成三条线：
 
@@ -793,13 +838,13 @@ DeepSeek-R1-Zero 的一个代表性现象是 **Aha Moment（顿悟时刻）**：
 
 *图 13.4-3 DeepSeek-R1-Zero 的 AIME 准确率与响应长度*
 
-图 13.4-3 把 AIME 准确率和平均响应长度放在一起。训练过程中，准确率上升常伴随更长的响应；这些额外 token 中包含检查、回溯和替代路径搜索。这个现象说明可验证奖励会改变模型分配 test-time compute 的方式，但长度增长本身也需要和算法偏差、格式奖励一起分析。
+横轴是训练步数，左轴是 AIME 准确率，右轴是平均响应长度。准确率上升常伴随更长的响应，额外 token 中包含检查、回溯和替代路径搜索。可验证奖励会改变模型分配 test-time compute 的方式，但长度增长本身也要和 §13.3.2 的算法偏差、格式奖励一起分析，否则会把它误读成「推理能力单方面变强」。
 
 ![图 13.4-4 DeepSeek-R1-Zero 的 aha moment 案例](images/13-4-4-r1-zero-aha-moment.png)
 
 *图 13.4-4 DeepSeek-R1-Zero 的 aha moment 案例*
 
-图 13.4-4 展示的是一条生成轨迹中的可见行为变化：模型先给出一个解法，再用“等等”一类词触发自我检查并修正路线。这类文本现象可以作为训练过程中的行为信号；证据强度更高的判断要结合准确率、长度、reward 和错误类型一起看。
+这条轨迹取自 R1-Zero 训练过程中的采样：模型先给出一个解法，再用「等等」一类词触发自我检查并修正路线。这类文本现象可以作为训练过程中的行为信号，但证据强度更高的判断要结合准确率、长度、reward 和错误类型一起看，并和图 13.4-5 中 base 模型的行为做对照。
 
 ##### 需要谨慎理解的地方
 
@@ -811,7 +856,7 @@ GRPO 的长度偏差已经在图 13.3-4 和图 13.3-5 中出现过。理解 R1-Z
 
 *图 13.4-5 DeepSeek-V3-Base 的 aha moment 现象*
 
-图 13.4-5 是 Dr. GRPO 对 DeepSeek-V3-Base 的采样结果，两列各是一道数学题和模型的原始回答。左列算到一半写出 "Wait, I'm overthinking. Let's try again."，右列写出 "Aha! I can use this to get ..."，红色标出的正是被当成 aha moment 的自我检查与转向措辞。这些输出来自没有经过任何 RL 的 base 模型，所以“出现了这类措辞”本身不足以支撑“能力由 RL 涌现”。要得出更强的结论，需要比较 RL 前后自我检查出现的频率，以及它是否真的改变了最终正确率。
+两列各是一道数学题和模型的原始回答，红色标出的是被当成 aha moment 的自我检查与转向措辞（左列 "Wait, I'm overthinking. Let's try again."，右列 "Aha! I can use this to get ..."）。这些输出来自没有经过任何 RL 的 base 模型，「出现了这类措辞」本身不足以支撑「能力由 RL 涌现」。要得出更强的结论，需要比较 RL 前后自我检查出现的频率，以及它是否真的改变了最终正确率。
 
 ### 13.4.2 DeepSeek-R1：冷启动 + 多阶段 RL
 
@@ -823,7 +868,7 @@ DeepSeek-R1-Zero 展现了强推理能力，也暴露出可读性差、语言混
 
 *图 13.4-6 DeepSeek-R1 训练流程*
 
-R1 与 R1-Zero 的差异可以从三点看：SFT initialization、CoT 的 language consistency reward，以及第二阶段的 non-verifiable rewards。这样读，R1 可以看作"规则奖励 RL + 数据可读性修复 + 通用后训练"的组合，单一算法只是其中一个部件。
+图 13.4-6 把 R1 流水线按阶段串成一条链路：冷启动 SFT（Dev1）→ 规则奖励 + 语言一致性 RL（Dev2）→ 800k 拒绝采样 SFT（Dev3）→ reasoning RL + 通用 RLHF。R1 与 R1-Zero 的差异集中在「冷启动 SFT 初始化」、「CoT 的 language consistency reward」以及「第二阶段的 non-verifiable rewards」三处：图 13.4-6 把这些差异都标在了对应的位置。这样读，R1 可以看作「规则奖励 RL + 数据可读性修复 + 通用后训练」的组合，单一算法只是其中一个部件。
 
 > [!NOTE]
 > **R1 系列显式放弃 DeepSeekMath 探索过的 process supervision (PRM)**。DeepSeekMath 把 outcome supervision（§4.1.2）和 process supervision（§4.1.3）作为 GRPO 的两个变体一起做了消融，发布的 DeepSeekMath-RL 7B 走的是 outcome supervision + 奖励模型路线，在约 144K 条 GSM8K / MATH 的 CoT 格式题目上训练。R1 / R1-Zero 则把训练信号统一为 outcome-only（规则奖励 + language consistency reward），不再显式建模 step-level 正确性。这一选择降低了 verifier 工程量，但把训练上限完全押在最终答案可验证性上；它对"答案唯一且廉价可验证"的领域（数学、代码、形式化证明）效果显著，对开放式任务则需要额外的 non-verifiable reward 或人类反馈兜底。
@@ -834,6 +879,8 @@ R1 与 R1-Zero 的差异可以从三点看：SFT initialization、CoT 的 langua
 ![图 13.4-7 DeepSeek R1 相对 R1-Zero 的训练差异](images/13-4-7-r1-zero-r1-differences.png)
 
 *图 13.4-7 DeepSeek R1 相对 R1-Zero 的训练差异*
+
+图 13.4-7 把 R1 和 R1-Zero 的训练流程并排展示：左列是 R1-Zero（DeepSeek-V3-Base + 规则奖励 GRPO），右列是 R1（在 R1-Zero 之上加入冷启动 SFT、语言一致性奖励、通用 RL）。后续「阶段 1 / 阶段 2 / 阶段 3」按这条差异逐步展开。
 
 ##### 阶段 1：DeepSeek-R1-Zero
 
@@ -871,6 +918,8 @@ DeepSeek-V3-Base 作为基座模型，使用**冷启动长思维链数据**进�
 
 *图 13.4-9 DeepSeek-R1 与其他模型的比较*
 
+图 13.4-9 把 R1 与同期推理模型在 MMLU / GPQA / MATH / AIME / LiveCodeBench 等基准上放在同一张表里，跨模型对比的结论受评测设置、提示模板、采样参数和模型版本共同限定。
+
 ### 13.4.3 R1 蒸馏：把推理轨迹迁回非推理模型
 
 #### 蒸馏目标与流程
@@ -881,6 +930,8 @@ R1 相关工作更值得长期记住的点，是它展示了**推理轨迹可以
 
 *图 13.4-10 DeepSeek-R1 蒸馏模型与其他模型的比较*
 
+图 13.4-10 把六个蒸馏后的学生模型（Qwen2.5-Math-1.5B / 7B、Qwen2.5-14B / 32B、Llama-3.1-8B、Llama-3.3-70B-Instruct）放在同一张表里比较 AIME 2024、MATH-500、GPQA Diamond 等推理基准。这些学生模型只做 SFT，不再走 RL 阶段；表里读到的就是「仅靠 800k 轨迹 SFT」这一条路径的收益上限。
+
 蒸馏路线先用 R1 生成约 800k 条 SFT 样本，其中约 600k 是 reasoning / CoT 轨迹、约 200k 是 non-reasoning 样本（写作、事实 QA、自我认知、翻译等）。这些样本随后被直接用于微调 Qwen2.5-Math-1.5B、Qwen2.5-Math-7B、Qwen2.5-14B、Qwen2.5-32B、Llama-3.1-8B、Llama-3.3-70B-Instruct 这六个 base。
 
 DeepSeek-R1 论文 [arXiv:2501.12948](https://arxiv.org/abs/2501.12948) §2.4 "Distillation: Empower Small Models with Reasoning Capability" 的表述是 "we directly fine-tuned open-source models like Qwen and Llama using the 800k samples curated with DeepSeek-R1, as detailed in §2.3.3"，并明确 "For distilled models, we apply only SFT and do not include an RL stage"。这条路径的关键变量包括轨迹质量、题目覆盖、答案验证和学生模型基座能力。蒸馏能迁移推理行为，但不会自动补齐 verifier 没覆盖的任务能力。
@@ -888,6 +939,8 @@ DeepSeek-R1 论文 [arXiv:2501.12948](https://arxiv.org/abs/2501.12948) §2.4 "D
 ![图 13.4-11 用 R1 轨迹蒸馏非推理模型](images/13-4-11-r1-distillation-flow.png)
 
 *图 13.4-11 用 R1 轨迹蒸馏非推理模型*
+
+图 13.4-11 把蒸馏路径画成一条单向流：R1 采样器（DeepSeek-V3 + R1 训练后的策略）生成 CoT 轨迹 → 拒绝采样 + 答案校验 → 约 800k SFT 样本 → 6 个学生 base。轨迹质量、覆盖范围和答案校验是这条路径的关键变量。
 
 ### 13.4.4 小数据推理路线：s1 / LIMO / LIMR
 
@@ -1014,6 +1067,14 @@ Kimi 团队观察到一个“过度思考”现象，即模型响应的长度在
 
 更长推理通常能提高部分任务表现，也会增加训练和推理成本。Kimi 因此引入长度奖励来抑制 token 长度的快速增长，提高 token 效率。
 
+其中 $\ell_i$ 是第 $i$ 条回复的长度， $\ell_{\min}$ 与 $\ell_{\max}$ 对应论文的 `min_len` 和 `max_len` ，它们取自同一道题的 $k$ 条采样回复，也就是这一组 rollout 里的最短和最长长度。长度项 $\lambda$ 先由这三条长度算出：
+
+$$
+\lambda = 0.5 - \frac{\ell_i - \ell_{\min}}{\ell_{\max} - \ell_{\min}}
+$$
+
+$\lambda$ 的取值落在 $[-0.5, 0.5]$，组内更长的回复拿到更低的 $\lambda$。它再进入长度奖励：
+
 $$
 R_{\text{len}}(i) =
 \begin{cases}
@@ -1022,15 +1083,9 @@ R_{\text{len}}(i) =
 \end{cases}
 $$
 
-其中 $R_{\text{len}}(i)$ 在论文里写作 `len_reward(i)` ， $\ell_i$ 是第 $i$ 条回复的长度。 $\ell_{\min}$ 与 $\ell_{\max}$ 对应论文的 `min_len` 和 `max_len` ，它们取自同一道题的 $k$ 条采样回复，也就是这一组 rollout 里的最短和最长长度。并且：
+$R_{\text{len}}(i)$ 在论文里写作 `len_reward(i)` 。
 
-$$
-\lambda = 0.5 - \frac{\ell_i - \ell_{\min}}{\ell_{\max} - \ell_{\min}}
-$$
-
-该长度惩罚机制鼓励模型在给出正确答案的同时，尽量生成简洁的响应。对于错误的答案，它绝不会给予任何正向的长度奖励，并且会对过长的错误答案施加额外的惩罚。
-
-长度奖励里的 $\lambda$ 在 $[-0.5, 0.5]$ 之间，组内更长回复的长度项更低；正确答案被激励缩短，错误答案被激励短于 rollout 长度区间的中心。Kimi 团队通常在训练后期打开这个项，以减少对性能爬升阶段的干扰。
+该长度惩罚机制鼓励模型在给出正确答案的同时尽量生成简洁的响应；对于错误答案，它不会给出任何正向长度奖励，并且会对过长的错误答案施加额外惩罚。Kimi 团队通常在训练后期才打开这个项，以减少对性能爬升阶段的干扰。
 
 ![图 13.4-17 Kimi k1.5 的长度控制](images/13-4-17-kimi-length-control.png)
 
@@ -1065,6 +1120,8 @@ Kimi-k1.5 的公开结果展示了长思维链 SFT 与后续 RL 组合在若干�
 ![图 13.4-19 Kimi k1.5 训练准确率与长度变化](images/13-4-19-kimi-training-accuracy-length.png)
 
 *图 13.4-19 Kimi k1.5 训练准确率与长度变化*
+
+横轴是训练阶段（long-CoT SFT → 早期 RL → 长度奖励打开），两条曲线分别记录训练准确率和平均响应长度。打开长度奖励之后，准确率保持稳定，响应长度被压回一个更窄的区间；这与 §13.4.6 中「长度奖励只在训练后期启用」的策略一致。
 
 #### 消融实验
 
@@ -1148,6 +1205,8 @@ Qwen3-Coder-Next 是 agentic RL 的代表性案例。按 [Hugging Face 模型卡
 ![图 13.4-26 Qwen3-Coder-Next 的专家蒸馏路线](images/13-4-26-qwen3-coder-distillation.png)
 
 *图 13.4-26 Qwen3-Coder-Next 的专家蒸馏路线*
+
+图 13.4-26 把 Web dev / UX / Single-turn QA / SWE 四位专家模型作为数据源，蒸馏到 Qwen3-Next Coder 基座上，专家模型在执行环境之外提供「代码是否满足需求」的判断，与 §13.4.6 中的环境反馈 verifier 形成互补。
 
 ## 本章总结与下章衔接
 
