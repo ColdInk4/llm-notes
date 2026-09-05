@@ -7,7 +7,7 @@
 - 区分四类常见的"好模型"定义（绝对能力 / 相对排序 / 任务得分 / 安全性）及其适用场景。
 - 描述 perplexity 作为通用语言建模评估的优缺点：可重复、与训练目标对齐，但与下游任务相关性弱。
 - 列出 MMLU / GPQA / Humanity's Last Exam 等 exam 基准考察的能力维度，并说明 contamination 对它们的冲击。
-- 区分聊天基准（Chatbot Arena / AlpacaEval / WildBench / IFEval）与 agent 基准（`SWE-bench` / Terminal-Bench / CyBench / MLE-Bench）在输入分布和评分规则上的差异。
+- 区分聊天基准（Chatbot Arena / AlpacaEval / WildBench / IFEval）与 agent 基准（`SWE-bench` / Terminal-Bench / Cybench / MLE-Bench）在输入分布和评分规则上的差异。
 - 解释 evaluation rules of the game：评分规则、prompt 范围、采样参数、工具与预算不同，分数不能直接横比。
 
 评估的核心问题是**给定一个固定的模型，它到底有多“好”？** 这个问题看似只是打分，实际需要先定义使用目标、输入分布、调用方式和评分规则。评估不仅衡量当前模型，也会反过来影响训练目标、数据选择和产品决策。
@@ -144,21 +144,21 @@ Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会�
 - 对于政策制定者/安全机构：当前模型带来的益处和风险分别是什么？现状如何？
 - 对于模型开发者：我该如何改进我的模型？哪些干预措施有效？
 
-为了将抽象目标转化为具体评估方案，我们需要思考四个关键环节：
+为了将抽象目标转化为具体评估方案，我们需要思考四个关键环节。
 
-#### 输入是什么？
+### 11.2.1 输入是什么？
 
 - 提示词从何而来？覆盖了哪些使用场景？
 - 我们是否在长尾分布（即那些出现频率很低、不常见但真实存在的输入情况，如在语言模型中，可能包括罕见领域的问题、复杂推理任务、边缘语言现象、对抗性或歧义性较强的语句等）中包含了具有代表性的困难输入样本？
 - 输入是否需要适配模型？例如，在多轮对话中，用户的下一条输入依赖于模型的上一条回复，这使得评估变得动态化。
 
-#### 如何调用模型？
+### 11.2.2 如何调用模型？
 
 - 如何提示模型？是零样本、少样本还是思维链（CoT）？
 - 是否允许模型使用外部工具（如代码解释器、RAG 检索增强生成）？
 - 我们是在评估语言模型本身，还是评估一个由模型和代理框架（agent scaffolding）组成的完整系统？开发者关心前者，而用户关心后者。
 
-#### 如何评估输出？
+### 11.2.3 如何评估输出？
 
 - 参考答案是否准确无误？
 - 使用什么指标？对于代码生成，是 pass@1（模型生成一个回答，输出回答和标准答案一样即为正确）还是 pass@10（模型一次生成十个回答，只要十个输出回答里有一个和标准答案一样即为正确））？
@@ -170,11 +170,11 @@ Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会�
   - 基于多样性、流畅性、相关性等维度设计 Proxy metrics（代理指标，是指在无法直接测量目标量（target quantity）时，用来间接反映或近似该目标的可测量指标）；
   - 通过用户反馈或 A/B 测试衡量实际效用。
 
-#### 如何解读结果？
+### 11.2.4 如何解读结果？
 
-* 一个 91% 的分数意味着什么？它是否足够好，可以部署给真实用户？
-* 如何判断模型掌握的是可迁移能力，还是训练数据记忆？
-* 最重要的是，我们到底在评估什么？是最终的产品模型、一个完整的系统，还是底层的研究方法？
+- 一个 91% 的分数意味着什么？它是否足够好，可以部署给真实用户？
+- 如何判断模型掌握的是可迁移能力，还是训练数据记忆？
+- 最重要的是，我们到底在评估什么？是最终的产品模型、一个完整的系统，还是底层的研究方法？
 
 忽略这些问题，仅凭一个分数做判断，是评估中最大的误区。
 
@@ -351,7 +351,7 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 [MMLU](https://arxiv.org/pdf/2009.03300.pdf) 包含 57 个学科（从数学、历史到法律、伦理）的多项选择题。问题源自网络，由学生收集。它更侧重于知识而非语言理解。
 
-最初用 GPT-3 的少样本提示进行评估时，最大型号的 X-Large 只能取得不到 0.5 的分数。几年之后，MMLU 已经接近饱和，这恰恰说明单一知识基准很容易从“有区分度”变成“只剩刷榜价值”。
+最初用 GPT-3 的少样本提示进行评估时，最大型号的 X-Large（175B）只能取得 43.9% 的平均准确率，而 Small（2.7B）、Medium（6.7B）、Large（13B）三档分别是 25.9%、24.9%、26.0%，基本停在 25% 的随机基线上（[Hendrycks et al., 2020, arXiv:2009.03300](https://arxiv.org/pdf/2009.03300.pdf) Table 1）。几年之后，MMLU 已经接近饱和，这恰恰说明单一知识基准很容易从“有区分度”变成“只剩刷榜价值”。
 
 ![图 11.4-1 GPT-3 在 MMLU 上的 few-shot 提示](images/11-4-1-gpt3-mmlu-few-shot.png)
 
@@ -374,15 +374,17 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 *图 11.4-2 MMLU-Pro 与 MMLU 对比*
 
+把选项从 4 增到 10 并加入 CoT 评估后，模型在 MMLU-Pro 上的得分相对 MMLU 下降 16%–33%：领先模型 GPT-4o 在 MMLU-Pro 上只有 72.6%，而它在 MMLU 上是 88.7%（CoT）/ 87.2%（direct）。同时，GPT-4o、Claude-3-Opus、GPT-4-Turbo 这几个头部模型之间的分差从 MMLU 上的约 2% 拉开到 MMLU-Pro 上的约 9%，prompt 变体带来的分数波动也从 MMLU 的 4%–5% 收窄到 2%，区分度和稳定性同时改善。
+
 ### 11.4.3 GPQA (Graduate-Level Google-Proof Q&A)
 
-[GPQA](https://arxiv.org/abs/2311.12022) Main 共 **448 题**（Extended 546 / Diamond 198 子集），由 61 名 PhD 领域专家通过 Upwork 平台设计（论文 §2.1 "The Collection Pipeline" 原文："We hire 61 contractors through Upwork to write and validate the dataset. We require that they have completed or are currently in a PhD program in their field of expertise"）。目标是创建"防谷歌"问题，即非专家即使花 30 分钟用谷歌搜索也难以解答。论文 §2.3 报告三档**实测准确率**用于验证题目难度：
+[GPQA](https://arxiv.org/abs/2311.12022) Main 共 **448 题**（Extended 546 / Diamond 198 子集），由 61 名 PhD 领域专家通过 Upwork 平台设计（论文 §2.1 "The Collection Pipeline" 原文："We hire 61 contractors through Upwork to write and validate the dataset. We require that they have completed or are currently in a PhD program in their field of expertise"）。目标是创建"防谷歌"问题，即非专家即使花 30 分钟用谷歌搜索也难以解答。论文用三档**实测准确率**验证题目确实够难：
 
-- 博士级专家实现了 **65%** 的 accuracy
-- 非专家在可访问谷歌的条件下，在 30 分钟内达到了 **34%** 的 accuracy
-- GPT-4 实现了 **39%** 的 accuracy
+- 博士级专家在对应领域达到 **65%** accuracy，剔除专家事后自认的明显失误后为 74%（§1、§3.1）
+- 非专家在可访问互联网的条件下达到 **34.1% ± 2.3%** accuracy，中位耗时 30 分钟（§3.2）
+- GPT-4 few-shot CoT 在 Extended / Main / Diamond 三档分别是 38.7% / 39.7% / 38.8%，即摘要里概括的 **39%**（§4 Table 5）
 
-论文 §2.3 的真正过滤标准是 expert agreement rate（≥ 1/2 专家同意答案正确）与 non-expert difficulty rate（≤ 2/3 非专家答对）这两个**门槛条件**，而非上述三档实测准确率本身；后者只是验证题目足够难的事实陈述。
+论文 §2.3 "Dataset Splits" 定义的是子集划分规则：Main 剔除"两名专家都答错且三名非专家全部答对"的题，Diamond 进一步只保留"两名专家都答对且多数非专家答错"的题。划分规则与上面三档实测准确率是两件事，前者决定哪些题入选，后者只是入选后的难度验证。
 
 ![图 11.4-3 GPQA 高难问答基准](images/11-4-3-gpqa-benchmark.png)
 
@@ -440,7 +442,9 @@ AlpacaEval 2.0 的一个重要变化，是用回归方式修正长度偏置，�
 
 ### 11.5.4 WildBench
 
-[WildBench](https://arxiv.org/pdf/2406.04770) 从约 100 万条真实人机对话中采样 1024 条构建评估集（[arXiv:2406.04770](https://arxiv.org/abs/2406.04770) §4），主评估以 GPT-4-Turbo 为裁判（WB-Reward 与 WB-Score），检查清单由 GPT-4-Turbo + Claude-3-Opus 联合生成；论文 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判。WildBench 与 Chatbot Arena 高度相关（论文报告 Pearson 相关系数：WB-Reward 对 top-ranking 模型 0.98、WB-Score 0.95、ArenaHard 0.91、AlpacaEval 2.0 0.89；具体数值因评测设置而异）。WildBench 被视为新基准有效性的"事实上的"检验标准。
+[WildBench](https://arxiv.org/pdf/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（[arXiv:2406.04770](https://arxiv.org/abs/2406.04770) §2.1）。主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude-3-Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。
+
+WildBench 与 Chatbot Arena 高度相关，论文报告的 Pearson 相关系数为：WB-Reward 对 top-ranking 模型 0.98、WB-Score 0.95，均高于 ArenaHard 的 0.91 和 AlpacaEval 2.0 length-controlled win rate 的 0.89（[arXiv:2406.04770](https://arxiv.org/abs/2406.04770) §4.2 Table 3）。这些数值因评测设置而异，但总体说明 WildBench 已成为新基准有效性的“事实上的”检验标准之一。
 
 ![图 11.5-5 WildBench 构建流程](images/11-5-5-wildbench-pipeline.png)
 
@@ -477,7 +481,7 @@ LLM-as-judge 与 RLHF / RLVR 的连接在第 12 章偏好优化和第 13 章 ver
 > **Agent scaffold 的四个核心组件**：**explicit planning**（显式写出多步计划并勾选进度）、**hierarchical delegation**（任务分层委派，子任务可由更小的 agent loop 完成以保持上下文干净）、**persistent memory**（通过读写文件维护跨 turn 状态，区别于纯上下文窗口）、**extreme context engineering**（在 prompt 中显式给出大量过程性指令，区别于单纯的上下文压缩 / 重组 / 检索）。这四项与 2025-2026 主流 agent 框架（Claude Code、Cursor、Aider 等）的设计选择基本对齐；同一底座模型在不同 scaffold 组合下的 benchmark 分数可能差几倍。
 
 > [!NOTE]
-> **MMLU-Pro 的具体数字**：MMLU 早期 GPT-3 X-Large 不到 0.5 分，但刷到接近饱和后被 MMLU-Pro 替代；MMLU-Pro 通过选项从 4 增到 10 + 加入 CoT 评估，把模型相对 MMLU 的得分向下压缩 16%–33%（GPT-4o 从 MMLU 的约 88% 降到 MMLU-Pro CoT 的约 72–78%），并把顶级模型之间的差距从 MMLU 上的约 2% 拉大到 MMLU-Pro 上的约 9–10%，缓解 saturation。另一组常被引用的边界数字是 **GPT-4 在 GPQA Diamond 上仅 39%**，但当前榜单上 GPQA Diamond 与 SWE-bench Verified 已被多个前沿模型刷到 90% 上下；这些快照不应作为模型上限结论，但能说明评估坐标随时间快速移动。
+> **基准饱和与坐标移动**：早期 GPT-3 X-Large 在 MMLU 上只有 43.9%，但刷到接近饱和后被 MMLU-Pro 替代（具体口径见 §11.4.2）。GPQA 论文里 GPT-4 few-shot CoT 在 Diamond 子集上是 38.8%，而当前榜单上 GPQA Diamond 与 SWE-bench Verified 已被多个前沿模型刷到 90% 上下。基准饱和与坐标快速移动说明同一模型在不同时间窗的分数几乎不能直接横比，评估时需要同时记录版本、日期和 prompt 模板。
 
 ### 11.6.1 SWEBench
 
@@ -491,7 +495,7 @@ LLM-as-judge 与 RLHF / RLVR 的连接在第 12 章偏好优化和第 13 章 ver
 
 [Terminal-Bench](https://www.tbench.ai/) 将任务放在通用终端环境中，要求模型通过 shell、文件系统和命令行工具完成开放式工作流。它比单步问答更接近真实工程任务，也更能暴露 agent scaffold 在规划、执行和恢复错误上的影响。
 
-Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 个任务构成 Terminal-Bench 2.0 数据集（[arXiv:2601.11868](https://arxiv.org/abs/2601.11868) 与官方 https://www.tbench.ai/，后续版本可能扩展）。论文署名作者为 Mike A. Merrill 等 85 位。Terminal-Bench 不使用 first-solve time 作为难度指标：先解时间用来度量任务难度是 CyBench 的做法（见 §11.6.3），Terminal-Bench 通过环境多样性和人工解法时长分布来体现任务量级。
+Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 个任务构成 Terminal-Bench 2.0 数据集（[arXiv:2601.11868](https://arxiv.org/abs/2601.11868) 与官方 https://www.tbench.ai/，后续版本可能扩展）。论文署名作者为 Mike A. Merrill 等 85 位。Terminal-Bench 不使用 first-solve time 作为难度指标：先解时间用来度量任务难度是 Cybench 的做法（见 §11.6.3），Terminal-Bench 通过环境多样性和人工解法时长分布来体现任务量级。
 
 ![图 11.6-2 Terminal-Bench 任务示例](images/11-6-2-terminal-bench-task-example.png)
 
@@ -507,17 +511,17 @@ Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 �
 
 这类结果衡量的是模型在给定 scaffold、工具权限和运行环境下完成真实终端任务的端到端能力。换一套规划循环、工具封装或错误恢复策略，同一个底座模型的分数也可能变化。
 
-### 11.6.3 CyBench
+### 11.6.3 Cybench
 
-[CyBench](https://arxiv.org/abs/2408.08926) 完成 40 个网络安全领域的"夺旗"（CTF）挑战。任务难度通过人类"首次解决时间"（First-Solve Time, FST）来度量；最难的题目由人类团队首解耗时约 24 小时 54 分钟，整体范围从约 2 分钟到 24 小时 54 分钟不等（论文 Figure 3 / Section 5）。
+[Cybench](https://arxiv.org/abs/2408.08926) 完成 40 个网络安全领域的"夺旗"（CTF）挑战。任务难度通过人类"首次解决时间"（First-Solve Time, FST）来度量；最难的题目由人类团队首解耗时约 24 小时 54 分钟，整体范围从约 2 分钟到 24 小时 54 分钟不等（论文 Figure 3 / Section 5）。
 
-![图 11.6-5 CyBench 评测流程](images/11-6-5-cybench-workflow.png)
+![图 11.6-5 Cybench 评测流程](images/11-6-5-cybench-workflow.png)
 
-*图 11.6-5 CyBench 评测流程*
+*图 11.6-5 Cybench 评测流程*
 
-![图 11.6-6 CyBench 模型结果](images/11-6-6-cybench-results.png)
+![图 11.6-6 Cybench 模型结果](images/11-6-6-cybench-results.png)
 
-*图 11.6-6 CyBench 模型结果*
+*图 11.6-6 Cybench 模型结果*
 
 ### 11.6.4 MLEBench
 
@@ -642,15 +646,15 @@ ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到�
 
 然而，大多数现有的基准测试（如 MMLU）是标准化的“考试”，与现实世界的使用场景相去甚远。真实用户的提示更多是“求助型”（asking）而非“测验型”（quizzing）。
 
-### 11.9.1 GDPVal
+### 11.9.1 GDPval
 
-[GDPVal](https://arxiv.org/pdf/2510.04374) 试图把评估拉回真实职业场景：任务来自美国 GDP 贡献较高行业中的职业工作，目标是衡量模型在专业工作流中的实际可用性。这类高真实度评估往往需要领域专家、私有任务和更复杂的评分标准，成本也会显著提高。
+[GDPval](https://arxiv.org/pdf/2510.04374) 试图把评估拉回真实职业场景：任务来自美国 GDP 贡献较高行业中的职业工作，目标是衡量模型在专业工作流中的实际可用性。这类高真实度评估往往需要领域专家、私有任务和更复杂的评分标准，成本也会显著提高。
 
-GDPVal 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重要：它试图用经济活动权重来定义真实使用分布，同时也天然面临隐私、版权和专家评分成本的约束。
+GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重要：它试图用经济活动权重来定义真实使用分布，同时也天然面临隐私、版权和专家评分成本的约束。
 
-![图 11.9-3 GDPVal 任务示例](images/11-9-3-gdpval-task-example.png)
+![图 11.9-3 GDPval 任务示例](images/11-9-3-gdpval-task-example.png)
 
-*图 11.9-3 GDPVal 任务示例*
+*图 11.9-3 GDPval 任务示例*
 
 ### 11.9.2 Clio (Anthropic)
 
@@ -706,7 +710,9 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 *图 11.10-2 基准标注错误和噪声*
 
-因此，现代评估不只需要更难的题，也需要更干净的题。Platinum benchmark 的思路是对已有基准做高质量人工复核，减少错误答案、歧义题和噪声标签。对于智能体基准，还要检查测试用例是否充分、任务是否能被简单脚本绕过，以及 agent trace 是否暴露了不合理捷径；Docent 一类方法则尝试用 LLM 辅助审查 agent 执行轨迹，帮助发现评估集自身的问题。
+因此，现代评估不只需要更难的题，也需要更干净的题。Platinum benchmark 的思路是对已有基准做高质量人工复核，减少错误答案、歧义题和噪声标签（["Do Large Language Model Benchmarks Test Reliability?", arXiv:2502.03461](https://arxiv.org/abs/2502.03461)）。
+
+对智能体基准，题目之外还要检查测试用例是否充分、任务是否能被简单脚本绕过、agent trace 是否暴露不合理捷径。一个具体例子是 τ-bench 把空响应记成成功：在设计上本就无法完成的任务（例如改签不可退票）里，一个只返回空响应的 trivial agent 在 airline 子集上拿到 38% 成功率，反而超过基于 GPT-4o 的 agent（[Zhu 等, Establishing Best Practices for Building Rigorous Agentic Benchmarks, arXiv:2507.02825](https://arxiv.org/abs/2507.02825)）。[Docent](https://transluce.org/introducing-docent) 一类方法尝试用 LLM 辅助审查 agent 执行轨迹，帮助发现评估集自身的问题。
 
 有效性检查可以总结成三步：先检查题目是否干净，再检查模型是否可能见过题，最后检查 scoring 是否真的奖励了目标行为。fresh evals、private evals、人工复核、Platinum benchmark 和 agent trace 审查，分别是在这三步上降低不同类型的失真。
 
@@ -727,11 +733,11 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 ## 本章总结与下章衔接
 
-本章围绕"如何评估一个模型到底有多好"展开，把评估拆成四个维度（task / dataset / metric / format）× N 种 benchmark：perplexity 测分布匹配，exam 测知识（MMLU / GPQA / HLE），chat 测偏好（Arena / AlpacaEval / WildBench），agent 测任务能力（SWE-Bench / Terminal-Bench / CyBench），推理测专门能力（ARC-AGI），安全测对齐（HarmBench / AIR-Bench / GCG jailbreak）。每类 benchmark 都有 contamination、difficulty、realism、validity 四个共同问题，nanoGPT speedrun 作为 sanity check 经常出现。
+本章围绕"如何评估一个模型到底有多好"展开，把评估拆成四个维度（task / dataset / metric / format）× N 种 benchmark：perplexity 测分布匹配，exam 测知识（MMLU / GPQA / HLE），chat 测偏好（Arena / AlpacaEval / WildBench），agent 测任务能力（SWE-bench / Terminal-Bench / Cybench），推理测专门能力（ARC-AGI），安全测对齐（HarmBench / AIR-Bench / GCG jailbreak）。每类 benchmark 都有 contamination、difficulty、realism、validity 四个共同问题，nanoGPT speedrun 作为 sanity check 经常出现。
 
-评估对象粒度分四档（method / base model / model + tools / product system），见 §11.11。LM-as-judge 的偏差与缓解见 §11.5 关联的 [AlpacaEval / Arena 段落](../chapter11/chapter11_评估与基准测试.md#115-指令与对话基准)。LLM judge 的 length / position / self-preference 三类偏差可以通过多 judge ensemble、按 prompt 模板分层、控制 token 预算缓解，单一 judge 的判断应与人类 judge 的相关系数报告同时呈现。
+评估对象粒度分四档（method / base model / model + tools / product system），见 §11.11。LM-as-judge 的偏差与缓解见 §11.5.5，Chatbot Arena 与 AlpacaEval 的裁判设置见 §11.5.1 与 §11.5.3。LLM judge 的 length / position / self-preference 三类偏差可以通过多 judge ensemble、按 prompt 模板分层、控制 token 预算缓解，单一 judge 的判断应与人类 judge 的相关系数报告同时呈现。
 
-下章进入 [第 12 章 大模型基本训练流程](../chapter12/chapter12_大模型基本训练流程.md)：评估方法定下来后，再回到训练流水线——pre-training → mid-training → SFT → RLHF/PPO/DPO 的后训练，对应 的 SFT/RLHF/PPO/DPO 案例。
+下章进入 [第 12 章 大模型基本训练流程](../chapter12/chapter12_大模型基本训练流程.md)：评估方法定下来后，再回到训练流水线——pre-training → mid-training → SFT → RLHF/PPO/DPO 的后训练，对应的 SFT/RLHF/PPO/DPO 案例在第 12 章展开。
 
 ## 思考
 
@@ -744,16 +750,42 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 - [HellaSwag, arXiv:1905.07830](https://arxiv.org/abs/1905.07830)
 - [MMLU / Hendrycks 2020, arXiv:2009.03300](https://arxiv.org/abs/2009.03300)
+- [MMLU-Pro, arXiv:2406.01574](https://arxiv.org/abs/2406.01574)
+- [GPQA, arXiv:2311.12022](https://arxiv.org/abs/2311.12022)
+- [Humanity's Last Exam, arXiv:2501.14249](https://arxiv.org/abs/2501.14249)
+- [LAMBADA, arXiv:1606.06031](https://arxiv.org/abs/1606.06031)
+- [Jozefowicz 等, Exploring the Limits of Language Modeling, arXiv:1602.02410](https://arxiv.org/abs/1602.02410)
 - [Oren 等, Proving Test Set Contamination in Black Box Language Models, arXiv:2310.17623](https://arxiv.org/abs/2310.17623) — 用 permutation test 给出 black-box LLM 数据污染的可证明下界
+- [Schaeffer 等, Language model developers should report train-test overlap, arXiv:2410.08385](https://arxiv.org/abs/2410.08385)
 - [Chatbot Arena, arXiv:2403.04132](https://arxiv.org/abs/2403.04132)
+- [IFEval, arXiv:2311.07911](https://arxiv.org/abs/2311.07911)
+- [AlpacaEval 2.0 (length-controlled debiasing), arXiv:2404.04475](https://arxiv.org/abs/2404.04475)
+- [WildBench, arXiv:2406.04770](https://arxiv.org/abs/2406.04770)
 - [LLM-as-judge (Zheng 2023), arXiv:2306.05685](https://arxiv.org/abs/2306.05685)
-- [GDPVal, arXiv:2510.04374](https://arxiv.org/abs/2510.04374)
+- [JudgeBench, arXiv:2410.12784](https://arxiv.org/abs/2410.12784)
+- [SWE-bench, arXiv:2310.06770](https://arxiv.org/abs/2310.06770)
+- [Terminal-Bench, arXiv:2601.11868](https://arxiv.org/abs/2601.11868)
+- [Zhang 等, Cybench: A Framework for Evaluating Cybersecurity Capabilities and Risks of Language Models, arXiv:2408.08926](https://arxiv.org/abs/2408.08926)
+- [MLE-Bench, arXiv:2410.07095](https://arxiv.org/abs/2410.07095)
+- [AIR-Bench, arXiv:2407.17436](https://arxiv.org/abs/2407.17436)
 - [HarmBench, arXiv:2402.04249](https://arxiv.org/abs/2402.04249)
+- [Zou 等, Universal and Transferable Adversarial Attacks (GCG), arXiv:2307.15043](https://arxiv.org/abs/2307.15043)
+- [Clio, arXiv:2412.13678](https://arxiv.org/abs/2412.13678)
+- [MedHELM, arXiv:2505.23802](https://arxiv.org/abs/2505.23802)
+- [GDPval, arXiv:2510.04374](https://arxiv.org/abs/2510.04374)
+- ["Do Large Language Model Benchmarks Test Reliability?" (Platinum benchmarks), arXiv:2502.03461](https://arxiv.org/abs/2502.03461)
+- [Zhu 等, Establishing Best Practices for Building Rigorous Agentic Benchmarks, arXiv:2507.02825](https://arxiv.org/abs/2507.02825)
+- [Docent（Transluce）：用 LLM 审查 agent 执行轨迹](https://transluce.org/introducing-docent)
 - [nanoGPT speedrun (Modded NanoGPT)](https://github.com/KellerJordan/ModdedNanoGPT)
+- [OpenAI, Introducing SWE-bench Verified](https://openai.com/index/introducing-swe-bench-verified/)
+- [HELM Leaderboard](https://crfm.stanford.edu/helm/latest/)
+- [LMArena Leaderboard](https://lmarena.ai/)
+- [Artificial Analysis](https://artificialanalysis.ai/)
+- [OpenRouter Rankings](https://openrouter.ai/rankings)
 
 ## 来源与更新记录
-
 
 - 来源：本章以公开评估资料、论文与模型技术报告为主；现代榜单、模型分数和 benchmark 声明需要按官方榜单、论文或模型卡逐条复核。
 - 课程映射：Lecture 12 提供 difficulty、realism、validity、rules of the game、contamination、agent benchmark 和安全评估主线。
 - 来源说明：现代榜单、模型分数和 benchmark 声明随官方来源更新。
+- 查阅日期：2026-05-28（首次成体系核证）；2026-09-05（Section 11.4.1 MMLU Table 1、Section 11.4.2 MMLU-Pro、Section 11.4.3 GPQA 分档准确率、Section 11.5.4 WildBench 小节编号与相关系数、Section 11.10.2 agentic benchmark 复核，参考文献补全）。

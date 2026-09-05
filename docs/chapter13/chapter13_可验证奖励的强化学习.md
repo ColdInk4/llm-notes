@@ -443,7 +443,7 @@ GRPO 与 Dr. GRPO 是当前 RLVR 的两大算法骨架。本节从 GRPO 的目�
 > [!NOTE]
 > 可以把 GRPO 先理解为保留 PPO 的 clipped policy update 和 KL 约束，同时用组内 reward 标准化替代 value model 的 advantage 估计。
 
-GRPO 可以先从 PPO 的工程部件读起：rollout、概率比和 KL 约束都还在，核心改动是去掉 value function / advantage computation，并把同一问题多条回复的奖励做组内标准化。在在线训练中，rollout 后立即更新，这就是一种使用 group-normalized rewards 的 policy gradient。
+GRPO 可以先从 PPO 的工程部件读起：rollout、概率比和 KL 约束都还在。核心改动是去掉 value function / advantage computation，并把同一问题多条回复的奖励做组内标准化。在线训练时 rollout 之后立即更新，相当于把 group-normalized rewards 直接喂给策略梯度。
 
 ![图 13.3-2 GRPO 的核心变化](images/13-3-2-grpo-overview.png)
 
@@ -702,14 +702,14 @@ GRPO 的简化带来明显工程收益，也引入了需要单独处理的 bias�
 
 #### 1. **有偏梯度**
 
-GRPO 通过 “组内 z-score” 来归一化奖励或计算优势，这样做是为了在不引入值函数的情况下提高训练稳定性。然而，计算这个 z-score 中涉及的标准差（$\mathrm{stdev}$）可能依赖于所观察到的样本（可能与当前策略的输出有关），从而使得整个过程不再是严格意义上无偏的基线减法，可能会在理论上引入微小的偏差。
+GRPO 用“组内 z-score”归一化奖励、在不引入值函数的前提下降低 advantage 方差。但 z-score 中的标准差 $\mathrm{stdev}$ 来自同组 rollouts，会随当前策略输出变化，让整体不再是严格意义上无偏的基线减法。
 
-Dr. GRPO（[Liu et al. 2025](https://arxiv.org/abs/2503.20783)）关注的问题是：在保留组内比较收益的同时，如何减少标准差归一化和长度归一化带来的偏差。Dr. GRPO §2.3 标题明确为 *"Aha Moment Already Appears in Base Models Including DeepSeek-V3-Base"*——核心发现是 DeepSeek-V3-Base、Qwen2.5-Math、Llama-3.1 等 base 模型**在 RL 训练之前**已表现出 aha moment / self-reflection，质疑 R1-Zero "aha moment 由 RL 涌现" 的原叙事。这意味着 aha moment 实际由 base 模型内在属性触发，不依赖具体对齐或 SFT cold-start。论文也明确覆盖 Qwen2.5 系列 base 模型（不仅是 DeepSeek-V3-Base 一家）。
+Dr. GRPO（[Liu et al. 2025](https://arxiv.org/abs/2503.20783)）关注两个相关问题：在保留组内比较收益的同时如何减少标准差归一化和长度归一化带来的偏差，以及 R1-Zero 风格的"aha moment 由 RL 涌现"叙事是否真的成立。§2.3 标题为 *"Aha Moment Already Appears in Base Models Including DeepSeek-V3-Base"*，核心发现是 DeepSeek-V3-Base 在 RL 训练**之前**就已表现出 self-reflection / aha moment 关键词，质疑"aha moment 由 RL 涌现"的强叙事；论文 §2.2 还进一步指出 Qwen2.5 / Qwen2.5-Math base 模型在去掉 chat template 后也能恢复强数学能力，说明部分被报告为"RL 涌现"的能力实际来自模板对齐与 base 模型内在属性的组合，而非纯 RL 的产物。
 
 **两类偏置的具体来源**：
 
 - **std 偏置**：组内 reward 标准差把不同难度题放到同一 advantage 尺度上做比较。当某 prompt 组内全是 0（题目太难）或全是 1（题目太易）时，标准差很小，advantage 被放大，相当于让模型"在太易或太难题上获得过强信号"。Dr. GRPO 直接移除除以 std 这一项，转而采用 leave-one-out 风格的 baseline（论文 §3.2：去掉 std 与 $|o_i|$ 之后得到的无偏估计量更接近 reinforce-with-baseline 形式），不再保留方差降低的副效果，但消除尺度失真带来的偏差。
-- **length 偏置**：除以 $|o_i|$（响应长度）让短回答获得更大 advantage。负 advantage 拉长输出 → 削弱惩罚（错的数学证明越长越不扣分）；正 advantage 缩短输出（对的回答越短越得分）。Dr. GRPO 移除除以 $|o_i|$，在 masked_mean 实现里把 `mask.sum(axis=dim)` 替换为常量分母（如 generation budget / `MAX_TOKENS`），不再让单条响应的 token 数进入梯度。Dr. GRPO 报告 correct response 长度变化不大，incorrect response 长度明显被抑制——与 R1-Zero 训练观察一致。
+- **length 偏置**：除以 $|o_i|$（响应长度）让短回答获得更大 advantage。负 advantage 拉长输出 → 削弱惩罚（错的数学证明越长越不扣分）；正 advantage 缩短输出（对的回答越短越得分）。Dr. GRPO 移除除以 $|o_i|$，在 masked_mean 实现里把 `mask.sum(axis=dim)` 替换为常量分母（如 generation budget / `MAX_TOKENS`），不再让单条响应的 token 数进入梯度。论文 §3.2 报告 Dr. GRPO 把整体响应长度压回稳定区间，对 incorrect response 的抑制效果尤其显著——这与 R1-Zero 训练观察到的“错误回答越错越长”趋势直接对冲。
 
 ![图 13.3-4 Dr. GRPO 与标准 GRPO 的对比](images/13-3-4-dr-grpo-comparison.png)
 
@@ -812,7 +812,7 @@ DeepSeek R1 系列至少说明了一件事：在可验证任务上，规则奖�
 > [!NOTE]
 > 图 13.4-3 是技术报告中的实验快照，适合用来观察规则奖励 RL 在可验证推理任务上的效果。跨模型对比的结论由评测设置、提示模板、采样参数和模型版本共同限定。
 
-DeepSeek-R1-Zero 的一个代表性现象是 **Aha Moment（顿悟时刻）**：训练过程中生成轨迹开始出现自我检查和重新尝试，例如发现前一步计算不可靠后改走另一条路径。但 Dr. GRPO §2.3 指出 base 模型（DeepSeek-V3-Base、Qwen2.5-Math 等）在 RL 训练**之前**已表现出 self-reflection 关键词，质疑 R1-Zero 的 "aha moment 由 RL 训练涌现" 的强叙事。
+DeepSeek-R1-Zero 的一个代表性现象是 **Aha Moment（顿悟时刻）**：训练过程中生成轨迹开始出现自我检查和重新尝试，例如发现前一步计算不可靠后改走另一条路径。但 Dr. GRPO §2.3 指出 DeepSeek-V3-Base 在 RL 训练**之前**就已表现出 self-reflection 关键词，与 §2.2 中 Qwen2.5 / Qwen2.5-Math base 模型在去掉 chat template 后也能恢复强数学能力的发现一起，质疑 R1-Zero 的 "aha moment 由 RL 训练涌现" 的强叙事。
 
 ![图 13.4-4 DeepSeek-R1-Zero 的 AIME 准确率与响应长度](images/13-4-4-r1-zero-aime-length.png)
 
@@ -866,7 +866,7 @@ R1 与 R1-Zero 的差异可以从三点看：SFT initialization、CoT 的 langua
 
 DeepSeek-V3-Base 作为基座模型，使用**冷启动长思维链数据**进行 **SFT** 训练得到 **DeepSeek-R1-Dev1**。
 
-冷启动长 CoT 数据规模是"数千条"（thousands of cold-start data），用于把 DeepSeek-V3-Base 微调成 RL 的初始 actor。DeepSeek-R1 论文 §2.3.1 列出四条采集路径：用一条长 CoT 做 few-shot 提示、直接提示模型给出带反思与验证的详细答案、把 DeepSeek-R1-Zero 的输出整理成可读格式、由人工标注者做后处理精炼。
+冷启动长 CoT 数据规模是"数千条"（thousands of cold-start data），用于把 DeepSeek-V3-Base 微调成 RL 的初始 actor。DeepSeek-R1 论文 §2.3.1 描述的构造路径大致是：先用 DeepSeek-R1-Zero 在采样温度 1.0 下生成多条推理轨迹，再筛出答案正确、可读性达标的样本；用 DeepSeek-V3 把筛后轨迹精炼成带摘要的可读格式；再由人工标注者把推理段改写得更自然，并用 LLM 批量化扩展，最后做人工复核。
 
 可读性通过固定输出格式来保证：`|special_token|<reasoning_process>|special_token|<summary>`，即推理过程后接一段摘要，并过滤掉不利于阅读的回复。图 13.4-9 展示了用于生成可读解答摘要的提示模板。
 
@@ -904,17 +904,19 @@ R1 相关工作更值得长期记住的点，是它展示了**推理轨迹可以
 
 *图 13.4-11 DeepSeek-R1 蒸馏模型与其他模型的比较*
 
-蒸馏路线是让 R1 生成约 800k 条 SFT 样本（其中约 600k reasoning / CoT + 约 200k non-reasoning），再直接微调 Qwen2.5-Math-1.5B、Qwen2.5-Math-7B、Qwen2.5-14B、Qwen2.5-32B、Llama-3.1-8B、Llama-3.3-70B-Instruct 这六个 base；DeepSeek-R1 论文 [arXiv:2501.12948](https://arxiv.org/abs/2501.12948) §2.4 "Distillation: Empower Small Models with Reasoning Capability" 的表述是 "we directly fine-tuned open-source models like Qwen and Llama using the 800k samples curated with DeepSeek-R1, as detailed in §2.3.3"，并明确 "For distilled models, we apply only SFT and do not include an RL stage"。其中只有约 600k 才是推理 / CoT 轨迹，约 200k 是非推理样本（写作、事实 QA、自我认知、翻译等）。关键变量包括轨迹质量、题目覆盖、答案验证和学生模型基座能力。蒸馏能迁移推理行为，但不会自动补齐 verifier 没覆盖的任务能力。
+蒸馏路线先用 R1 生成约 800k 条 SFT 样本，其中约 600k 是 reasoning / CoT 轨迹、约 200k 是 non-reasoning 样本（写作、事实 QA、自我认知、翻译等）。这些样本随后被直接用于微调 Qwen2.5-Math-1.5B、Qwen2.5-Math-7B、Qwen2.5-14B、Qwen2.5-32B、Llama-3.1-8B、Llama-3.3-70B-Instruct 这六个 base。
+
+DeepSeek-R1 论文 [arXiv:2501.12948](https://arxiv.org/abs/2501.12948) §2.4 "Distillation: Empower Small Models with Reasoning Capability" 的表述是 "we directly fine-tuned open-source models like Qwen and Llama using the 800k samples curated with DeepSeek-R1, as detailed in §2.3.3"，并明确 "For distilled models, we apply only SFT and do not include an RL stage"。这条路径的关键变量包括轨迹质量、题目覆盖、答案验证和学生模型基座能力。蒸馏能迁移推理行为，但不会自动补齐 verifier 没覆盖的任务能力。
 
 ![图 13.4-12 用 R1 轨迹蒸馏非推理模型](images/13-4-12-r1-distillation-flow.png)
 
 *图 13.4-12 用 R1 轨迹蒸馏非推理模型*
 
-##### 使用少量高质量 SFT 样本提升数学推理能力
+### 13.4.4 小数据推理路线：s1 / LIMO / LIMR
 
 除了 DeepSeek-R1 这种多阶段后训练范式，Base+SFT 也能在高质量数据足够集中时得到有效的推理模型。本节关注三个公开的小数据路线：s1、LIMO 和 LIMR。
 
-### 13.4.4 小数据推理路线：s1 / LIMO / LIMR
+#### 使用少量高质量 SFT 样本提升数学推理能力
 
 ![图 13.4-13 s1 使用 1k 高质量样本提升数学推理](images/13-4-13-s1-small-data-math.png)
 
@@ -931,9 +933,9 @@ R1 相关工作更值得长期记住的点，是它展示了**推理轨迹可以
 > [!WARNING]
 > 通过少量样本提高模型推理能力，对基座模型能力要求较高。s1 与 LIMO 的公开实验都在 Qwen2.5-32B-Instruct 上展示效果，两篇论文都没有报告更小基座（7B / 3B）上的同等增益。
 
-##### 使用少量高质量样本进行 RL 提升数学推理能力
+#### 使用少量高质量样本的 RL 或偏好优化路线
 
-Base+RL 也能直接得到推理模型。除 DeepSeek-R1-Zero 外，[LIMR](https://arxiv.org/abs/2502.11886) 报告 Qwen2.5-Math-7B + PPO 训练；[Less is More: Improving LLM Alignment via Preference Data Selection](https://arxiv.org/abs/2502.14560) 报告 Llama / Mistral / Qwen 家族上偏好数据选择的 sweep（不专门是 "Llama-3-8B + DPO"）。
+Base+RL 也能直接得到推理模型。除 DeepSeek-R1-Zero 外，[LIMR: Less is More for RL Scaling](https://arxiv.org/abs/2502.11886) 报告 Qwen2.5-Math-7B + PPO 训练；[Less is More: Improving LLM Alignment via Preference Data Selection](https://arxiv.org/abs/2502.14560)（Deng et al. 2025）则报告在 Llama / Mistral / Qwen 家族上用偏好数据选择改进 DPO 的 sweep，使用 Ultrafeedback 等数据集上仅约 10% 数据即可在 AlpacaEval2 上提升 3-8%——这条线不在可验证数学任务上，但同样说明少量高质量样本与偏好优化结合的可行性。
 
 这些工作共同展示了少量高质量数据与强化或偏好优化结合的可行性。
 
@@ -1000,7 +1002,7 @@ Kimi 的目标借鉴了 DPO 的无奖励偏好优化思想，用当前策略与�
 
 这里假设存在一个“理想策略” $\pi^*$ ，可理解为人类偏好分布或专家策略。DPO 式推导把奖励函数 $r$ 与策略比值联系起来：奖励减去归一化常数 $\tau \log Z$ 后，等于 $\tau$ 倍的理想策略与参考策略的对数比值。
 
-这个推导基于非参数假设，不显式建模奖励函数，而是让奖励隐含地由策略差异决定。最终得到的 $r$ 可以写成策略函数。
+推导基于非参数假设，把奖励函数隐含表达为当前策略与参考策略的对数比值，不再显式建模。最终得到的 $r$ 可以写成策略函数。
 
 $$
 r(x, y, y^*) - \tau \log Z = \tau \log \frac{\pi^*(y, z|x)}{\pi_{\theta_i}(y, z|x)}

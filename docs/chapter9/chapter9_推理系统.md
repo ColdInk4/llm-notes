@@ -195,7 +195,7 @@ $$
 
 这张表给出两个不同的工程方向。MLP generation 的低算术强度可以通过更大的并发 batch 缓解，因为大家共享同一份权重；attention generation 的低算术强度来自每个请求私有的 KV cache。
 
-在标准 Transformer 上，增加 batch 会带来更多不同的历史缓存，不能把 attention generation 变成高复用的大矩阵乘法。更直接的优化方向是减少 KV cache、改善 KV 布局或改变 attention 结构。
+在标准 Transformer 上，单纯增加 batch 并不能把 attention generation 变成高复用的大矩阵乘法——每多一个请求就多一份不同历史，权重读取的复用无法延伸到 KV cache 上。更直接的优化方向是减少 KV cache 体积、改善 KV 布局或改变 attention 结构，这正是 9.3 节要展开的 GQA、MLA、CLA、local / sparse attention 与 quantization / pruning / distillation。
 
 ### 9.2.3 Latency 与 Throughput 的取舍
 

@@ -346,7 +346,7 @@ $$
 h_i(x) = \left\lfloor \frac{a_i^\top x + b_i}{\epsilon} \right\rfloor
 $$
 
-这里的 $D$ 是复合哈希函数即随机投影方向的数量。这种方法不通过梯度优化哈希参数，但 routing 结果会因随训练演化的 $x$ （token embedding）而动态改变。LSH **概率性地**实现了负载均衡，并且由于其局部敏感性，能够保留弱局部性，即相似 token 更可能落入同一哈希桶。因此，LSH 可以看成一种”弱语义”的非学习 routing。
+这里的 $D$ 是复合哈希函数里随机投影方向（即参与组合的 $h_i$ 数量）的个数；embedding 维度仍为公式里的 $d$。这种方法不通过梯度优化哈希参数，但 routing 结果会因随训练演化的 $x$ （token embedding）而动态改变。LSH **概率性地**实现了负载均衡，并且由于其局部敏感性，能够保留弱局部性，即相似 token 更可能落入同一哈希桶。因此，LSH 可以看成一种”弱语义”的非学习 routing。
 
 **桶宽度** $\epsilon$ 与上式中的量化步长对应，用于把连续投影值分桶；桶越宽，同一桶内聚集的向量越多。
 
@@ -562,10 +562,10 @@ MoE 相较于传统 dense 模型的优势是：它可以扩大总参数规模，
 - **稠密到稀疏升级**：把已训练好的 dense 模型 upcycling 为 MoE，以复用先前的训练成果与权重。
 - **从零训练 MoE**：从随机或专门初始化开始训练 MoE，使 experts 与 router 从头共同演化。
 
- 实证结果显示，这两条路径在不同设置下表现差异显著。比如：
+实证结果显示，这两条路径在不同设置下表现差异显著。比如：
 
 - OLMoE 的实验发现，采用 token-choice routing 从零训练的 MoE 在约 500–600B tokens 时就能追上并在随后超越 upcycled 模型，相当于原始 dense 模型训练数据量约 25% 的计算预算即可达到追赶点。
-- Komatsuzaki 等人在其 upcycling 工作中采用 expert-choice routing，报告的结论是从零训练的 MoE 需要大约原 dense 模型训练量的 120% 才能赶上 upcycled 模型。二者差异来自实验范式、路由策略、模型结构和训练预算不同。
+- Komatsuzaki 等人在其 upcycling 工作中，视觉与语言编码器侧使用 expert-choice routing（容量因子 C=2），语言解码器侧为兼顾训练与推理一致性改用 top-K=2 routing；其论文 Figure 4 报告的结论是，从零训练的 MoE 需要大约原 dense 模型训练量的 120% 才能赶上 upcycled 模型。二者差异来自实验范式、路由策略、模型结构和训练预算不同。
 
 OLMoE 的实验还提示，已有 dense 权重可能约束专家重新分化，因此他们更强调从零训练 MoE 的价值。
 
@@ -1103,7 +1103,7 @@ expert parallelism 的意义在于把专家维度也变成可切分资源：atte
 | DeepSeek v3 | 256 routed + 1 shared = 257 | 8 | 1 | (8 routed + 1 shared) / 257 = 9/257 ≈ 3.5% ≈ 1/28.6 | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) + [DeepSeek-V3 config](https://huggingface.co/deepseek-ai/DeepSeek-V3) |
 | OlMoE | 64 | 8 | 0 | 8/64 = 1/8 | [arXiv:2409.02060](https://arxiv.org/abs/2409.02060) |
 | Llama 4 Maverick | 128 routed + 1 shared = 129 | 1 | 1 | (1 routed + 1 shared) / 129 = 2/129 ≈ 1.55% | [Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct) |
-| MiniMax M1 | 32 routed + 0 shared = 32 | 2 | 0 | 2/32 = 1/16 ≈ 6.25% | CS336 2026 Lecture 4 slides “Expert routing setups for recent MoEs” 表 — “MiniMax 32 2 0 ~1/4”（末列 ~1/4 属 fine-grained ratio 列，激活比另计）；[MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k) `num_local_experts: 32`、`num_experts_per_tok: 2`、`shared_intermediate_size: 0`；MiniMax-M1 混合架构为 1 个 linear attention 层 : 7 个 full attention 层（共 80 层，10 层 linear attention + 70 层 full attention） |
+| MiniMax-M1 | 32 routed + 0 shared = 32 | 2 | 0 | 2/32 = 1/16 ≈ 6.25% | CS336 2026 Lecture 4 slides “Expert routing setups for recent MoEs” 表 — “MiniMax 32 2 0 ~1/4”（末列 ~1/4 属 fine-grained ratio 列，激活比另计）；[MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k) `num_local_experts: 32`、`num_experts_per_tok: 2`、`shared_intermediate_size: 0`；MiniMax-M1 混合架构为 7 个 linear attention 层 : 1 个 full attention 层（共 80 层，70 层 linear attention + 10 层 full attention），参见 CS336 2026 Lecture 4 video “a 7:1 hybrid (7 linear, 1 full)” |
 
 > [!NOTE]
 > **DeepSeek 与 Llama 4 的设计哲学对比**：DeepSeek v3 把激活比压到约 1/28.6（极稀疏，强调参数规模扩大与计算效率），Llama 4 Maverick 在共享 expert 常驻 + 每 token 仅 1 个 routed 的极稀疏设置下激活 2/129 ≈ 1.55%（强调专家利用度）。两种选择都能 work，但意味着 all-to-all 通信、expert parallelism、负载均衡的设计权衡完全不同。
@@ -1150,8 +1150,17 @@ expert parallelism 的意义在于把专家维度也变成可切分资源：atte
 
 ## 参考文献
 - [减少计算消耗的万亿参数 MoE 调优](https://macaron.im/mindlab/research/building-trillion-parameter-reasoning-rl-with-10-gpus)
-- [DeepSeek-MoE](https://arxiv.org/pdf/2401.06066)
-- [DeepSeek-V3](https://arxiv.org/pdf/2412.19437)
+- [Hash Layers for Large Sparse Models](https://arxiv.org/abs/2106.04426)（Roller et al., 2021，预计算查表 hash routing）
+- [Switch Transformers](https://arxiv.org/abs/2101.03961)（Fedus et al., 2022，Table 9 给 Switch-XXL 395B / 64 experts、Switch-Base 7B / 128 experts、Switch-Large 26B / 128 experts、Switch-C 1571B / 2048 experts，top-k 均为 1）
+- [ST-MoE: Designing Stable and Transferable Sparse Expert Models](https://arxiv.org/abs/2202.08906)（Zoph et al., 2022，§3.3 引入 router z-loss）
+- [GShard](https://arxiv.org/abs/2006.16668)（Lepikhin et al., 2020，2048 experts / top-2）
+- [DeepSeekMoE](https://arxiv.org/pdf/2401.06066)（Dai et al., 2024，shared + fine-grained experts 模板，16B：64 routed + 2 shared / top-6）
+- [DeepSeek-V2](https://arxiv.org/abs/2405.04434)（236B / 21B active；160 routed + 2 shared / top-6；device-limited routing M=3）
+- [DeepSeek-V3](https://arxiv.org/pdf/2412.19437)（671B / 37B active；256 routed + 1 shared / top-8；aux-loss-free + seq-wise balance loss）
+- [Mixtral of Experts](https://arxiv.org/abs/2401.04088)（8 experts / top-2）
+- [OLMoE](https://arxiv.org/abs/2409.02060)（64 routed / top-8 / 0 shared；从零训练 vs upcycled，~25% 计算预算即可追平）
+- [Sparse Upcycling](https://arxiv.org/abs/2212.05055)（Komatsuzaki et al., 2022，expert-choice 路由 + 从零训练需 ~120% dense 计算预算才追上 upcycled）
+- [Kimi K2](https://arxiv.org/abs/2507.20534)（1T total / 32B active；384 routed + 1 shared / top-8）
 
 ## 来源与更新记录
 

@@ -13,7 +13,7 @@
 
 ## 本章主线
 
-本章把 tokenizer 当作训练前固定的一次离散压缩决策来学习，按"接口 → 基础策略 → BPE → 质量检查 → 公开模型健康检查"的路径推进。
+Tokenizer 在训练开始前就被固定下来，它一旦确定，后面所有训练和推理都要按它切出的序列长度付账。本章沿着这条因果关系推进：先建立 `encode` / `decode` 接口和压缩率指标，再看字符级、byte 级、词级三种基础策略各自卡在哪里，然后用 byte-level BPE 把"完备"和"高效"两个要求同时满足，最后落到训练完成后的质量检查和一个公开模型的实例观察。
 
 ## 1.1 分词器的接口与效率视角
 
@@ -43,13 +43,13 @@ $$
 
 *图 1.1-3 token 数量决定 attention 成本和上下文占用*
 
-图 1.1-3 的工程含义是：tokenizer 切分得越碎，同一段原始文本就越快耗尽上下文窗口，attention 矩阵也越大。提高压缩率可以缓解这个问题，但直接扩大词表会增加 embedding 和输出层的参数量，并让低频 token 更难被充分训练。现代多语言 tokenizer 常见十万到二十万级词表。
+图 1.1-3 把这条成本链画在同一条轴上：tokenizer 切分得越碎，同一段原始文本就越快耗尽上下文窗口，attention 矩阵也越大。提高压缩率可以缓解这个问题，代价是扩大词表会增加 embedding 和输出层的参数量，并让低频 token 更难被充分训练。词表规模因此成为一个需要权衡的量，下面用几个公开模型看看这个量落在什么区间。
 
-OpenAI tiktoken 提供两类相近规模的编码。`o200k_base` 含 199,998 个 base merge rank（priority rank 0-199997）；id 199998 与 200000-200017 共 19 个槽位在 `o200k_base` 下为空，在 `o200k_harmony` 下被 `<|reserved_*|>` / `<|channel|>` / `<|start|>` 等 reserved 系列分配；`ENDOFTEXT`（id 199999）与 `ENDOFPROMPT`（id 200018）两个显式特殊 token 共同定义 vocab\_size = 200,019。GPT-5、GPT-4o、o1、o3 等纯文本模型沿用 `o200k_base`。
+OpenAI 的 tiktoken 提供两类相近规模的编码，可以用来看清一个词表规模是怎样被算出来的。`o200k_base` 的合并表含 199,998 条 rank，编号 0-199997；再加上两个显式特殊 token `ENDOFTEXT`（id 199999）和 `ENDOFPROMPT`（id 200018），vocab\_size 取到 200,019。中间的 id 199998 与 200000-200017 共 19 个槽位在 `o200k_base` 下没有分配。GPT-5、GPT-4o、o1、o3 等纯文本模型都沿用这套编码。
 
-`o200k_harmony` 在 `o200k_base` 基础上再加消息边界、role、channel、function calling 等控制 token，总 vocab\_size $= 201{,}088$。按 tiktoken `MODEL_PREFIX_TO_ENCODING` 映射，`openai/gpt-oss-20b` 与 `openai/gpt-oss-120b` 沿用 `o200k_harmony`（`gpt-oss-*` 前缀专属）；GPT-5/4o/o1/o3 等仍用 `o200k_base`。精确值见 [`tiktoken_ext/openai_public.py`](https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py)。
+`o200k_harmony` 复用同一张合并表，把上面那 19 个空槽连同更高位一起填成消息边界、role、channel 和 function calling 的控制 token：id 199998 是 `<|startoftext|>`，200002 到 200012 之间依次出现 `<|return|>`、`<|constrain|>`、`<|channel|>`、`<|start|>`、`<|end|>`、`<|message|>`、`<|call|>`，其余位置一直到 201087 都是 `<|reserved_*|>` 占位，于是 vocab\_size $= 201{,}088$。`openai/gpt-oss-20b` 与 `openai/gpt-oss-120b` 按 `gpt-oss-` 前缀映射到这套编码。精确取值见 [`tiktoken_ext/openai_public.py`](https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py)。
 
-同级别还有 DeepSeek-V3 词表 vocab\_size $= 129{,}280$（[HF config](https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/main/config.json)；DeepSeek-V3 论文 §4.1 仅写 "128K tokens" 未给出精确值），Qwen3-235B-A22B 词表 vocab\_size $= 151{,}936$（[HF config](https://huggingface.co/Qwen/Qwen3-235B-A22B/blob/main/config.json)；Qwen3 论文 §2 报 tokenizer base 大小 151,669——HF config 比论文 base 多 267 个 reserved/padding 槽位）。两者都属十万到二十万级量级，反映在压缩率、词表稀疏性和跨语言覆盖之间的折中。
+开源权重模型的词表也在同一量级。DeepSeek-V3 的 vocab\_size $= 129{,}280$（[HF config](https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/main/config.json)），技术报告 §4.1 把它描述为 byte-level BPE 的 128K 扩展词表。Qwen3-235B-A22B 的 vocab\_size $= 151{,}936$（[HF config](https://huggingface.co/Qwen/Qwen3-235B-A22B/blob/main/config.json)），Qwen3 技术报告 §2 给出的 tokenizer 基础大小是 151,669，两者相差的 267 个槽位留给 reserved 与对齐用的 padding。十万到二十万这个区间，就是当前主流模型在压缩率、词表稀疏性和跨语言覆盖之间选定的折中位置。
 
 Tokenizer-free 架构尝试直接在 byte 或动态 chunk 上建模，代表方向包括 ByT5、MEGABYTE、Byte Latent Transformer、T-Free 和 H-Net。它们希望减少固定词表带来的碎片化和跨语言偏差。当前主流前沿语言模型仍大量使用 tokenizer，因此工程上仍要理解固定 tokenizer 怎样改变计算成本和表示效率。
 
@@ -57,7 +57,7 @@ Tokenizer-free 架构尝试直接在 byte 或动态 chunk 上建模，代表方�
 
 计算机中的文本通常先表示为 Unicode 字符串。Unicode 为字符分配码点，例如 `A` 是 `U+0041`，汉字和 emoji 也各有对应码点。UTF-8 是把这些码点写成 byte 序列的编码格式；ASCII 字符在 UTF-8 中占 1 个 byte，常见中文通常占 3 个 byte，许多 emoji 占更多 byte。
 
-Tokenizer 可以从不同粒度开始切分文本。三种基础策略分别暴露了不同瓶颈。
+有了 byte 序列这个共同底座，下一个问题是从多大的粒度开始切。下面三种基础策略各自把一个指标推到极端，也各自暴露一处瓶颈。
 
 **字符级 tokenizer** 把每个 Unicode 字符当作 token。它天然可逆，也能覆盖生僻字符，但 Unicode 字符集合很大，许多字符极低频。模型会为大量罕见码点保留独立 id，词表利用率偏低；同时，英文单词会被拆成多个字符，语义组合压力交给后续 Transformer 层。
 
@@ -84,7 +84,9 @@ $$
 
 ## 1.3 BPE 的训练、编码与产物
 
-Byte Pair Encoding（BPE）算法最早由 Philip Gage 在 1994 年的数据压缩文献中提出，后来被 Sennrich 等人在 2016 年用于神经机器翻译的子词切分，再被 GPT-2 等模型系列用于大规模语言模型的 tokenizer。它的核心想法很直接：从 byte 或字符等基础单位出发，反复把语料中最常见的相邻 pair 合并成新 token。高频片段会变短，罕见片段保留为更细粒度的序列。
+三种基础策略的困境可以概括成一句话：固定粒度要么让词表失控，要么让序列失控。BPE 换了一个思路，让切分粒度由数据决定——高频片段合并成大 token，低频片段保留成小 token。
+
+Byte Pair Encoding（BPE）算法最早由 Philip Gage 在 1994 年的数据压缩文献中提出，后来被 Sennrich 等人用于神经机器翻译的子词切分（ACL 2016，arXiv:1508.07909），再被 GPT-2 等模型系列用于大规模语言模型的 tokenizer。它的核心操作很直接：从 byte 或字符等基础单位出发，反复把语料中最常见的相邻 pair 合并成新 token。
 
 ![图 1.3-1 tokenizer 训练从语料到 vocab 与 merges 的流程](images/1-3-1-tokenizer-training-flow.jpg)
 
@@ -114,15 +116,15 @@ Byte Pair Encoding（BPE）算法最早由 Philip Gage 在 1994 年的数据压�
 - **预分词边界**：生产实现通常先按 regex 或 Unicode 类别分 chunk，再对 chunk 应用 BPE，减少无意义跨边界合并。
 - **编码速度**：朴素实现每次编码都遍历所有 merge，复杂度很高。实际实现会维护 pair 索引、rank 或优先队列，只处理当前文本中可能发生的合并。
 
-BPE、WordPiece、Unigram 和 SentencePiece 的差异主要在优化目标和工程接口。BPE 用频率贪心合并；WordPiece 更接近选择能提升语料似然的子词；Unigram 从较大候选词表出发，用概率模型和剪枝保留能解释语料的 token；SentencePiece 是训练和编码框架，可承载 BPE 或 Unigram，并把空格等边界信息纳入模型。
+同一条"数据驱动切分"的思路还有几种不同实现，它们的差异主要在优化目标和工程接口。BPE 用频率贪心合并；WordPiece 更接近选择能提升语料似然的子词；Unigram 从较大候选词表出发，用概率模型和剪枝保留能解释语料的 token；SentencePiece 是训练和编码框架，可承载 BPE 或 Unigram，并把空格等边界信息纳入模型。
 
 ## 1.4 分词器质量检查与工程取舍
 
-训练 tokenizer 之前，需要先确定目标语料分布。多语言、代码、数学、URL、emoji 和专业术语的占比都会影响最终词表。如果语料被高资源语言主导，低资源语言的常见片段很难进入高频合并，推理时会被切成更多 token。常见做法是在训练 tokenizer 前统计语言和数据类型占比，再按目标能力设定下采样、过采样或定向保留策略。
+算法确定之后，tokenizer 的实际表现仍然由训练语料和验收标准决定。先看语料这一侧：训练 tokenizer 之前需要确定目标语料分布，多语言、代码、数学、URL、emoji 和专业术语的占比都会影响最终词表。如果语料被高资源语言主导，低资源语言的常见片段很难进入高频合并，推理时会被切成更多 token。常见做法是在训练前统计语言和数据类型占比，再按目标能力设定下采样、过采样或定向保留策略。
 
 清洗语料时，还要处理乱码、非法编码、重复模板、隐私和许可问题。电话号码、邮箱、身份证号、地址等高基数敏感信息会带来两类风险：合规风险和统计噪声。它们常以低频甚至单次出现的形式进入语料，容易消耗词表容量，却很少提供可复用语言结构。脱敏策略需要兼顾隐私保护和任务语义，信息抽取等任务可能需要保留实体类型或结构化占位符。
 
-训练完成后，不应只看词表大小。更有用的检查包括：
+训练完成后，词表大小只是最表层的一个数字。下面这组检查更能说明 tokenizer 是否可以进入训练：
 
 - **可逆性**：随机抽样文本满足 `decode(encode(x)) == x`，特殊 token 与普通文本边界清楚。
 - **完备性**：任意合法 UTF-8 文本都能编码；byte-level BPE 通常依靠 256 个基础 byte token 保证覆盖。
@@ -131,9 +133,7 @@ BPE、WordPiece、Unigram 和 SentencePiece 的差异主要在优化目标和工
 - **切分稳定性**：同一实体、缩进、数字串、URL 和标点组合在相似上下文中应尽量稳定切分。
 - **兼容性**：已有模型扩表时，需要明确新增 id、旧 id、special token 和 merge 顺序的兼容关系。
 
-公开的 [`gpt5_tokenizer_vocab.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/gpt5_tokenizer_vocab.txt) 可以作为观察现代词表的样本。词表前部包含空字节、制表符和缩进片段，中间能看到代码关键字、多语言片段、URL 形态和带前置空格的英文词，靠后位置也有中文词片段。
-
-这个分布说明 tokenizer 学到的是训练语料的统计结构：代码、自然语言、多语言和格式符号都会竞争词表容量。
+把这些检查落到一份真实词表上，[`gpt5_tokenizer_vocab.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/gpt5_tokenizer_vocab.txt) 是一个方便的样本。它按 merge rank 顺序列出 `o200k_base` 的全部片段：前部是空字节、制表符和缩进；中部能看到代码关键字、多语言片段、URL 形态和带前置空格的英文词；靠后位置出现中文词片段。这条分布直接反映训练语料的统计结构——代码、自然语言、多语言和格式符号都在竞争同一份词表容量。
 
 扩展 tokenizer 时要格外谨慎。直接重训可能破坏旧模型的 embedding 对齐；增量加入 merges 或新增领域 token 也需要回归测试，确认旧文本编码是否保持兼容、新 token 是否确实降低碎片化、特殊 token id 是否保持稳定。
 
@@ -159,9 +159,15 @@ print(f"vocab size: {len(tokenizer.get_vocab())}")
 
 Byte-level BPE 实现中常见的 latin-1 技巧，是为了把 0-255 的原始 byte 安全映射成 Unicode 字符进行字符串处理。UTF-8 中的中文和 emoji 是多 byte 字符，直接把 byte 当作普通文本字符处理容易产生不可解码片段；latin-1 对每个 byte 都有一一对应字符，可把任意 byte 序列完整保存到 BPE 流程里，再在解码时还原。
 
-## 1.6 思考与代码实验
+## 本章总结与下章衔接
 
-### 思考
+Tokenizer 是训练前固定的离散接口。它需要同时满足可逆、完备、高效和不过度稀疏四个条件。Byte-level BPE 的实用性来自两个设计：用 256 个 byte token 保证任意 UTF-8 文本可表示，再用数据驱动的 merge 规则压缩高频片段。
+
+WordPiece、Unigram 和 SentencePiece 在不同模型族里同样常见；tokenizer-free 路线则尝试把固定词表替换为 byte 级或动态 chunk 建模。无论哪条路线，后续模型都需要在序列上形成合适的抽象，并把更多计算容量分配给信息密度更高的片段。
+
+token id 序列是模型接触张量之前的最后一步；进入训练侧后，令 token 数为 $T$ 、batch size 为 $B$ ，则 FLOPs 与显存可表示为 $T$ 与 $B$ 的函数，下一章 [第 2 章 PyTorch 与资源核算](../chapter2/chapter2_pytorch与资源核算.md) 把这部分账本展开。
+
+## 思考
 
 1. BPE、WordPiece、Unigram 和 SentencePiece 的优化目标分别是什么，为什么 byte-level BPE 在现代 LLM 中很常见？
 2. 评价 tokenizer 时，bytes per token、词表大小、低频 token 比例和多语言碎片化应如何一起看？
@@ -172,18 +178,10 @@ Byte-level BPE 实现中常见的 latin-1 技巧，是为了把 0-255 的原始 
 
 - [Sennrich et al., 2016: Neural Machine Translation of Rare Words with Subword Units, arXiv:1508.07909](https://arxiv.org/abs/1508.07909)
 - [Kudo and Richardson, 2018: SentencePiece, arXiv:1808.06226](https://arxiv.org/abs/1808.06226)
-- [Wu et al., 2016: Google's Neural Machine Translation System, arXiv:1609.08144](https://arxiv.org/abs/1609.08144)（§4.1 采用 wordpiece 模型，把子词切分推广到大规模神经机器翻译；wordpiece 本身出自 Schuster and Nakajima, *Japanese and Korean Voice Search*, ICASSP 2012）
+- [Wu et al., 2016: Google's Neural Machine Translation System, arXiv:1609.08144](https://arxiv.org/abs/1609.08144)（§4.1 采用 wordpiece 模型，把子词切分推广到大规模神经机器翻译；wordpiece 本身出自 Schuster and Nakajima, *Japanese and Korean voice search*, ICASSP 2012）
 - [Kudo, 2018: Subword Regularization, arXiv:1804.10959](https://arxiv.org/abs/1804.10959)（Unigram LM）
 - [Tiktokenizer 交互式查看器](https://tiktokenizer.vercel.app/)
 - [Hugging Face Tokenizers 课程](https://huggingface.co/learn/llm-course/en/chapter6/1)
-
-## 本章总结与下章衔接
-
-Tokenizer 是训练前固定的离散接口。它需要同时满足可逆、完备、高效和不过度稀疏四个条件。Byte-level BPE 的实用性来自两个设计：用 256 个 byte token 保证任意 UTF-8 文本可表示，再用数据驱动的 merge 规则压缩高频片段。
-
-BPE 只是常见选择。WordPiece、Unigram 和 SentencePiece 在不同模型中也很重要；tokenizer-free 路线则尝试把固定词表替换为 byte 级或动态 chunk 建模。无论哪条路线，后续模型都需要在序列上形成合适的抽象，并把更多计算容量分配给信息密度更高的片段。
-
-token id 序列是模型接触张量之前的最后一步；进入训练侧后，令 token 数为 $T$、batch size 为 $B$，则 FLOPs 与显存可表示为 $T$ 与 $B$ 的函数，下一章 [第 2 章 PyTorch 与资源核算](../chapter2/chapter2_pytorch与资源核算.md) 把这部分账本展开。
 
 ## 来源与更新记录
 
@@ -194,8 +192,8 @@ token id 序列是模型接触张量之前的最后一步；进入训练侧后�
 - [Sennrich et al., 2016: Neural Machine Translation of Rare Words with Subword Units](https://arxiv.org/pdf/1508.07909)
 - [Kudo and Richardson, 2018: SentencePiece](https://arxiv.org/pdf/1808.06226)
 - [Tiktokenizer DeepSeek-R1 tokenizer view](https://tiktokenizer.vercel.app/?model=deepseek-ai%2FDeepSeek-R1)
-- 词表规模，状态「官方」，查阅日期 2026-09-03：tiktoken `tiktoken_ext/openai_public.py` https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py（`o200k_base` 的 `ENDOFTEXT: 199999` 与 `ENDOFPROMPT: 200018`；`o200k_harmony` 的 reserved 区间填到 201087）；tiktoken `tiktoken/model.py` https://github.com/openai/tiktoken/blob/main/tiktoken/model.py（`MODEL_PREFIX_TO_ENCODING` 中 `gpt-5` / `gpt-4o-` / `o1-` / `o3-` → `o200k_base`，`gpt-oss-` → `o200k_harmony`）；DeepSeek-V3 `config.json` https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/main/config.json（`vocab_size` 129280）；Qwen3-235B-A22B `config.json` https://huggingface.co/Qwen/Qwen3-235B-A22B/blob/main/config.json（`vocab_size` 151936）。
-- 论文正文口径，状态「论文」，查阅日期 2026-09-03：DeepSeek-V3 技术报告 §4.1 Data Construction https://arxiv.org/pdf/2412.19437（"employs Byte-level BPE ... with an extended vocabulary of 128K tokens"）；Qwen3 技术报告 §2 Architecture https://arxiv.org/pdf/2505.09388（"with a vocabulary size of 151,669"）；Wu et al., 2016 §4.1 Wordpiece Model https://arxiv.org/pdf/1609.08144（"we adopt the wordpiece model (WPM) implementation initially developed to solve a Japanese/Korean segmentation problem"，其文献 [35] 为 Schuster and Nakajima, *Japanese and Korean voice search*, ICASSP 2012）。
+- 词表规模，状态「官方」，查阅日期 2026-09-05：tiktoken `tiktoken_ext/openai_public.py` https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py（`o200k_base` 的 `ENDOFTEXT: 199999` 与 `ENDOFPROMPT: 200018`；`o200k_harmony` 的 `<|startoftext|>: 199998`、`<|return|>: 200002`、`<|constrain|>: 200003`、`<|channel|>: 200005`、`<|start|>: 200006`、`<|end|>: 200007`、`<|message|>: 200008`、`<|call|>: 200012`，reserved 区间填到 201087）；`o200k_base.tiktoken` https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken（合并表 199,998 行，末行 rank 199997）；tiktoken `tiktoken/model.py` https://github.com/openai/tiktoken/blob/main/tiktoken/model.py（`MODEL_PREFIX_TO_ENCODING` 中 `gpt-5` / `gpt-4o-` / `o1-` / `o3-` → `o200k_base`，`gpt-oss-` → `o200k_harmony`）；OpenAI Harmony 格式说明 https://developers.openai.com/cookbook/articles/openai-harmony（`<|start|>` 200006、`<|channel|>` 200005 等控制 token id）；DeepSeek-V3 `config.json` https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/main/config.json（`vocab_size` 129280）；Qwen3-235B-A22B `config.json` https://huggingface.co/Qwen/Qwen3-235B-A22B/blob/main/config.json（`vocab_size` 151936）。
+- 论文正文口径，状态「论文」，查阅日期 2026-09-05：DeepSeek-V3 技术报告 §4.1 Data Construction https://arxiv.org/html/2412.19437v2（"The tokenizer for DeepSeek-V3 employs Byte-level BPE with an extended vocabulary of 128K tokens."）；Qwen3 技术报告 §2 Architecture https://arxiv.org/html/2505.09388v1（"byte-level byte-pair encoding (BBPE) with a vocabulary size of 151,669"）；Wu et al., 2016 §4.1 Wordpiece Model https://arxiv.org/pdf/1609.08144（"we adopt the wordpiece model (WPM) implementation initially developed to solve a Japanese/Korean segmentation problem"，其文献 [35] 为 Schuster and Nakajima, *Japanese and Korean voice search*, ICASSP 2012）；Sennrich et al. https://arxiv.org/abs/1508.07909（v1 提交日期 2015-08-31，ACL 2016 发表）。
 
 ## 附录：代码实验
 
@@ -386,56 +384,56 @@ if __name__ == "__main__":
 ### 附录 3：字符分词器
 
 ```python
-      # 字符Tokenizer
-   class CharacterTokenizer:
-       def __init__(self):
-           pass  # 不需要额外参数，直接用ord、chr
+# 字符Tokenizer
+class CharacterTokenizer:
+    def __init__(self):
+        pass  # 不需要额外参数，直接用ord、chr
 
-       def encode(self, text):
-           """
-           将字符串编码为字符索引列表（Unicode code points）
-           """
-           return [ord(ch) for ch in text]
+    def encode(self, text):
+        """
+        将字符串编码为字符索引列表（Unicode code points）
+        """
+        return [ord(ch) for ch in text]
 
-       def decode(self, indices):
-           """
-           将索引列表解码为字符串
-           """
-           return ''.join([chr(i) for i in indices])
+    def decode(self, indices):
+        """
+        将索引列表解码为字符串
+        """
+        return ''.join([chr(i) for i in indices])
 
-   # 测试代码
-   if __name__ == "__main__":
-       tokenizer = CharacterTokenizer()
-       string = "hi，很好的，terrific！🐋"  # 测试字符串
+# 测试代码
+if __name__ == "__main__":
+    tokenizer = CharacterTokenizer()
+    string = "hi，很好的，terrific！🐋"  # 测试字符串
 
-       # 编码
-       indices = tokenizer.encode(string)
-       print("编码ID:", indices)
+    # 编码
+    indices = tokenizer.encode(string)
+    print("编码ID:", indices)
 
-       # 解码
-       reconstructed_string = tokenizer.decode(indices)
-       print("解码:", reconstructed_string)
+    # 解码
+    reconstructed_string = tokenizer.decode(indices)
+    print("解码:", reconstructed_string)
 
-       # 验证是否可逆
-       assert string == reconstructed_string, "字符编码、解码不一致!"
+    # 验证是否可逆
+    assert string == reconstructed_string, "字符编码、解码不一致!"
 
-       # 计算词汇量下限（当前样本里最大 Unicode code point + 1）
-       vocabulary_size = max(indices) + 1
-       print("词汇量（下限）", vocabulary_size)
+    # 计算词汇量下限（当前样本里最大 Unicode code point + 1）
+    vocabulary_size = max(indices) + 1
+    print("词汇量（下限）", vocabulary_size)
 
-       # 本章 §1.1 的压缩率口径：bytes per token
-       def get_compression_ratio(text, indices):
-           # C_ratio = 原字符串 UTF-8 字节数 / token 数
-           return len(text.encode('utf-8')) / len(indices)
+    # 本章 §1.1 的压缩率口径：bytes per token
+    def get_compression_ratio(text, indices):
+        # C_ratio = 原字符串 UTF-8 字节数 / token 数
+        return len(text.encode('utf-8')) / len(indices)
 
-       # 另一个口径：按定长 4 字节存放 code point 时的存储开销比
-       def get_storage_ratio(text, indices):
-           original_bytes = len(text.encode('utf-8'))
-           encoded_bytes = len(indices) * 4  # 假设每个Unicode code point用4字节存储
-           return original_bytes / encoded_bytes
+    # 另一个口径：按定长 4 字节存放 code point 时的存储开销比
+    def get_storage_ratio(text, indices):
+        original_bytes = len(text.encode('utf-8'))
+        encoded_bytes = len(indices) * 4  # 假设每个Unicode code point用4字节存储
+        return original_bytes / encoded_bytes
 
-       print("压缩率（bytes per token）:", get_compression_ratio(string, indices))
-       print("存储比（对比定长 4 字节）:", get_storage_ratio(string, indices))
+    print("压缩率（bytes per token）:", get_compression_ratio(string, indices))
+    print("存储比（对比定长 4 字节）:", get_storage_ratio(string, indices))
 ```
 
 ### 附录 4：BPE、字符级、字节级的分词器效果对比
@@ -509,197 +507,197 @@ class BPETokenizer:
 ### 附录 5：词级分词器
 
 ```python
-   import regex
+import regex
 
-   # deepseek tokenizer中使用的经典正则表达式（简化版）
-   TOKENIZER_REGEX =  r"\p{L}+|\p{N}+|[^\p{L}\p{N}\s]+|\s+"
+# deepseek tokenizer中使用的经典正则表达式（简化版）
+TOKENIZER_REGEX =  r"\p{L}+|\p{N}+|[^\p{L}\p{N}\s]+|\s+"
 
-   # 压缩率计算
-   def get_compression_ratio(text: str, segments):
-       byte_len = len(text.encode("utf-8"))
-       token_count = len(segments)
-       return byte_len / token_count if token_count > 0 else 1
+# 压缩率计算
+def get_compression_ratio(text: str, segments):
+    byte_len = len(text.encode("utf-8"))
+    token_count = len(segments)
+    return byte_len / token_count if token_count > 0 else 1
 
 
-   # Word-level Tokenizer实现
-   class WordTokenizer:
-       def __init__(self, pattern=r"\w+|."):
-           """
-           pattern: 正则表达式（默认基础版：把连续字母数字合成一个词）
-           """
-           self.pattern = pattern
-           self.word2id = {}
-           self.id2word = {}
+# Word-level Tokenizer实现
+class WordTokenizer:
+    def __init__(self, pattern=r"\w+|."):
+        """
+        pattern: 正则表达式（默认基础版：把连续字母数字合成一个词）
+        """
+        self.pattern = pattern
+        self.word2id = {}
+        self.id2word = {}
 
-       def build_vocab(self, texts):
-           """
-           根据训练文本列表建立词表
-           """
-           vocab = set()
-           for text in texts:
-               segments = regex.findall(self.pattern, text)
-               vocab.update(segments)
+    def build_vocab(self, texts):
+        """
+        根据训练文本列表建立词表
+        """
+        vocab = set()
+        for text in texts:
+            segments = regex.findall(self.pattern, text)
+            vocab.update(segments)
 
-           vocab = sorted(vocab)
-           self.word2id = {w: i for i, w in enumerate(vocab)}
-           self.id2word = {i: w for w, i in self.word2id.items()}
+        vocab = sorted(vocab)
+        self.word2id = {w: i for i, w in enumerate(vocab)}
+        self.id2word = {i: w for w, i in self.word2id.items()}
 
-       def encode(self, text):
-           """
-           文本 → 字符串片段 → token id列表
-           未登录词 UNK = -1
-           """
-           segments = regex.findall(self.pattern, text)
-           return [self.word2id.get(seg, -1) for seg in segments], segments
+    def encode(self, text):
+        """
+        文本 → 字符串片段 → token id列表
+        未登录词 UNK = -1
+        """
+        segments = regex.findall(self.pattern, text)
+        return [self.word2id.get(seg, -1) for seg in segments], segments
 
-       def decode(self, ids):
-           """
-           token ID → 原始片段 → 拼成字符串
-           """
-           return "".join(self.id2word.get(i, "<UNK>") for i in ids)
+    def decode(self, ids):
+        """
+        token ID → 原始片段 → 拼成字符串
+        """
+        return "".join(self.id2word.get(i, "<UNK>") for i in ids)
 
-   # 测试
-   if __name__ == "__main__":
+# 测试
+if __name__ == "__main__":
 
-       string = "It's so supercalifragilisticexpialidocious!👋👋"
-       print("原始字符串：", string)
+    string = "It's so supercalifragilisticexpialidocious!👋👋"
+    print("原始字符串：", string)
 
-       # 使用基础正则分词（基于空格和标点切分）
-       basic_segments = regex.findall(r"\w+|.", string)
-       print("基础正则分词结果：")
-       print(basic_segments)
+    # 使用基础正则分词（基于空格和标点切分）
+    basic_segments = regex.findall(r"\w+|.", string)
+    print("基础正则分词结果：")
+    print(basic_segments)
 
-       # 使用deepseek风格正则
-       segments = regex.findall(TOKENIZER_REGEX, string)
-       print(f"deepseek风格分词结果：{segments}")
+    # 使用deepseek风格正则
+    segments = regex.findall(TOKENIZER_REGEX, string)
+    print(f"deepseek风格分词结果：{segments}")
 
-       # 构建词表
-       tokenizer = WordTokenizer(pattern=TOKENIZER_REGEX)
-       tokenizer.build_vocab([string])
+    # 构建词表
+    tokenizer = WordTokenizer(pattern=TOKENIZER_REGEX)
+    tokenizer.build_vocab([string])
 
-       print("词表大小：", len(tokenizer.word2id))
+    print("词表大小：", len(tokenizer.word2id))
 
-       # 编码
-       ids, segs = tokenizer.encode(string)
-       print(f"编码token IDs：{ids}")
+    # 编码
+    ids, segs = tokenizer.encode(string)
+    print(f"编码token IDs：{ids}")
 
-       # 字节序列
-       byte_tokens = [b for b in string.encode("utf-8")]
-       print(f"UTF-8字节序列：{byte_tokens}")
+    # 字节序列
+    byte_tokens = [b for b in string.encode("utf-8")]
+    print(f"UTF-8字节序列：{byte_tokens}")
 
-       print(f"编码segments：{segs}")
+    print(f"编码segments：{segs}")
 
-       # 解码
-       decoded = tokenizer.decode(ids)
-       print("解码结果：", decoded)
+    # 解码
+    decoded = tokenizer.decode(ids)
+    print("解码结果：", decoded)
 
-       # 压缩率
-       ratio = get_compression_ratio(string, segs)
-       print("压缩率：", ratio)
+    # 压缩率
+    ratio = get_compression_ratio(string, segs)
+    print("压缩率：", ratio)
 ```
 
 ### 附录 6：BPE tokenizer 简易训练
 
 
 ```python
-   import regex
-   from collections import Counter
+import regex
+from collections import Counter
 
-   # DeepSeek风格正则
-   DEEPSEEK_REGEX = r"\p{L}+|\p{N}+|[^\p{L}\p{N}\s]+|\s+"
+# DeepSeek风格正则
+DEEPSEEK_REGEX = r"\p{L}+|\p{N}+|[^\p{L}\p{N}\s]+|\s+"
 
-   # 使用grapheme cluster保持emoji不被拆分
-   def split_graphemes(token):
-       return tuple(regex.findall(r'\X', token))
+# 使用grapheme cluster保持emoji不被拆分
+def split_graphemes(token):
+    return tuple(regex.findall(r'\X', token))
 
-   # BPE训练函数
-   def train_bpe(texts, num_merges=50):
-       """
-       texts: 文本列表（用于训练BPE）
-       num_merges: BPE 迭代合并的次数
-       """
-       # 1.构建初始vocab（字符级+</w>结束符）
-       vocab = Counter()
-       for text in texts:
-           tokens = regex.findall(DEEPSEEK_REGEX, text)
-           for token in tokens:
-               chars = split_graphemes(token) + ('</w>',)
-               vocab[chars] += 1
-       merges = []
-       for _ in range(num_merges):
-           # 统计相邻pair出现次数
-           pairs = Counter()
-           for word, freq in vocab.items():
-               for i in range(len(word)-1):
-                   pairs[(word[i], word[i+1])] += freq
-           if not pairs:
-               break
+# BPE训练函数
+def train_bpe(texts, num_merges=50):
+    """
+    texts: 文本列表（用于训练BPE）
+    num_merges: BPE 迭代合并的次数
+    """
+    # 1.构建初始vocab（字符级+</w>结束符）
+    vocab = Counter()
+    for text in texts:
+        tokens = regex.findall(DEEPSEEK_REGEX, text)
+        for token in tokens:
+            chars = split_graphemes(token) + ('</w>',)
+            vocab[chars] += 1
+    merges = []
+    for _ in range(num_merges):
+        # 统计相邻pair出现次数
+        pairs = Counter()
+        for word, freq in vocab.items():
+            for i in range(len(word)-1):
+                pairs[(word[i], word[i+1])] += freq
+        if not pairs:
+            break
 
-           # 找到最常见pair
-           best_pair = max(pairs, key=pairs.get)
-           merges.append(best_pair)
+        # 找到最常见pair
+        best_pair = max(pairs, key=pairs.get)
+        merges.append(best_pair)
 
-           # 合并所有vocab中的该pair
-           new_vocab = {}
-           for word, freq in vocab.items():
-               w = []
-               i = 0
-               while i < len(word):
-                   if i < len(word)-1 and (word[i], word[i+1]) == best_pair:
-                       w.append(word[i]+word[i+1])
-                       i += 2
-                   else:
-                       w.append(word[i])
-                       i += 1
-               new_vocab[tuple(w)] = freq
-           vocab = new_vocab
-       return merges, vocab
+        # 合并所有vocab中的该pair
+        new_vocab = {}
+        for word, freq in vocab.items():
+            w = []
+            i = 0
+            while i < len(word):
+                if i < len(word)-1 and (word[i], word[i+1]) == best_pair:
+                    w.append(word[i]+word[i+1])
+                    i += 2
+                else:
+                    w.append(word[i])
+                    i += 1
+            new_vocab[tuple(w)] = freq
+        vocab = new_vocab
+    return merges, vocab
 
-   # BPE Tokenizer类
-   class BPETokenizer:
-       def __init__(self, merges):
-           self.merges = merges
+# BPE Tokenizer类
+class BPETokenizer:
+    def __init__(self, merges):
+        self.merges = merges
 
-       def encode_word(self, token):
-           # 初始分成字符+</w>
-           word = list(split_graphemes(token)) + ['</w>']
-           # 按merge顺序依次合并
-           for pair in self.merges:
-               i = 0
-               new_word = []
-               while i < len(word):
-                   if i < len(word)-1 and (word[i], word[i+1]) == pair:
-                       new_word.append(word[i]+word[i+1])
-                       i += 2
-                   else:
-                       new_word.append(word[i])
-                       i += 1
-               word = new_word
-           return word
+    def encode_word(self, token):
+        # 初始分成字符+</w>
+        word = list(split_graphemes(token)) + ['</w>']
+        # 按merge顺序依次合并
+        for pair in self.merges:
+            i = 0
+            new_word = []
+            while i < len(word):
+                if i < len(word)-1 and (word[i], word[i+1]) == pair:
+                    new_word.append(word[i]+word[i+1])
+                    i += 2
+                else:
+                    new_word.append(word[i])
+                    i += 1
+            word = new_word
+        return word
 
-       def encode(self, text):
-           tokens = regex.findall(DEEPSEEK_REGEX, text)
-           bpe_tokens = []
-           for t in tokens:
-               bpe_tokens.extend(self.encode_word(t))
-           return bpe_tokens
+    def encode(self, text):
+        tokens = regex.findall(DEEPSEEK_REGEX, text)
+        bpe_tokens = []
+        for t in tokens:
+            bpe_tokens.extend(self.encode_word(t))
+        return bpe_tokens
 
-       def decode(self, tokens):
-           # 拼接tokens并去掉结尾</w>
-           text = ''.join(tokens).replace('</w>', '')
-           return text
+    def decode(self, tokens):
+        # 拼接tokens并去掉结尾</w>
+        text = ''.join(tokens).replace('</w>', '')
+        return text
 
-   # 测试
-   if __name__ == "__main__":
-       train_texts = ["这只猫🐈很可爱", "the quick brown fox jumps over the lazy 🐕‍🦺"]
-       merges, vocab = train_bpe(train_texts, num_merges=20)
-       print("BPE合并:", merges)
-       tokenizer = BPETokenizer(merges)
-       test_text = "敏捷的棕色狐狸🦊"
-       encoded = tokenizer.encode(test_text)
-       print("编码:", encoded)
-       decoded = tokenizer.decode(encoded)
-       print("解码:", decoded)
+# 测试
+if __name__ == "__main__":
+    train_texts = ["这只猫🐈很可爱", "the quick brown fox jumps over the lazy 🐕‍🦺"]
+    merges, vocab = train_bpe(train_texts, num_merges=20)
+    print("BPE合并:", merges)
+    tokenizer = BPETokenizer(merges)
+    test_text = "敏捷的棕色狐狸🦊"
+    encoded = tokenizer.encode(test_text)
+    print("编码:", encoded)
+    decoded = tokenizer.decode(encoded)
+    print("解码:", decoded)
 ```
 
 ### 附录 7：DeepSeek 风格的 Tokenizer 简易实现示例

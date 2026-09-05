@@ -215,7 +215,7 @@ $$
 
 实际数据收集比公式复杂。标注者是否理解任务、是否检查事实、是否偏好长回答、是否来自特定文化和职业背景，都会改变 reward model 学到的价值函数。
 
-这套 RM + PPO 的两段式范式最早由 [Stiennon et al., 2020, *Learning to summarize from human feedback*, NeurIPS 2020, arXiv:2009.01325](https://arxiv.org/abs/2009.01325) 在摘要任务上给出，并附带完整标注指南；[InstructGPT, arXiv:2203.02155](https://arxiv.org/abs/2203.02155) 把它扩展到通用指令跟随。[Bai et al., 2022, *Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback* (Anthropic HH), arXiv:2204.05862](https://arxiv.org/abs/2204.05862) 补上了安全标注的组织方式，[Bai et al., 2022, *Constitutional AI: Harmlessness from AI Feedback*, arXiv:2212.08073](https://arxiv.org/abs/2212.08073) 把打标主体换成模型本身。这几份材料连同后续开源数据共同说明，偏好数据本身也是模型行为的一部分。
+这套 RM + PPO 的两段式范式最早由 [Stiennon et al., 2020, *Learning to Summarize from Human Feedback*, NeurIPS 2020, arXiv:2009.01325](https://arxiv.org/abs/2009.01325) 在摘要任务上给出，并附带完整标注指南；[InstructGPT, arXiv:2203.02155](https://arxiv.org/abs/2203.02155) 把它扩展到通用指令跟随。[Bai et al., 2022, *Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback* (Anthropic HH), arXiv:2204.05862](https://arxiv.org/abs/2204.05862) 补上了安全标注的组织方式，[Bai et al., 2022, *Constitutional AI: Harmlessness from AI Feedback*, arXiv:2212.08073](https://arxiv.org/abs/2212.08073) 把打标主体换成模型本身。这几份材料连同后续开源数据共同说明，偏好数据本身也是模型行为的一部分。
 
 ### 12.4.2 PPO 在语言模型中的作用
 
@@ -405,7 +405,7 @@ $$
 
 图 12.5-4 描述代理奖励和真实偏好逐渐分离的现象。训练早期，reward model 分数和人类偏好通常一起上升；训练继续进行后，模型可能利用 reward model 的漏洞，代理奖励继续提高，人类偏好胜率停滞或下降。
 
-[Gao et al., 2022, *Scaling Laws for Reward Model Overoptimization*, arXiv:2210.10760](https://arxiv.org/abs/2210.10760) §2.1 给出这条曲线的量化拟合：用一个 6B 的 "gold RM"（取自 InstructGPT 的偏好模型）生成 100,000 组合成比较数据（其中 10% 留作测试），再用这批标签训练 3M 到 3B 的 proxy RM，把 gold reward 与 proxy reward 的差距拟合成 KL 距离和 proxy RM 规模的函数。§4.5 同时声明该设置不覆盖"ground truth 标签与真实人类意图不一致"引起的过优化。
+[Gao et al., 2022, *Scaling Laws for Reward Model Overoptimization*, arXiv:2210.10760](https://arxiv.org/abs/2210.10760) §2.1 给出这条曲线的量化拟合：用一个 6B 的 "gold RM"（取自 InstructGPT 的偏好模型）生成 100,000 组合成比较数据（其中 10% 留作测试），再用这批标签训练 3M 到 3B 的 proxy RM，然后把 gold RM 评分随优化步数的变化拟合成策略到初始策略的 KL 散度（准确说是 $d = \sqrt{D_{\mathrm{KL}}}(\pi \Vert \pi_{\mathrm{init}})$）与 proxy RM 规模的函数。§4.5 同时声明该设置不覆盖"ground truth 标签与真实人类意图不一致"引起的过优化。
 
 [Dubois et al., 2023, *AlpacaFarm: A Simulation Framework for Methods that Learn from Human Feedback*, arXiv:2305.14387](https://arxiv.org/abs/2305.14387) §4.3 Figure 5 从另一个角度补上噪声维度：在真实人类偏好和 AlpacaFarm 带标注方差的模拟偏好下，胜率都会先升后降复现出过优化；换成方差很低的 GPT-4 直接偏好后，过优化消失。两篇合起来支持一个工程结论：过优化的强度取决于奖励源的噪声结构，同一套 RLHF 算法在不同奖励源上会给出不同的过优化曲线。
 
@@ -428,7 +428,7 @@ mode collapse 是另一类副作用。经过强偏好优化后，模型可能减
 ## 来源与更新记录
 
 - 论文与技术报告：
-  - [Stiennon et al., 2020, *Learning to summarize from human feedback*, NeurIPS 2020, arXiv:2009.01325](https://arxiv.org/abs/2009.01325) — RM + PPO 两段式 RLHF 范式源头
+  - [Stiennon et al., 2020, *Learning to Summarize from Human Feedback*, NeurIPS 2020, arXiv:2009.01325](https://arxiv.org/abs/2009.01325) — RM + PPO 两段式 RLHF 范式源头
   - [Ouyang et al., 2022, *Training language models to follow instructions with human feedback* (InstructGPT), arXiv:2203.02155](https://arxiv.org/abs/2203.02155)
   - [Bai et al., 2022, *Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback* (Anthropic HH), arXiv:2204.05862](https://arxiv.org/abs/2204.05862)
   - [Bai et al., 2022, *Constitutional AI: Harmlessness from AI Feedback*, arXiv:2212.08073](https://arxiv.org/abs/2212.08073)

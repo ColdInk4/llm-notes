@@ -52,7 +52,7 @@ $$
 
 *图 2.1-1 H100 数值细览*
 
-但是要注意，这个值是 NVIDIA H100 GPU 在使用 FP16 或 BF16 数据类型、且启用结构化稀疏（Structured Sparsity）时可达到的理论最大计算吞吐量（[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)）。训练普通的未结构化稀疏稠密 Transformer 时，通常应按 dense 峰值估算，约为稀疏峰值的一半，即约 989.5 TFLOP/s。
+但是要注意，这个值是 NVIDIA H100 GPU 在使用 FP16 或 BF16 数据类型、且启用结构化稀疏（Structured Sparsity）时可达到的理论最大计算吞吐量（[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)）。训练普通的稠密 Transformer（dense，无结构化稀疏）时，应按 dense 峰值估算，约为稀疏峰值的一半，即约 989.5 TFLOP/s。
 
 ![图 2.1-2 H100 性能明细](images/2-1-2-h100-performance-details.png)
 
@@ -705,7 +705,7 @@ actual_flop_per_sec = actual_num_flops / actual_time  # 实际每秒能完成多
 promised_flop_per_sec = get_promised_flop_per_sec(x.dtype)  # 获取硬件的理论峰值性能
 ```
 
-`get_promised_flop_per_sec(dtype)` 只接收 dtype；设备信息在函数内部通过 `torch.cuda.get_device_properties(cuda_if_available())` 取得。它按 GPU 名称匹配 **A100 / H100 / B200** 三个分支，再按 `float32 / bf16 / fp16` 返回不同的理论峰值：A100 是 19.5 / 312 TFLOP/s，H100 是 67.5 / 989.5 TFLOP/s（NVIDIA H100 产品页把 FP32 标为 67 TFLOPS，课件 helper 取整到 67.5；1979 是稀疏口径，dense 取一半），B200 是 75 TFLOP/s / 2.25 PFLOP/s；GPU 名称不落在这三个分支时返回 `None`，由调用方处理。H200 走的就是这条回退路径，数字可以直接复用 H100 分支：它沿用 Hopper SM 与 FP8/FP16 路径，BF16 Tensor Core 同样是 1,979 TFLOPS（含稀疏）、dense 989.5 TFLOP/s，差异在于显存换成 141 GB HBM3e、带宽抬到 4.8 TB/s（[NVIDIA H200 产品页](https://www.nvidia.com/en-us/data-center/h200/)，查阅日期 2026-09-03）。
+`get_promised_flop_per_sec(dtype)` 只接收 dtype；设备信息在函数内部通过 `torch.cuda.get_device_properties(cuda_if_available())` 取得。它按 GPU 名称匹配 **A100 / H100 / B200** 三个分支，再按 `float32 / bf16 / fp16` 返回不同的理论峰值：A100 是 19.5 / 312 TFLOP/s，H100 是 67.5 / 989.5 TFLOP/s（NVIDIA H100 产品页把 FP32 标为 67 TFLOPS，CS336 代码讲义中的 `get_promised_flop_per_sec` 取整到 67.5；1979 是稀疏口径，dense 取一半），B200 是 75 TFLOP/s / 2.25 PFLOP/s；GPU 名称不落在这三个分支时返回 `None`，由调用方处理。H200 走的就是这条回退路径，数字可以直接复用 H100 分支：它沿用 Hopper SM 与 FP8/FP16 路径，BF16 Tensor Core 同样是 1,979 TFLOPS（含稀疏）、dense 989.5 TFLOP/s，差异在于显存换成 141 GB HBM3e、带宽抬到 4.8 TB/s（[NVIDIA H200 产品页](https://www.nvidia.com/en-us/data-center/h200/)，查阅日期 2026-09-03）。
 
 这个 helper 体现的是一个实用工程习惯：同样的 FLOPs 公式可以复用，但换到不同代际 GPU 时，峰值算力、带宽和低精度路径都要重新代入。
 
@@ -941,7 +941,7 @@ output = x @ w # 输出向量
 ```
 当输入与权重都用 `torch.randn`（即 `x_j ~ N(0,1)`、`W_{ij} ~ N(0,1)`）独立采样时，$y_i = \sum_j W_{ij} x_j$ 的方差满足 $\mathrm{Var}(y_i) = \sum_j \mathrm{Var}(W_{ij})\mathrm{Var}(x_j) = n$（[Goodfellow et al. *Deep Learning* §8.4 Parameter Initialization Strategies](https://www.deeplearningbook.org/contents/optimization.html)），所以 `output` 的标准差为 $\sqrt{n} = \sqrt{\text{input\_dim}}$。例如 `input_dim = 16384` 时 `output` 标准差约为 128，远大于 `x` 的标准差 1，会逐层放大导致梯度爆炸（gradient explosion），使训练过程变得极不稳定，甚至无法收敛。
 
-为了克服这个问题，需要一种对输入维度 `input_dim` 不敏感的初始化方法。课件代码采用按 fan-in 缩放：权重除以输入维度的平方根 $\sqrt{d_{\text{in}}}$ ，把 $\mathrm{Var}(y_i)$ 拉回 $O(1)$ 。这里的 $d_{\text{in}}$ 对应代码里的 `input_dim`。
+为了克服这个问题，需要一种对输入维度 `input_dim` 不敏感的初始化方法。CS336 代码讲义采用按 fan-in 缩放：权重除以输入维度的平方根 $\sqrt{d_{\text{in}}}$ ，把 $\mathrm{Var}(y_i)$ 拉回 $O(1)$ 。这里的 $d_{\text{in}}$ 对应代码里的 `input_dim`。
 
 区分两个容易混用的名字： $W_{ij} \sim U[-1/\sqrt{n}, 1/\sqrt{n}]$ 这种只看 fan-in 的缩放，在 Glorot 与 Bengio 的论文里叫 **standard initialization**（式 1），是他们用作对照的基线；论文提出的 **Xavier / Glorot 初始化**（式 16）同时兼顾前向激活方差与反向梯度方差，取
 
@@ -949,7 +949,7 @@ $$
 W \sim U\left[-\sqrt{\frac{6}{n_{\text{in}} + n_{\text{out}}}},\ \sqrt{\frac{6}{n_{\text{in}} + n_{\text{out}}}}\right]
 $$
 
-PyTorch 的 `nn.init.xavier_uniform_` 就按 $a = \text{gain} \times \sqrt{6 / (\text{fan\_in} + \text{fan\_out})}$ 取均匀分布边界。当 $n_{\text{in}} = n_{\text{out}}$（本节 `Linear(dim, dim)` 的情形）时两者只差一个常数因子 $\sqrt{3}$ ，所以课件的 $1/\sqrt{d_{\text{in}}}$ 写法在数量级上等价。
+PyTorch 的 `nn.init.xavier_uniform_` 就按 $a = \text{gain} \times \sqrt{6 / (\text{fan\_in} + \text{fan\_out})}$ 取均匀分布边界。当 $n_{\text{in}} = n_{\text{out}}$（本节 `Linear(dim, dim)` 的情形）时两者只差一个常数因子 $\sqrt{3}$ ，所以按 $1/\sqrt{d_{\text{in}}}$ 缩放在数量级上等价。
 
 相关资料可见 [Xavier 初始化论文](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf) 和 [Stack Exchange 讨论](https://ai.stackexchange.com/questions/30491/is-there-a-proper-initialization-technique-for-the-weight-matrices-in-multi-head)。
 
@@ -1486,6 +1486,11 @@ class CruncherCheckpointed(nn.Module):
 - CS336 Lecture 2 `lecture_02.py`（resource accounting 主线、`get_promised_flop_per_sec` / `AdaGrad` / `DeepNetwork` 代码）。
 - [NVIDIA H100 Tensor Core GPU 产品页](https://www.nvidia.com/en-sg/data-center/h100/)：H100 SXM FP16/BF16 Tensor Core 1,979 TFLOPS（含稀疏）、FP32 67 TFLOPS、显存带宽 3.35 TB/s，查阅日期 2026-09-03。
 - [NVIDIA H200 产品页](https://www.nvidia.com/en-us/data-center/h200/)：141 GB HBM3e、4.8 TB/s、BF16 Tensor Core 1,979 TFLOPS，查阅日期 2026-09-03。
+- [NVIDIA HGX B200 datasheet](https://www.nvidia.com/en-us/data-center/hgx/dgx-blackwell-datasheet/)：B200 FP32 75 TFLOPS、BF16 Tensor 2.25 PFLOPS dense / 4.5 PFLOPS sparse、180 GB HBM3e、7.7 TB/s，查阅日期 2026-09-03。
+- [Nemotron 3 Super, arXiv:2604.12374](https://arxiv.org/abs/2604.12374)：NVFP4 全程预训练 25T token 的首个生产级模型，查阅日期 2026-09-03。
+- [FP8-LM, arXiv:2310.18313](https://arxiv.org/abs/2310.18313)：Microsoft 提出的 FP8 大模型训练框架，查阅日期 2026-09-03。
+- [FP8 Formats for Deep Learning, arXiv:2209.05433](https://arxiv.org/abs/2209.05433)：Micikevicius et al. 2022 NVIDIA FP8 E4M3/E5M2 格式规范，查阅日期 2026-09-03。
+- [Mixed Precision Training, arXiv:1710.03740](https://arxiv.org/abs/1710.03740)：Micikevicius et al. 2018 半精度训练策略，查阅日期 2026-09-03。
 - [Glorot & Bengio 2010](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf)：式 1 standard initialization 与式 16 normalized（Xavier / Glorot）initialization，查阅日期 2026-09-03。
 - [Goodfellow et al. *Deep Learning* §8.4](https://www.deeplearningbook.org/contents/optimization.html)：参数初始化策略与式 8.23，查阅日期 2026-09-03。
 - [LLaMA, arXiv:2302.13971](https://arxiv.org/abs/2302.13971) Table 1：预训练数据各子集磁盘大小，查阅日期 2026-09-03。

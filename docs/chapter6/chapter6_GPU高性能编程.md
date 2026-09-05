@@ -63,7 +63,7 @@ GPU 高性能编程先从一条可复用的排查链开始：
 *表 6.2 A100/H100/B200 内存带宽数量级*
 
 > [!NOTE]
-> **Hopper 与 Blackwell 在 memory hierarchy 上的两个新硬件特征**：(1) **Tensor Memory (TMEM，B200 only)**——Blackwell 在 Tensor Core 旁新增一组张量专用内存，容量 256 KB/SM，按 128 lane × 512 column 的 32-bit 单元组织；`tcgen05.mma` 的累加器直接驻留在 TMEM 上，无需立刻写回 shared memory 或 HBM。TMEM 由 kernel 用 `tcgen05.alloc` 显式分配、`tcgen05.dealloc` 显式释放，分配与释放由 `tcgen05.relinquish_alloc_permit` 协调许可，且分配与释放须由同一个 warp 发起（[CUDA PTX ISA §9.7.17.1 Tensor Memory](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#tensor-memory)；[`tcgen05.alloc` / `tcgen05.dealloc` 见 §9.7.17.7.1](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html)）。(2) **Thread Block Cluster（H100 9.0+ 与 B200）**——允许把多个 thread block 编为一个 cluster，cluster 内的 block 可以跨 SM 直接访问彼此的 distributed shared memory（[CUDA PTX ISA §2.2.2 Thread Block Clusters](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#thread-block-clusters)），相当于把共享内存域从单 SM 扩大到 2-8 个 SM；这一特性从 Hopper 起就引入，Blackwell 沿用并扩展。TMEM 触发 Blackwell 专属的 kernel 设计模式（TMEM-resident mma、persistent kernels）；cluster 是 Hopper 与 Blackwell 都可用的 grid 调度扩展，对应 cluster-level tile 等模式。在 PTX 层，`tcgen05.alloc` / `tcgen05.dealloc` 直接暴露给程序员；但默认编程模型（CUDA C++、Triton、TorchInductor）下不需要显式管理 TMEM，编译器在 `tcgen05.mma` 调用前后自动完成分配与释放。
+> **Hopper 与 Blackwell 在 memory hierarchy 上的两个新硬件特征**：(1) **Tensor Memory (TMEM，Blackwell 数据中心型号 B200/GB200)**——在 Tensor Core 旁新增一组张量专用内存，容量 256 KB/SM，按 128 lane × 512 column 的 32-bit 单元组织，$128 \times 512 \times 4 \text{ B} = 256 \text{ KB}$。`tcgen05.mma` 的累加器直接驻留在 TMEM 上，无需立刻写回 shared memory 或 HBM。TMEM 由 kernel 用 `tcgen05.alloc` 显式分配、`tcgen05.dealloc` 显式释放，两条指令必须由同一个 warp 集体发起；`tcgen05.relinquish_alloc_permit` 表示当前 CTA 不再发起新的 `tcgen05.alloc`，本身不负责 alloc/dealloc 配对——cluster 中两个 peer CTA 之间的 alloc/dealloc 协同通过各自对应的 warp 同步执行完成（[CUDA PTX ISA §9.7.17.1 Tensor Memory](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#tensor-memory)；[`tcgen05.alloc` / `tcgen05.dealloc` 见 §9.7.17.7.1](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html)）。(2) **Thread Block Cluster（H100 9.0+ 与 B200）**——允许把多个 thread block 编为一个 cluster，cluster 内的 block 可跨 SM 直接访问彼此的 distributed shared memory（[CUDA PTX ISA §2.2.2 Thread Block Clusters](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#thread-block-clusters)），共享内存域从单 SM 扩展到 portable cluster size 8 个 SM；若开启 `cudaFuncAttributeNonPortableClusterSizeAllowed`，可进一步扩展到 16 个 SM；这一特性自 Hopper 引入，Blackwell 沿用并扩展。TMEM 触发 Blackwell 专属的 kernel 设计模式（TMEM-resident mma、persistent kernels）；cluster 是 Hopper 与 Blackwell 都可用的 grid 调度扩展，对应 cluster-level tile 等模式。在 PTX 层，`tcgen05.alloc` / `tcgen05.dealloc` 直接暴露给程序员；默认编程模型（CUDA C++、Triton、TorchInductor）下不需要显式管理 TMEM，编译器在 `tcgen05.mma` 调用前后自动完成分配与释放。
 
 CUDA / Triton 的基础并行模型可以写成三层：
 
@@ -328,7 +328,7 @@ def triton_softmax(x: torch.Tensor):
     return y
 ```
 
-Kernel 内部和朴素 softmax 的数学结构很像，但访存结构完全不同。朴素 PyTorch 会经历 row max、减 max、`exp`、row sum、除法等多个 op，每一步都可能形成独立 kernel 和中间张量；按 CS336 Lecture 6 `lecture_06.py` 的内存账本（接近行 batch $M$ 序列维度 $N$）：朴素实现共 $5MN + M$ 次 HBM 读和 $3MN + 2M$ 次 HBM 写，Triton fused softmax 把整条流水线收敛到每行约一次读加一次写，访存次数相应大幅降低。Triton fused softmax 把一行读入后，把 max/sum reduction 和 normalize 尽量留在同一个 program 内完成。
+Kernel 内部和朴素 softmax 的数学结构很像，但访存结构完全不同。朴素 PyTorch 会经历 row max、减 max、`exp`、row sum、除法等多个 op，每一步都可能形成独立 kernel 和中间张量。以行数 $M$、列数 $N$ 为账本：朴素实现共 $5MN + M$ 次 HBM 读和 $3MN + 2M$ 次 HBM 写，访存量随 $M$ 和 $N$ 增长接近 8 倍于"每行一次读、一次写"的理想值。Triton fused softmax 把一行读入后，把 max/sum reduction 和 normalize 尽量留在同一个 program 内完成，把整条流水线收敛到每行约一次读加一次写。
 
 ```python
 @triton.jit

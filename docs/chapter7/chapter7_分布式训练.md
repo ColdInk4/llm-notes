@@ -112,7 +112,11 @@ TPU 和 GPU 的通信设计体现了两种不同取向。TPU 的经典路线更�
 
 因此，讨论分布式训练时要同时看 GPU 数量和连接方式：同一节点内是否有 NVLink / NVSwitch，跨节点是 InfiniBand 还是 RoCE，是否存在更大的高速通信域。这些拓扑会直接决定 TP、SP、CP、EP 这类高频通信能不能承受。
 
-如果看 Hopper/H100，每张卡 18 条 NVLink4 link，合计 900 GB/s（[NVIDIA NVLink 规格表](https://www.nvidia.com/en-us/data-center/nvlink/) 第四代 NVLink：每 GPU 18 link / 900 GB/s），折算每 link 50 GB/s；B200/Blackwell 视角下还会看到**单张 Blackwell GPU HBM 约 8 TB/s**（[GB200 NVL72](https://www.nvidia.com/en-us/data-center/gb200-nvl72/) spec sheet：整机架 72 GPU 合计 13.4 TB HBM3E，折合每张 GPU 186 GB / 8 TB/s；GB200 superchip 标称的 372 GB、16 TB/s 是一个 Grace CPU 配 2 张 Blackwell GPU 的合计值）和更大的 NVLink 域（[HGX B200 数据表](https://www.nvidia.com/en-us/data-center/hgx-b200/)）。这些数字的意义在于建立量级感：**跨卡通信虽然快了很多，但仍慢于片上 SRAM/L1/L2 访问，因此并行策略必须和拓扑一起设计。**
+如果看 Hopper/H100，每张卡 18 条 NVLink4 link，合计 900 GB/s（[NVIDIA NVLink 规格表](https://www.nvidia.com/en-us/data-center/nvlink/) 第四代 NVLink：每 GPU 18 link / 900 GB/s），折算每 link 50 GB/s。
+
+B200/Blackwell 视角下还会看到**单张 Blackwell GPU HBM 约 8 TB/s**（[GB200 NVL72](https://www.nvidia.com/en-us/data-center/gb200-nvl72/) spec sheet：整机架 72 GPU 合计 13.4 TB HBM3E；GB200 superchip 标称的 372 GB、16 TB/s 是一个 Grace CPU 配 2 张 Blackwell GPU 的合计值）和更大的 NVLink 域（[HGX B200 数据表](https://www.nvidia.com/en-us/data-center/hgx-b200/)）。
+
+这些数字的意义在于建立量级感：**跨卡通信虽然快了很多，但仍慢于片上 SRAM/L1/L2 访问，因此并行策略必须和拓扑一起设计。**
 
 ### 7.1.5 NCCL 与 `torch.distributed` 的层次
 
@@ -1239,7 +1243,7 @@ Megatron 的 MoE parallel folding 体现了这种解耦：attention layers 可�
 
 *图 7.10-4 Narayanan 论文*
 
-Narayanan 2021 的实验（[arXiv:2104.04473](https://arxiv.org/abs/2104.04473)，*Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM*）展示了从 10 亿到 1 万亿参数（1B / 4.2B / 22.4B / 175B / 530B / 1T）模型的 3D 并行配置。表格说明：随着模型变大，单靠 DP 不够，需要逐步增加 TP 和 PP；但只要组合得当，模型 FLOPs utilization 仍能维持在较高区间。
+Narayanan 2021 的实验（[arXiv:2104.04473](https://arxiv.org/abs/2104.04473)，*Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM*）展示了从 17 亿到 1 万亿参数（1.7B / 3.6B / 7.5B / 18B / 39B / 76B / 145B / 310B / 530B / 1T）模型的 3D 并行配置；论文另以 GPT-3 175B 作为参照配置。表格说明：随着模型变大，单靠 DP 不够，需要逐步增加 TP 和 PP；但只要组合得当，模型 FLOPs utilization 仍能维持在较高区间。
 
 ![图 7.10-5 3D 并行的收益](images/7-10-5-3d-parallelism-benefit.png)
 
@@ -1274,10 +1278,10 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 | Llama 3 405B (标准上下文) | 8 | 16 | 1 | 0 | 64 或 128 | - | CP=1；DP=64 / 128 ([Llama 3 paper Table 4](https://arxiv.org/abs/2407.21783)) |
 | Llama 3 405B (128K long-context) | 8 | 16 | 16 | 0 | 8 | - | 长上下文阶段 CP=16，DP=8 ([Llama 3 paper Table 4](https://arxiv.org/abs/2407.21783), 16,384 GPUs / 131,072 seq len) |
 | DeepSeek V3 | 1 | 16 | - | 64 | - | ZeRO-1 | 16-way PP + 64-way EP（跨 8 节点）+ ZeRO-1 DP，TP 压到 1；§3.2 Training Framework 写明 "without using costly Tensor Parallelism (TP)"，DualPipe 与跨节点 all-to-all kernel 见 §3.2.1、§3.2.2（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437)） |
-| Mixtral 8x22 | 2 | 8 | 1 | 8 | 8 | - | TP=2 / PP=8 / CP=1 / EP=8 / VPP=7，16 节点 128 GPU（DP=8）；来自社区维护的 [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) `runtime_configs/benchmarking/runtime.conf` benchmarking recipe，构建在 Megatron-Core 之上 |
+| Mixtral 8x22 | 2 | 8 | 1 | 8 | 1 | - | TP=2 / PP=8 / CP=1 / EP=8 / VPP=7，16 节点 128 GPU（DP=1，TP×PP×EP 占满 128 卡）；来自社区维护的 [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) `runtime_configs/benchmarking/runtime.conf` benchmarking recipe，构建在 Megatron-Core 之上 |
 | Nemotron 3 Super 120B-A12B | ? | ? | ? | ? | ? | - | 模型已公开（[nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8)，120B 总参 / 12B 激活，2026-03-11），model card 只给部署侧 TP/EP；家族论文 [NVIDIA Nemotron 3, arXiv:2512.20856](https://arxiv.org/abs/2512.20856) 描述 LatentMoE 架构与 NVFP4 训练，训练侧并行度放在单独的 Nemotron 3 Super 技术报告 |
 | Gemma 2 27B | 8 | 0 | 0 | 0 | 768 | ZeRO-3 类 | [arXiv:2408.00118](https://arxiv.org/abs/2408.00118) Table 3：6,144 颗 TPUv5p，768-way data 分片 + 8-way model 分片，optimizer state 另按类 ZeRO-3 方式分片（2B 为 512 chips / 512×1，9B 为 4,096 chips / 1,024×4） |
-| Qwen 3 235B-A22B | 2 | 8 | 1 | 32 | 16 | - | 官方 [arXiv:2505.09388](https://arxiv.org/abs/2505.09388) 与 HF model card 未公开原训练并行度；以上数值来自同一份社区 [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) benchmarking recipe，32 节点 256 GPU，VPP=4，并非阿里原训练配置 |
+| Qwen 3 235B-A22B | 2 | 8 | 1 | 32 | ? | - | 官方 [arXiv:2505.09388](https://arxiv.org/abs/2505.09388) 与 HF model card 未公开原训练并行度；以上 TP/PP/CP/EP 数值来自社区 [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) `runtime_configs/benchmarking/runtime.conf` benchmarking recipe（VPP=4，32 节点 256 GPU）。TP×PP×CP×EP=512 已超过 256 卡总数，公开 recipe 在 MoE 层引入 ETP/EDP 或专家共享以使总卡数对齐，具体数值未在仓库 README 给出；本行并非阿里原训练配置 |
 
 > **校准说明**：表中数值仅来自公开论文 / 官方模型卡 / config.json；标 `?` 的字段在公开材料中未给出，不在此处凭手感补全。表中所有行仅作为并行方案示例，不构成任何模型团队的官方部署推荐配置。
 
@@ -1317,4 +1321,4 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
   - [nccl-tests `doc/PERFORMANCE.md`](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md) — algorithm bandwidth $S/t$ 与 bus bandwidth 的修正系数（all-reduce $2(n-1)/n$ ，reduce-scatter / all-gather $(n-1)/n$ ）由 benchmark 侧计算；同一套公式见 lecture 引用的 [`all_reduce_bench.py`](https://github.com/stas00/ml-engineering/blob/master/network/benchmarks/all_reduce_bench.py)（`busbw_coeff = (2*(ranks - 1) / ranks)`）。
   - Liu et al., *MoE Parallel Folding*, [arXiv:2504.14960](https://arxiv.org/abs/2504.14960) §3.2 — 传统映射把 EP group 放进 DP 子组，专家并行度被数据并行度上限卡住；folding 后 attention 用 TP×CP×DP×PP、MoE 用 ETP×EP×EDP×PP，只要求 PP 划分一致。
   - NVIDIA, *NVIDIA Nemotron 3: Efficient and Open Intelligence*, [arXiv:2512.20856](https://arxiv.org/abs/2512.20856) — Nemotron 3 家族的 LatentMoE 架构与 NVFP4 训练；Super 120B-A12B 的训练侧并行度不在该论文与 HF model card 内。
-  - Narayanan et al., *Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM*, [arXiv:2104.04473](https://arxiv.org/abs/2104.04473) Table 1 — 模型规模为 1B / 4.2B / 22.4B / 175B / 530B / 1T；§7.10-4 中"17 亿"已校正为"10 亿"。
+  - Narayanan et al., *Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM*, [arXiv:2104.04473](https://arxiv.org/abs/2104.04473) Table 1 — 弱扩展模型规模为 1.7B / 3.6B / 7.5B / 18B / 39B / 76B / 145B / 310B / 530B / 1T；论文正文另以 GPT-3 175B 作为参照配置。§7.10-4 引用已同步更改为 17 亿起的真实表行。

@@ -181,7 +181,7 @@ Qwen-VL 系列展示了 VLM 向更通用多模态模型演进的几个方向：�
 - 训练阶段：Qwen-VL 三阶段分别为：(1) 第一阶段 **freeze LM**，只训练 vision encoder + adaptor，使用 1.4B 清洗后图文对，224×224 分辨率；(2) 第二阶段所有参数解冻联合训练，图像分辨率提升到 448×448，加入 VQA、grounding、OCR 等 7 类任务共 ~76M 样本；(3) 第三阶段 **freeze vision encoder**，训练 adaptor + LM，使用 350K 高质量指令数据（[Qwen-VL, arXiv:2308.12966](https://arxiv.org/abs/2308.12966) §3 Training：3.1 Pre-training / 3.2 Multi-task Pre-training / 3.3 Supervised Fine-tuning）。
 - Adaptor：单层 cross-attention + 2D positional encoding，映射到固定长度 256。
 - 特殊 token：`<img>`、`<box>`、`<ref>`，用于视觉指代和定位。
-- 训练阶段：低质量数据对齐 → 高质量任务数据（高分辨率）→ 指令微调。
+- 流程主线：低质量数据对齐 → 高质量任务数据（高分辨率）→ 指令微调。
 - 引用：[arXiv 2308.12966](https://arxiv.org/abs/2308.12966)。
 
 ![图 14.5-1 Qwen2-VL 架构](images/14-5-1-qwen2-vl-architecture.png)

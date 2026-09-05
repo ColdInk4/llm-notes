@@ -84,135 +84,39 @@ GPU 的历史背景只需要抓住一条主线：它最初为图形渲染中的�
 
 后面的优化都可以沿这条链分析：先问数据从哪里来、会被读几次、能不能留在更近的内存层级；再问计算是否足够密集，能不能用 Tensor Core 或更低精度；最后才问具体 kernel 写法。FlashAttention、tiling、fusion 和 recomputation 是同一套数据移动账本上的不同操作。
 
-### 5.1.4 A100 显卡核心的构成（精简版）
+### 5.1.4 A100 芯片内部结构（精简版）
 
 ![图 5.1-3 GPU 板卡结构](images/5-1-3-gpu-board-structure.png)
 
 *图 5.1-3 GPU 板卡结构*
 
-NVIDIA A100 是数据中心纯计算 GPU，没有图形输出接口。完整的多层拆解（板卡 PCB / GA100 芯片宏观架构 / SM 内部结构 / Tensor Core 数据路径）属于板级百科，与本章主线（数据移动与片上复用）相关度较低；本节只保留对后续章节有用的三层结论：
+完整的多层拆解（板卡 PCB / GA100 芯片宏观架构 / SM 内部结构 / Tensor Core 数据路径）属于板级百科，与本章主线（数据移动与片上复用）相关度较低；本节只保留对后续章节有用的三层结论：
 
 - **顶层数字**：A100 = 108 SM × 64 FP32 core/SM + 4 Tensor Core/SM + 80 GB HBM2e + 2 TB/s HBM 带宽（与 §5.1.3 硬件表一致）。
 - **关键 SM 内部单元**：CUDA core（FP32 ALU）、Tensor Core（FP16/BF16/INT8/INT4/TF32 矩阵乘）、register file、warp scheduler、shared memory 与 L1 cache。
 - **内存层次**：HBM（global，2 TB/s） → L2 cache（40 MB） → shared memory（手动管理） → register file（每线程 255 个） → SIMT warp 调度器通过 warp 切换隐藏延迟。
 
-下面分五层把 GA100 板卡剖开，作为后续 SM / warp / shared memory 抽象的物理参照。完整多层结构图与板级实物图已收入对应 `images/` 子目录。下一节 §5.2 SM 执行模型只复用 SM / warp / shared memory 三个抽象。
+下面把 GA100 拆成三个粒度，作为后续 SM / warp / shared memory 抽象的物理参照。完整多层结构图与板级实物图已收入对应 `images/` 子目录。下一节 §5.2 SM 执行模型只复用 SM / warp / shared memory 三个抽象。
 
-#### 第一层：产品形态
-
-**PCIe 版本（常见形态）**：
-
-- **尺寸**：双槽全高，长 267 mm。
-- **功耗**：250 W（40 GB 版）/300 W（80 GB 版）。
-- **散热**：被动散热，无风扇，依赖服务器风道。
-- **接口**：PCIe 4.0 x16 金手指 + NVLink 桥接器接口。
-- **重量**：约 1.4 公斤。
-
----
-
-#### 第二层：PCB 板级组件
-
-**GA100 GPU 核心芯片**
-
-- **封装**：巨型 BGA 封装，尺寸约 $55 \text{ mm} \times 55 \text{ mm}$ 。
-- **位置**：板卡正中央，焊在 PCB 上。
-- **晶体管**：542 亿个晶体管，7 nm 工艺，面积 826 mm²。
-
-**HBM2e 显存堆栈**（革命性设计）
-不同于消费级 GPU 的 GDDR 显存颗粒，A100 采用 **3D 堆叠技术**：
-
-```
-┌─────────────────────────┐
-│   HBM2e 显存堆栈（8 层） │ ← 像个“芯片大楼”
-│  ┌─────┐┌─────┐┌─────┐  │
-│  │DRAM ││DRAM ││DRAM │  │ ← 每层 8 Gb 容量
-│  └─────┘└─────┘└─────┘  │
-│   硅通孔（TSV）垂直互联   │
-│          GPU SoC         │
-└─────────────────────────┘
-```
-
----
-
-#### 第三层：GA100 GPU 核心架构（芯片内部宏观结构）
+#### GA100 芯片宏观拓扑
 
 ![图 5.1-4 GA100 GPU 核心架构](images/5-1-4-ga100-core-architecture.png)
 
 *图 5.1-4 GA100 GPU 核心架构*
 
-Ampere 架构拓扑如下：
+A100 的宏观拓扑可以理解为四层：**GPC（Graphics Processing Cluster） → TPC（Texture Processing Cluster） → SM（Streaming Multiprocessor） → SP（Streaming Processor / CUDA core）**。一个完整 GA100 设计包含多个 GPC；每个 GPC 下有若干 TPC；每个 TPC 再包含若干 SM。
 
-```
-┌─────────────────────────────────────────┐
-│              GA100 GPU 核心             │
-│                                        │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐ │
-│  │  GPC 0  │  │  GPC 1  │  │  GPC 2  │ │
-│  │ (12 TPC)│  │ (12 TPC)│  │ (12 TPC)│ │
-│  └─────────┘  └─────────┘  └─────────┘ │
-│                                        │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐ │
-│  │  GPC 3  │  │  GPC 4  │  │  GPC 5  │ │
-│  │ (12 TPC)│  │ (12 TPC)│  │ (12 TPC)│ │
-│  └─────────┘  └─────────┘  └─────────┘ │
-│                                        │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐ │
-│  │  GPC 6  │  │  GPC 7  │  │  GPC 8  │ │
-│  │ (12 TPC)│  │ (12 TPC)│  │ (12 TPC)│ │
-│  └─────────┘  └─────────┘  └─────────┘ │
-│                                        │
-│  HBM2e 控制器 ×8  ┌─────────────────┐   │
-└───────────────────│  PCIe 4.0 ×16   │──┘
-                    └─────────────────┘
-```
+实际启用数量随 SKU 变化，A100 常见配置为 108 个 SM。按每个 SM 64 个 FP32 CUDA core 估算，常见启用配置约为 $108 \times 64 = 6912$ 个 FP32 CUDA core。A100 每个 SM 还有 4 个第三代 Tensor Core，以 108 个 SM 的常见配置估算，总计约 432 个 Tensor Core。
 
-A100 有四个层级的架构拓扑。最高层是 **GPC（Graphics Processing Cluster）**，一个完整 GA100 设计包含多个 GPC；每个 GPC 下有若干 **TPC（Texture Processing Cluster）**；每个 TPC 再包含 **SM（Streaming Multiprocessor）**。
-
-实际启用数量会随 SKU 变化，A100 常见配置为 108 个 SM。若按每个 SM 64 个 FP32 CUDA core 估算，常见启用配置约为 $108 \times 64 = 6912$ 个 FP32 CUDA core。
-
-然后是 **Tensor Core**，A100 每个 SM 有 4 个第三代 Tensor Core；以 108 个 SM 的常见配置估算，总计 432 个 Tensor Core。
-
----
-
-#### 第四层：SM（Streaming Multiprocessor，流式多处理器）内部结构
-
-A100 的 SM 是 Ampere 架构核心，相比消费级 GPU 有明显增强：
+#### SM 内部单元
 
 ![图 5.1-5 A100 SM 内部结构](images/5-1-5-sm-architecture.png)
 
 *图 5.1-5 A100 SM 内部结构*
 
-```
-┌────────────────────────────────────────┐
-│            SM（流式多处理器）           │
-│                                        │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐   │
-│  │CUDA 核心│ │CUDA 核心 │ │CUDA 核心│   │ ← FP32/INT32 单元
-│  │  ×64    │ │  ×64    │ │  ×64    │   │
-│  └─────────┘ └─────────┘ └─────────┘   │
-│                                        │
-│  ┌──────────────────────────┐          │
-│  │  第 3 代 Tensor Core ×4  │          │ ← AI 专用加速单元
-│  │  支持 FP64/TF32/FP16/INT8│          │
-│  └──────────────────────────┘          │
-│                                        │
-│  ┌──────────────────────────┐          │
-│  │      共享内存 / L1 缓存   │          │ ← 192 KB
-│  │          128 KB          │          │
-│  └──────────────────────────┘          │
-│                                        │
-│  ┌──────────────────────────┐          │
-│  │        寄存器文件         │          │ ← 256 KB
-│  │          256 KB          │          │
-│  └──────────────────────────┘          │
-└────────────────────────────────────────┘
-```
-
 **SM 的独特之处**在于它把大量 CUDA 核心、调度器、寄存器、共享内存/L1 缓存和 Tensor Core 放在同一个执行单元内。以 A100 为例，每个 SM 包含 64 个 FP32 CUDA 核心、64 个 INT32 CUDA 核心和 4 个第三代 Tensor Core；Tensor Core 支持结构化稀疏、TF32、FP16/BF16、INT8 等低精度矩阵运算，同时 A100 也具备面向 HPC 的 FP64 能力。
 
----
-
-#### 第五层：Tensor Core
+#### Tensor Core 吞吐（Ampere）
 
 | 数据类型 | 性能（全 GPU，dense 口径） | 用途 |
 |----------|-----------------------------|------|
@@ -267,25 +171,25 @@ GPU 程序通常按 **grid -> block -> warp -> thread** 的层级组织。grid �
 
 *图 5.2-3 GPU 程序可访问的内存层级*
 
-#### 1. Warp（线程束）
+#### Warp（线程束）
 
 一个 **warp** 是 32 个连续编号线程组成的固定小组，是 SM 调度指令的基本单位。warp 内线程以 SIMT 方式执行：指令相同，输入数据不同。若同一 warp 内部分线程走 `if` 分支、部分线程走 `else` 分支，硬件会用 mask 分阶段执行两条路径，形成 **warp divergence**，有效利用率下降。
 
 SM 上同时可驻留最多 **64 个 warp**（典型值，A100/H100 SM 一致），由 4 个 warp 调度器从共享的 warp 池中取指；每个周期 4 个调度器各发射 1 条指令给不同 warp，使 SM 能在数据依赖或访存等待时切换 warp 隐藏延迟。warp 内 32 个线程在 **SIMD 单元**上同步执行。
 
-#### 2. Block（线程块）
+#### Block（线程块）
 
 Block 是程序员指定的线程组，会映射到**一个 SM** 上执行。block 内线程可以访问同一块 shared memory，也可以通过同步原语协调进度。
 
 每个 block 独占 SM 的**共享内存**和**寄存器资源**；block 内所有线程必须**在同一 SM 内**执行，不能跨 SM。
 
-#### 3. Thread（线程）
+#### Thread（线程）
 
 线程是**最细粒度的执行单元**，每个线程执行同样的 kernel 代码，但操作不同数据。常见逐元素 kernel 会让每个 thread 负责一个或几个数据元素。
 
 每个线程有**私有寄存器**；线程 ID `threadIdx.x` 决定它处理哪个数据。
 
-#### 4. SIMT（单指令多线程）
+#### SIMT（单指令多线程）
 
 GPU 执行模型中，warp 内多个线程共享同一条指令，但操作不同数据。SIMT 让程序员写出接近单线程的 kernel 逻辑，同时让硬件把这套逻辑批量应用到许多数据元素上。
 
@@ -453,9 +357,9 @@ TPU 和 GPU 在高层结构上很像：都有轻量控制逻辑、矩阵乘法�
 
 TPU 的 MXU（Matrix Multiply Unit）通常是 $128 \times 128$ 的 systolic array，每个 cycle 完成一块 $128 \times 128$ 矩阵乘。配套的 Vector Unit 负责非矩阵乘法操作（LayerNorm、Softmax、embedding lookup、elementwise 算子）。"TPU TensorCore" 在很多材料里指包含 MXU + Vector Unit + 片上内存的处理器级单元；NVIDIA GPU 语境里的 Tensor Core 通常指 SM 内部的较小矩阵乘法单元（不同代际尺寸不同，例如 Hopper Tensor Core 支持 FP8）。
 
-实际计数方式也常被混淆。CS336 Lecture 5 在 TPU 段落给出的口径是：每颗 TPU v5p 芯片包含 **2 个 TensorCore**（在 TPU 语境下，"TensorCore" 指处理器级单元，约等于 GPU 的 SM），每个 TensorCore 内部含 **4 个 MXU**（Matrix Multiply Unit，$128 \times 128$ systolic array）、1 个 Vector Unit 和 1 个 Scalar Unit，合计**每个 TensorCore 共 6 个单元、每芯片 12 个单元**。这与"一颗 H100 = 132 SM × 528 Tensor Core（矩阵乘法单元）" 的多而小路线形成对照：TPU 走"少而大"，GPU 走"多而小"。看到"TFLOP/s"时需要先确认它是按 MXU 周期计算还是按 SM 整体平均计算，二者差几个数量级。Google Cloud TPU v5p 系统架构页确认每芯片 2 个 TensorCore、每个 TensorCore 4 个 MXU，可与课件字幕（sources/captions/lecture_05.md line 175–183）相互印证。
+实际计数方式也常被混淆。每颗 TPU v5p 芯片包含 **2 个 TensorCore**（TPU 语境下，"TensorCore" 指处理器级单元，约等于 GPU 的 SM），每个 TensorCore 内部含 **4 个 MXU**（$128 \times 128$ systolic array）、1 个 Vector Unit 和 1 个 Scalar Unit，合计**每个 TensorCore 共 6 个单元、每芯片 12 个单元**（[Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p)）。这与"一颗 H100 = 132 SM × 528 Tensor Core（矩阵乘法单元）" 的多而小路线形成对照：TPU 走"少而大"，GPU 走"多而小"。看到"TFLOP/s"时需要先确认它是按 MXU 周期计算还是按 SM 整体平均计算，二者差几个数量级。
 
-Canonical batch floor 也由 MXU 形状决定：$128 \times 128$ 的 systolic array 要求输入张量至少有一维是 128 的倍数；不足时 MXU 会被 padding 填满，浪费算力。Google Cloud TPU 性能文档明确把"batch size 64 整倍数 + feature dim 128 整倍数"列为高效 MXU 利用的硬性 padding 要求；课件在 batch sweep 实验中演示的下限是 64（tpu tensor core refuses to accept anything smaller than a 64 dimensional input there），是 XLA 编译器在硬件约束下的实际下限，与 MXU 几何学上的 128 不属同一维度。GPU 一侧对应的是 warp size = 32（kernel launch 要求每个 block 的线程数是 32 的倍数）与 SM warp 驻留上限（典型 64 warp），它和 TPU 的 MXU batch floor 分别由 SIMT 调度模型与 systolic array 几何形状决定，不能直接换算。
+Canonical batch floor 也由 MXU 形状决定。$128 \times 128$ 的 systolic array 要求输入张量至少有一维是 128 的倍数；不足时 MXU 会被 padding 填满，浪费算力。Google Cloud TPU 性能文档把"feature dim 128 整倍数"列为高效 MXU 利用的硬性 padding 要求；batch sweep 实验中实际可运行的下限约是 64，是 XLA 编译器在硬件约束下的实际下限（tpu tensor core refuses to accept anything smaller than a 64 dimensional input there），与 MXU 几何学上的 128 不属同一维度。GPU 一侧对应的是 warp size = 32（kernel launch 要求每个 block 的线程数是 32 的倍数）与 SM warp 驻留上限（典型 64 warp），它和 TPU 的 MXU batch floor 分别由 SIMT 调度模型与 systolic array 几何形状决定，不能直接换算。
 
 ### 5.4.3 TPU 网络拓扑与 pod 视角
 
@@ -556,7 +460,7 @@ GPU采用SIMT（单指令多线程）执行架构，**同一线程束（Warp）�
 
 *图 5.6-1 低精度提升速度*
 
-#### 一、常见的低精度格式
+#### 常见的低精度格式
 
 | 精度类型 | 位数 | 表示范围 | 典型场景 | 速度提升 |
 |----------|------|----------|----------|----------|
@@ -582,13 +486,13 @@ MXFP8 这类格式不会让所有权重统一“一键切换”到同一种表�
 - **Tensor Core 路径**：只有硬件和 kernel 明确支持的格式，才能转化为吞吐收益。
 - **数值稳定性**：归一化、softmax、router、loss scaling、累加器等位置通常要保留更高精度。
 
-#### 二、 低精度提速机制一：硬件因素
+#### 低精度提速机制一：硬件因素
 
 我们知道浮点运算器的复杂度与位宽平方成正比。也就是位数越大的浮点运算器的体积和复杂程度越大。FP16 的乘法器晶体管数量仅为 FP32 的**1/4**。代表着能在同样面积里放更多低精度的浮点运算器。而更多的计算单元意味着计算能力更强。
 
 FP16 数据只占 FP32 一半的寄存器空间，同样 256 KB 寄存器文件可存**两倍数据**，同时 16 位数据总线带宽需求减半，同样带宽可传**两倍数据**，并且 FP16 乘法器延迟更低，频率可更高。
 
-#### 三、低精度提速机制二：内存带宽节省（数据量减少 50%）
+#### 低精度提速机制二：内存带宽节省（数据量减少 50%）
 
 低精度首先减少的是数据体积。同样参数量的模型，FP32 权重每个参数 4 bytes，BF16/FP16 权重每个参数 2 bytes；activation、梯度和 KV cache 也会按 dtype 改变占用。
 
@@ -685,7 +589,7 @@ kernel fusion 把多个连续操作合并进一个 CUDA kernel，减少中间结
 
 总的来说，这里的重计算不存储 $S_1$ 和 $S_2$，而是在反向传播中重新计算。它是在计算时间成本与内存读写成本之间做权衡；当计算成本小于读写成本时，重计算往往更划算。
 
-课程例子里，重计算可以把内存访问从 8 次降到 5 次，代价是反向时重新计算这三个 $\mathrm{sigmoid}$ 。当 kernel 主要受 memory bandwidth 限制时，用额外 compute 换更少的 global memory 访问往往更划算。
+用这个例子的账本：重计算可以把内存访问从 8 次降到 5 次，代价是反向时重新计算这三个 $\mathrm{sigmoid}$ 。当 kernel 主要受 memory bandwidth 限制时，用额外 compute 换更少的 global memory 访问往往更划算。
 
 ### 5.6.5 内存合并（Memory Coalescing）
 
@@ -948,7 +852,9 @@ V2 对分块大小进行了精细调整，以匹配 GPU 的 SRAM 容量和寄存
 
 **性能表现**
 
-- **速度提升**：在 A100 上，对于序列长度 512-16k，V2 相比 V1 平均加速约 **2 倍**，相比 HuggingFace 参考实现加速约 **3-5 倍**（[FlashAttention-2 论文](https://arxiv.org/abs/2307.08691) / [Dao-AILab/flash-attention README](https://github.com/Dao-AILab/flash-attention)）。
+- **速度提升**：A100 80GB SXM 上，对序列长度 512-16k 的 BF16 attention，V2 相对 V1 平均加速约 **2 倍**（范围 1.7-3.0×），相对 Triton 实现的 FlashAttention 加速 **1.3-2.5 倍**，相对 PyTorch 标准 attention 实现最高 **10 倍**加速（[FlashAttention-2 论文](https://arxiv.org/abs/2307.08691)）。
+- **吞吐峰值**：A100 上 V2 最高达约 **230 TFLOPs/s**（约为 BF16 Tensor Core dense 峰值 312 TFLOPs/s 的 73%，论文给出 50-73% 区间）；H100 上 V2 可达约 **335 TFLOPs/s**（[Stanford Hazy Research blog](https://hazyresearch.stanford.edu/blog/2023-07-17-flash2)）。
+- **端到端训练**：在 A100 上跑 GPT 风格训练，V2 达到约 **225 TFLOPs/s/GPU**（MFU ~72%），相对未优化的 PyTorch attention 路径约 2.8×，相对 V1 约 1.3×。
 - **显存占用**：与 V1 保持一致，仍为 $O(N \cdot d)$ ，但支持的最大序列长度因计算效率提升而有所扩展（FA2 README 给出 A100 80GB 上 512 至 16k 的基准范围；具体上限取决于 batch、head dim 与模型规模）。
 - **硬件适应性**：V2 的优化策略对 Ampere 及后续架构（如 H100）同样有效，为后续版本（V3）奠定了高效并行的基础。
 
@@ -1041,16 +947,13 @@ FlashAttention V3 是算法与硬件协同设计的案例：异步 WGMMA 流水�
 
 ---
 
-## 5.8 推理侧 KV cache 管理
+## 5.8 KV cache：HBM 上的另一笔账
 
-KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量、带宽、SM 占用率强耦合。本节按 STYLE.md §"复杂系统策略"的四件套（切分维度 / 通信模式 / 主要收益 / 剩余瓶颈）展开，并把完整机制留给 [第 9 章 §9.1 推理 workload](../chapter9/chapter9_推理系统.md) 与 [第 9 章 §9.5.2 PagedAttention](../chapter9/chapter9_推理系统.md)。
+KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量、带宽强耦合，是 inference 这条主线必须带过的资源账本。完整机制放在 [第 9 章 §9.1 推理 workload](../chapter9/chapter9_推理系统.md) 与 [第 9 章 §9.5.2 PagedAttention](../chapter9/chapter9_推理系统.md)，本节只列三个判断点：
 
-- **切分维度**：KV cache 在 prefill 阶段被一次性写入 HBM，写入总量与 batch size、sequence length、head 数和 head dim 同比例；按 `batch × seq_len × n_layers × 2 × n_kv_heads × head_dim` 计算（注：`2 ×` 表示 K 与 V 各一份；MQA/GQA/MLA/CLA 改变的是 `n_kv_heads`，字节数随该路径变少）。
-- **通信模式**：prefill 阶段一次性写入；generation 阶段每步新增一个 token；多请求之间通过 PagedAttention 的 logical/physical block 与 prefix sharing 共享。
-- **主要收益**：把 K/V 从每次重算转为缓存复用，避免 prefill 之外再次重算 K/V 投影，generation 阶段 latency 主要由 KV cache 的 HBM 读写决定。
-- **剩余瓶颈**：单卡 HBM（80 GB / 141 GB / 192 GB 等）很快成为硬上限；剩余路径是切到多卡并行（TP/PP/CP）、压缩（量化、稀疏、GQA、MQA、MLA、CLA）或换 KV cache 调度（PagedAttention、prefix sharing、RadixAttention）。
-
-FlashAttention 解决的是 attention forward / backward 的 IO 访问模式（把 $QK^T$ 留在 SRAM，KV 矩阵不需要写回 HBM）；PagedAttention 解决的是 generation 阶段 KV cache 在 HBM 上的分页、碎片和共享问题——两者作用在不同阶段、不同资源上：FlashAttention 让 prefill 与 backward 更快，PagedAttention 让多请求共享 KV cache 时不浪费显存。两者的关系可以用一句话总结：FlashAttention 减少一次 attention 调用所需的 IO 带宽，PagedAttention 减少多请求共享 KV cache 时的显存占用，两者在第 9 章合流。
+- **字节账本**：KV cache 在 prefill 阶段被一次性写入 HBM，总量按 `batch × seq_len × n_layers × 2 × n_kv_heads × head_dim × dtype_bytes` 计算（`2 ×` 表示 K 与 V 各一份；MQA/GQA/MLA/CLA 改变的是 `n_kv_heads`，字节数随该路径变少）。
+- **瓶颈来源**：单卡 HBM（80 GB / 141 GB / 192 GB 等）很快成为硬上限；剩余路径是切到多卡并行（TP/PP/CP）、压缩（量化、稀疏、GQA、MQA、MLA、CLA）或换 KV cache 调度（PagedAttention、prefix sharing、RadixAttention）。
+- **与 FlashAttention 的分工**：FlashAttention 解决的是 attention forward / backward 的 IO 访问模式（把 $QK^T$ 留在 SRAM，KV 矩阵不需要写回 HBM）；PagedAttention 解决的是 generation 阶段 KV cache 在 HBM 上的分页、碎片和共享问题。FlashAttention 让 prefill 与 backward 更快，PagedAttention 让多请求共享 KV cache 时不浪费显存；两者的完整对比与实现细节在第 9 章合流。
 
 ## 5.9 参考文献
 
@@ -1068,4 +971,4 @@ FlashAttention 解决的是 attention forward / backward 的 IO 访问模式（�
 ## 来源与更新记录
 
 
-- 本节硬件数字（B200 L2 ≈ 60 MB/die、GB200 superchip package 126 MB、NVFP4 block size 16 元素 vs OCP MXFP4 标准 32 元素、TPU MXU 128×128、batch 64 / feature 128 padding）以 NVIDIA Blackwell tuning guide、NVIDIA H100 datasheet、OCP Microscaling Formats specification 与 Google Cloud TPU 性能文档为一手出处。
+- 本节硬件数字（B200 L2 ≈ 60 MB/die、GB200 superchip package 126 MB、OCP MXFP8 / MXFP4 每 32 元素共享一个 E8M0 scale factor、NVIDIA Blackwell NVFP4 每 16 元素共享一个 E4M3 microexponent scale、TPU v5p 每芯片 2 个 TensorCore × 4 个 MXU、MXU 128×128 systolic array、batch 64 / feature 128 padding）以 NVIDIA Blackwell tuning guide、NVIDIA H100 datasheet、OCP Microscaling Formats specification 与 Google Cloud TPU v5p 文档为一手出处。MXFP4 与 NVFP4 在元素块大小上不同：OCP MX 规范定义 MXFP4 为 32 元素块 + E8M0 缩放；NVIDIA Blackwell 实际部署的 4-bit 路径是 NVFP4 变体（16 元素块 + E4M3 microexponent + 每张量额外 FP32 全局缩放）。笔记中"MXFP4 / 1 per 16"指 NVIDIA Blackwell NVFP4 部署口径，不是 OCP MXFP4 规范的块大小。

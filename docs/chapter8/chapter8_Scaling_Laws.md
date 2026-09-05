@@ -357,7 +357,9 @@ $$
 
 黑色线和橙 / 红色线分别表示两种假设下的有效前沿（efficient frontier）：在同一 compute 预算附近，不同 token / parameter 配比对应的预期 loss。黑色线对应理想假设，重复 token 和 fresh token 一样有价值；橙色 / 红色线对应 data-constrained 情况，重复 token 的收益要打折。
 
-右图在最大 FLOP 预算 $9.3 \times 10^{21}$ 上比较两组最优解：黄色星星是 Chinchilla 假设下的最佳点（重复 token 与 fresh token 等价），红色星星是 data-constrained 假设下的最佳点；后者比前者参数少约 27%，但对应的训练 unique tokens 规模约 25B（论文 Figure 1 caption）。结论限定在同一条 IsoFLOP 预算线上：如果重复 token 和 fresh token 一样有价值，最佳点偏向更大模型、较少训练 tokens；如果重复 token 的收益要打折，最佳点会移动到更小模型、更多训练 tokens。原因是数据有限时，大模型很快会缺少足够的新信息；把模型稍微做小一些，把 compute 留给更多训练 tokens，反而可能得到更低 loss。
+右图在最大 FLOP 预算 $9.3 \times 10^{21}$ 上比较两组最优解：黄色星星是 Chinchilla 假设下的最佳点（重复 token 与 fresh token 等价），红色星星是 data-constrained 假设下的最佳点；后者比前者参数少约 27%，但对应的训练 unique tokens 规模约 25B（论文 Figure 1 caption）。
+
+结论限定在同一条 IsoFLOP 预算线上：如果重复 token 和 fresh token 一样有价值，最佳点偏向更大模型、较少训练 tokens；如果重复 token 的收益要打折，最佳点会移动到更小模型、更多训练 tokens。原因是数据有限时，大模型很快会缺少足够的新信息；把模型稍微做小一些，把 compute 留给更多训练 tokens，反而可能得到更低 loss。
 
 这就是固定训练预算下“数据有限会改变最优配置”的意思。下一张图把数据受限推到 compute 更充足的情形。
 
@@ -369,11 +371,13 @@ $$
 
 左图扫 epoch count。loss 先降后升，说明重复几遍有用，继续重复很多遍后收益会消失，甚至可能变差。
 
-中图扫 parameter count。Muennighoff 论文共训练 400+ 模型覆盖 $10\mathrm{M}$–$9\mathrm{B}$（Figure 14 给出 2.8B / 4.2B / 8.7B 三档，Figure 11 sweep 从 100M tokens 对应的 compute-optimal 一路扫到 $2\mathrm{B}+$，正文比较 $200\mathrm{M}$–$1\mathrm{B}$ 与 $>2\mathrm{B}$ 两组）。结论一致：固定同一批 unique data 时，参数更多不能凭空提供新信息，数据成了主要瓶颈——超过一个门槛后，再加参数反而略恶化 loss（论文归因为 regularization 不足）。
+中图扫 parameter count。Muennighoff 论文共训练 400+ 模型覆盖 $10\mathrm{M}$–$9\mathrm{B}$（Figure 1 标出 4.2B / 6.34B / 8.67B 三档的最大 FLOP 预算 IsoFLOP 星点，Figure 11 sweep 从 100M tokens 对应的 compute-optimal 一路扫到 $2\mathrm{B}+$，正文比较 $200\mathrm{M}$–$1\mathrm{B}$ 与 $>2\mathrm{B}$ 两组）。结论一致：固定同一批 unique data 时，参数更多不能凭空提供新信息，数据成了主要瓶颈——超过一个门槛后，再加参数反而略恶化 loss（论文归因为 regularization 不足）。
 
 右图扫 seed token count $D$ 。这里的 `seed` 指起始数据集，和 random seed 无关； $D$ 是这批起始 unique tokens 的规模。三条曲线都随 $D$ 增大而下降，说明更多 unique tokens 仍然最直接地降低 loss。
 
-Muennighoff Figure 11 caption 直接说明该图内容：把 100M unique tokens、单个 epoch 上训练的模型，画出 empirical loss 曲线与 data-constrained scaling law 预测、Chinchilla 预测三条曲线做对比（caption 原话："Empirical and predicted losses of LLMs trained on 100 million tokens for a single epoch. Excess parameters empirically hurt performance, but this may be due to a lack of regularization. Thus, our scaling formula predicts loss to plateau, while Chinchilla predicts loss to improve. By decaying the exponent α (and β) instead, one can allow excess parameters to hurt."）。Caption 把"多余参数反而略变差"归因为 regularization 不足，并提出 decay α、β 指数的替代形式，让函数形式本身能容纳"先降后升"的行为。µP vs 默认超参的对比放在 Appendix F 正文（"Surprisingly, µP leads to even higher test loss than our default hyperparameters. Nevertheless, we find that also with µP excessive parameters hurt."），不在 Figure 11 本图。
+Muennighoff Figure 11 caption 直接说明该图内容：把 100M unique tokens、单个 epoch 上训练的模型，画出 empirical loss 曲线与 data-constrained scaling law 预测、Chinchilla 预测三条曲线做对比（caption 原话："Empirical and predicted losses of LLMs trained on 100 million tokens for a single epoch. Excess parameters empirically hurt performance, but this may be due to a lack of regularization. Thus, our scaling formula predicts loss to plateau, while Chinchilla predicts loss to improve. By decaying the exponent α (and β) instead, one can allow excess parameters to hurt."）。
+
+Caption 把"多余参数反而略变差"归因为 regularization 不足，并提出 decay α、β 指数的替代形式，让函数形式本身能容纳"先降后升"的行为。µP vs 默认超参的对比放在 Appendix F 正文（"Surprisingly, µP leads to even higher test loss than our default hyperparameters. Nevertheless, we find that also with µP excessive parameters hurt."），不在 Figure 11 本图。
 
 数据受限时，把重复 token 当成新 token 来外推，会高估继续训练的收益。这张图把优先级说清楚：增加 unique tokens 仍然最直接；当 unique tokens 受限时，更强的 regularization 和更好的数据选择是在提高同一批数据的利用率。
 
@@ -385,11 +389,11 @@ Muennighoff Figure 11 caption 直接说明该图内容：把 100M unique tokens�
 
 数据选择也要随 scale 调整。小模型或小预算下，高质量小数据可能更好；大预算下，过度过滤会让 unique tokens 不够，质量稍低的新数据反而更有价值。
 
-图 8.3-10 画的是 quality-quantity tradeoff，来自 Goyal et al. 的 data filtering scaling law 工作（[*Scaling Laws for Data Filtering — Data Curation cannot be Compute Agnostic*, arXiv:2404.07177](https://arxiv.org/abs/2404.07177) Figure 1）。论文把 DataComp 的 web 数据按质量切成 A–F 若干 bucket，`E` 是质量最高的一档，往下依次变差；组合方式写成 `Bucket E only`、`E+D`（Pool 1）、`E+D+C`（Pool 2）这样的累加池。图里三档 compute 的结论是：small compute 下 highly aggressive filtering 最好，medium compute 下 mildly aggressive filtering 最好，compute 继续增大后过滤阈值要进一步放松，让更多但稍差的数据进入训练。
+图 8.3-10 来自 Goyal et al. 的 data filtering scaling law 工作（[*Scaling Laws for Data Filtering — Data Curation cannot be Compute Agnostic*, arXiv:2404.07177](https://arxiv.org/abs/2404.07177)）。论文把 DataComp 的 web 数据按质量切成 A–F 若干 bucket，`E` 是质量最高的一档，往下依次变差；组合方式用累加池（如 `E only`、`E+D`、`E+D+C`）表示。三档 compute 下的取舍结论写在论文 §6 与 Figure 3（32M、128M、640M 三档）：small compute 下 highly aggressive filtering 最好，medium compute 下 mildly aggressive filtering 最好，compute 继续增大后过滤阈值要进一步放松，让更多但稍差的数据进入训练。
 
-左边 `Lower Quality Data Pools` 这条竖排是在说：这些池子本身有高低质量之分。继续往下质量更低。中间 `Lower Utility of Repeated Data` 在说：同一个池子被重复训练几次后，边际收益会一轮比一轮小，颜色越浅就表示重复后的 utility 越低。
+左边 `Lower Quality Data Pools` 这条竖排是在说：这些池子本身有高低质量之分，继续往下质量更低。中间 `Lower Utility of Repeated Data` 在说：同一个池子被重复训练几次后，边际收益会一轮比一轮小，颜色越浅就表示重复后的 utility 越低。
 
-这个图表达的是：最高质量池可以先用，但随着 compute 增大，继续只重复它会让 effective data 增长变慢。过滤阈值因此会随 scale 变松，训练会逐渐转向“高质量 + 更多覆盖面”的组合。
+过滤阈值因此会随 scale 变松。最高质量池可以先用，但随着 compute 增大，继续只重复它会让 effective data 增长变慢，训练会逐渐转向"高质量 + 更多覆盖面"的组合。
 
 ### 8.3.4 Model Scaling 与 Architecture Scaling
 
@@ -858,7 +862,7 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 | Chinchilla | 约 20 |
 | LLaMA 65B | 约 22 |
 | Llama 2 70B | 约 29 |
-| Mistral 7B | 约 110 |
+| Mistral 7B | 约 1100（官方未披露，社区按 ~8T tokens 估计） |
 | Llama 3 70B | 约 215 |
 
 一个简单账本是：训练只付一次，但推理会在模型生命周期里反复付费。若两个模型 pretraining loss 接近，较小模型通常更容易部署，KV cache 更小，单 token latency 和服务成本也更低。因此生产系统常愿意用更多训练 tokens 换一个更小、更便宜的 serving 模型。
@@ -1133,7 +1137,9 @@ Downstream 映射环节风险更高，因为 accuracy 是离散指标，受 prom
 
 Hunyuan 的 MoE scaling 强调参数口径。对 MoE 来说，train compute 更接近 active parameters，但内存、routing 和 expert 配置又受 total experts 影响。
 
-图 8.6-24 中，Hunyuan 在固定 sparsity 配置（16 specialized experts / top-1 routing + 1 shared expert）下做 active-parameter 口径的 IsoFLOP 分析。Hunyuan-Large 论文 §2.3.1 的 compute-optimal sweep 给出约 `58.1B activated / 5.6T tokens`，对应约 96 tokens per active parameter（5.6T ÷ 58.1B ≈ 96.4）；最终发布模型选择 `52B activated / 7T tokens`，对应约 135 tokens per active parameter（7T ÷ 52B ≈ 134.6）。两个数字的差别反映 compute-optimal 与 serving-cost optimal 之间的取舍：compute-optimal 优化的是给定算力下的 loss，serving-cost optimal 在损失之外叠加推理成本。这个比例绑定 active-parameter 口径；Hunyuan 这组实验没有同时搜索 sparsity level。换 active experts、routing、sparsity 或数据处理方案时，需要重新检查。
+图 8.6-24 中，Hunyuan 在固定 sparsity 配置（16 specialized experts / top-1 routing + 1 shared expert）下做 active-parameter 口径的 IsoFLOP 分析。Hunyuan-Large 论文 §2.3.1 的 compute-optimal sweep 给出约 `58.1B activated / 5.6T tokens`，对应约 96 tokens per active parameter（5.6T ÷ 58.1B ≈ 96.4）；最终发布模型选择 `52B activated / 7T tokens`，对应约 135 tokens per active parameter（7T ÷ 52B ≈ 134.6）。
+
+两个数字的差别反映 compute-optimal 与 serving-cost optimal 之间的取舍：compute-optimal 优化的是给定算力下的 loss，serving-cost optimal 在损失之外叠加推理成本。这个比例绑定 active-parameter 口径；Hunyuan 这组实验没有同时搜索 sparsity level。换 active experts、routing、sparsity 或数据处理方案时，需要重新检查。
 
 MoE scaling 的结论必须绑定参数口径。只看 total parameters，MoE 会显得“参数很多但 compute 不高”；只看 active parameters，又会忽略显存和通信成本。
 
@@ -1429,7 +1435,7 @@ Scaling 报告最有价值的信息通常是训练条件是否一致、实验点
 - 早期 learning-curve 与 data-scaling 论文：Banko & Brill 2001 https://aclanthology.org/P01-1005/；Kolachina et al. 2012 https://aclanthology.org/P12-1003/；Hestness et al. 2017 https://arxiv.org/abs/1712.00409。
 - 论文与技术报告：Kaplan et al. 2020 https://arxiv.org/abs/2001.08361；Chinchilla https://arxiv.org/abs/2203.15556；Likelihood-Based Diffusion Language Models https://arxiv.org/abs/2305.18619（Gulrajani & Hashimoto, 2023）；MiniCPM https://arxiv.org/abs/2404.06395；Language models scale reliably with over-training and on downstream tasks https://arxiv.org/abs/2403.08540（Gadre et al.）；DeepSeek https://arxiv.org/abs/2401.02954；Cerebras-GPT https://arxiv.org/abs/2304.03208；Tensor Programs V https://arxiv.org/abs/2203.03466；A Spectral Condition for Feature Learning https://arxiv.org/abs/2310.17813；Hunyuan-Large https://arxiv.org/abs/2411.02265；MiniMax-01 https://arxiv.org/abs/2501.08313；Towards Robust Scaling Laws for Optimizers https://arxiv.org/abs/2602.07712（Volkova, Safaryan, Lampert, Alistarh, 2026）；Predictable Scale: Part I — Step Law https://arxiv.org/abs/2503.04715（Li et al., StepFun, 2025）；Llama 3 Herd of Models https://arxiv.org/abs/2407.21783；Qwen3 Technical Report https://arxiv.org/abs/2505.09388；Kimi K2 https://arxiv.org/abs/2507.20534；Mamba-2 https://arxiv.org/abs/2405.21060；Gated DeltaNet https://arxiv.org/abs/2412.06464。
 - 现代报告参考：Qwen、Kimi、StepFun、Llama 3、Hunyuan、MiniMax 相关论文或技术报告；其中未公开完整训练网格的案例只作为变量账本和公开口径样例。
-- 2025-2026 新模型与扩展：**Nemotron 3** 系列在 NVFP4 精度下训练；**DeepSeek v3.2** 在 MoE 规模与 RLHF 后训练上扩展；**Qwen 3 / 3.5 / 3 Next / 3 Coder Next** 在 thinking mode fusion、MoE、agentic RL 上持续迭代；**OLMo 3** 系列覆盖完整训练可复现性披露；**MiniMax M2.5** 与 **Kimi K2.5** 在 hybrid attention 上沿用 lightning + softmax 路线；**GLM 5** 与 **Xiaomi MIMO** 进入开源权重榜单前列。TPU 侧，**TPU 8i** / **TPU 8t (Virgo)** 用 switched network 与 toroidal mesh 拓扑替代传统 fat-tree，影响大规模训练的 collective 调度策略。**Cohere Command A** 使用 `every 4ᵗʰ layer is a full attention + NoPE/SWA` 的 hybrid 设计，作为 hybrid attention 的另一参考样本。这些 2026 模型的具体超参与 token 数随官方技术报告更新，本节只记录其类别和角色，不替代论文级复核。
+- 2025-2026 新模型与扩展：**Nemotron 3** 系列在 NVFP4 精度下训练；**DeepSeek v3.2** 在 MoE 规模与 RLHF 后训练上扩展；**Qwen 3 / 3.5 / 3 Next / 3 Coder Next** 在 thinking mode fusion、MoE、agentic RL 上持续迭代；**OLMo 3** 系列覆盖完整训练可复现性披露；**MiniMax M2.5** 与 **Kimi K2.5** 在 hybrid attention 上沿用 lightning + softmax 路线；**GLM 5** 与 **Xiaomi MIMO** 进入开源权重榜单前列。TPU 侧，**TPU 8t** 在 3D torus 之上叠加 **Virgo** scale-out fabric，单 fabric 可达 ~134,000 颗 TPU 8t、~47 Pb/s non-blocking bisection；**TPU 8i** 采用 Boardfly 拓扑（Dragonfly 变体）替代 3D torus；两者均以 optical circuit switching 与 flattened two-layer topology 影响大规模训练的 collective 调度。**Cohere Command A** 用 3:1 hybrid attention：3 层 sliding window attention（窗口 4,096，RoPE）+ 1 层 global attention（NoPE）作为 hybrid attention 的另一参考样本。这些 2026 模型的具体超参与 token 数随官方技术报告更新，本节只记录其类别和角色，不替代论文级复核。
 - 官方实践指南：Cerebras / EleutherAI `The Practitioner's Guide to the Maximal Update Parameterization` https://www.cerebras.ai/blog/the-practitioners-guide-to-the-maximal-update-parameterization。
 - 学习参考（2026-09-01 复核可访问）：How To Scale https://howtoscalenn.github.io/（muP 与 HP scaling）；Work at a Frontier Lab scaling tutorial https://www.workatafrontierlab.com/lessons/foundations/scaling-laws（Chinchilla / μ-Transfer 教学）；Epoch AI scaling topic https://epoch.ai/topics/scaling（compute / data / scaling 趋势综述）；Emergent Mind Chinchilla scaling https://www.emergentmind.com/topics/chinchilla-scaling（Chinchilla 综合技术介绍，2026-04-06 更新）；Simulations4All LLM scaling visualizer https://simulations4all.com/simulations/llm-scaling-laws-visualizer（Chinchilla compute-optimal 可视化）。
 - 不可访问（2026-09-01）：mbrenndoerfer.com Chinchilla tutorial（HTTP 403，可能限流或下线）；aiwiki.ai scaling laws（HTTP 429 rate limit，无法复核）。这两条仅在公开维护者社区偶尔出现，缺它们不影响主线；如未来恢复可再加回。
