@@ -224,14 +224,18 @@ prompt 要求 sub-agent 只报 `refuted + tentative`、**不再报 `confirmed`**
 - **图意核对 sub-task 模板**（与 STYLE.md「图意核对」同步）：写作核心图时必须实际打开本地 PNG 核对图意，不能只看 alt text / 文件名 / 路径。checklist：(1) 子图标题 / 坐标轴 / 图例是否被正文正确转述；(2) 正文数字与图上标注是否一致；(3) 图说的「机制解释」是否能在图中找到对应视觉证据；(4) alt text / 图注 / 正文交叉引用是否使用同一个图号。
 - **删图判定**：两图承载同一份视觉信息（即使 SHA256 不同，如课件截图 vs 论文原图）即视为重复；保留论文原图、删课件截图（lecture 装饰元素属元叙述）；删图后必须按 STYLE 连号规则重排同节其他图号，并跑 `rg 图 N-x` 全仓库验证没有悬空引用。
 - **tokenization 实证数据必须实际跑 tokenizer**：写 `tiktoken` / `sentencepiece` / `transformers` 类的"X 字符串切成 N 个 token id"示例时，**必须实际运行一遍 tokenizer**，把真实 id 序列与每个 id 对应的字符串写进正文 / 图说。印象记忆几乎一定会写错：ch1 §1.1 图 1.1-2 描述「年份 1885 作为 4 位数字整体成为 id 13096」错误，tiktoken 实际切分是 `[93447 Stan, 9201 ford, 673 ` was`, 24303 ` founded`, 306 ` in`, 220 ` `, 13096 `188`, 20 `5`, 13 `.`]`，1885 是 3+1 位两段而非 4 位整体。**所有 tokenizer / BPE / 词表实证段必须以 `python3 -c "import tiktoken; ..."` 或 Jupyter notebook 实际输出为准**。
-- **fix verification round 抓到的 6 类反复错误**：每次 audit + fix 之后跑一轮 `fix verification` **全章扫描**（不是仅审本 commit 引入的行），下面 6 类反复出现：
+- **fix verification round 抓到的 8 类反复错误**：每次 audit + fix 之后跑一轮 `fix verification` **全章扫描**（不是仅审本 commit 引入的行），下面 8 类反复出现：
   1. **跨章引用错位**：引「§X.Y 章节标题」时 X.Y 与目标章节实际 H2/H3 不对齐（ch8 L11 引「§8.6.8」陈旧但内容已前移；ch8 L1081 引「§8.4.3」但实际在 §8.4.2；ch14 L249 引「章节末总结」但实际在 §14.3 NOTE；topics L338 把 §3 RLVR 写成 §2）。
   2. **章节结构与节首描述矛盾**：节首说「四个递进的例子」但实际只有三个（ch6 L256 §6.4 matmul 在 §6.5）；节首说「三阶段」但表格只有两行（ch7 L1287 §7.11）。
   3. **模型名 / 数据错** typo：「Qwen3-Next Coder」（不存在）→「Qwen3-Coder-Next」（ch13 L1209）；「FineWeb 用 Cuckoo 哈希」（sub-agent 误植，论文 §3.4 仅写 MinHash + LSH）→MinHash（ch10 L399）。
-  4. **节首描述与正文自相矛盾**：ch7 L439「§7.3 NCCL 报的 GB/s」与正文「NCCL 并不回报这个数字」直接矛盾。
+  4. **节首描述与一手论文术语不一致 / 与正文自相矛盾**：两个子类：
+     a) **节首描述与一手论文术语不一致**（Phase 9 ch4 L1003 抓的 `device-level routing` 实际论文术语是 `device-limited routing`）。fix verification agent 必须对每条节首描述断言性内容逐条 WebFetch 一手论文核证。
+     b) **节首描述与正文自相矛盾**：ch7 L439「§7.3 NCCL 报的 GB/s」与正文「NCCL 并不回报这个数字」直接矛盾。
   5. **章节号归属错位**：方法 1/2/3 都在 §8.4.2 不在 §8.4.3（图 8.6-12 错引）；Method X 写在 §8.6.8 但实际在 §8.4.2（图说）。
   6. **元叙述 / 写作计划承诺残留**：「§1.3 接下来会再次出现」（forward-looking 承诺，ch1 L132）；「每章开头的『本章学习目标』会标出」但 14 章无一标注（不成立，preface L23）；「使用前应核对...再决定是否照搬」（搜证元句，ch4 L1069）。
+  8. **跨章引用缩写违规**（Phase 9 ch4 L112/537/547 抓的 `EP / ETP / EDP`）：ch4 章节内部多次缩写 `Expert Parallelism` 为 `EP`，但跨章引用应使用完整 H3 标题「第 N 章 §X.Y 章节标题」，不能用 2-3 字母缩写。fix verification agent 必须对每个跨章引用 grep「ch[0-9]+」、「第 N 章 §」+ 缩写模式，识别缩写后改成完整标题。
   7. **中段纯文字描述段漏扫**（fix verification 默认 scope 偏章首/图说/章末，**§X.2 / §X.3 / §X.4 中没有图、表格、引用的纯文字断言段容易被跳过**）。Phase 8 ch1 §1.3 L175 教训：b8773b4 写「GPT-2 预分词正则大致是... DeepSeek 系列则使用 `\p{L}+|...`」三处错（"大致是"作者声音 / openai_public.py 引用错 / "在词内或数字串中间发生 merge"反了 `\p{N}{1,3}` 的实际行为），fix verification 当时只抓了 §1.3-1 / §1.3-2 / §1.3-2 三处图说（同一节内但都属「带图」段），**完全漏掉 L175 这段没有图的纯文字描述**。fix verification prompt 必须显式要求 agent 逐字读 §X.2 / §X.3 / §X.4 全段，对每条断言性内容（"X 预分词正则 / Y 算法用 Z 公式 / N 模型用 M 配置"等）逐条 WebFetch 一手核证；agent 默认扫描容易跳过「没有图、没有表、只有一两段纯文字」的节中段。
+  9. **sub-agent 报告机制漏洞**（Phase 9 v2 教训）：当 audit-fix agent 报告 "改前 / 改后" 时，notes 里的「旧值」可能是**已经改过的最终值**而不是 git HEAD 改前值。Phase 9 ch1 agent 报告「L288 来源记录 `\x8f` 应为 `\x8d`」但实际 L288 在 Phase 9 v2 之前（d35c1cf）就是 `\x8f`（错），Phase 9 v2 改成了 `\x8d`（对）——agent notes 的「改前/改后」描述与 git HEAD diff 一致，但 audit 阶段读 notes 看不到**「Phase 9 v2 改的旧值」**这条线索（agent 自我修订已经把 notes 写成"已修复后"）。**修正**：fix verification round 的 prompt 必须显式要求 agent 在 notes 字段附「`git show <commit-hash>:<file>:<line>` 改前值」与「`git show HEAD:<file>:<line>` 改后值」，让外部审稿人能从 git ref 重建完整改前/改后链路。
   **每条都按方案 A 就地 Edit 修复**（不归到独立 round），并跑禁用句式 + 元叙述两类 rg 自检零命中才算完成。
 - **多 agent 并行 fix verification 经验**：单章节 fix verification 单独跑一次 agent，16 章节并行启动 16 个 agent，每个 agent 做**全章扫描**（用 `git log` 看最近 commit 历史做参考，但不限于本 commit 引入的行——参见第 7 类反复错误，「中段纯文字描述段漏扫」就是限定本 commit 引入行时漏掉的真实案例）。Schema 仍用简化版（findings_count / edits_applied / fixes / notes），避免 SO retry 超限。16 agent 并行总耗时约 13 分钟，比串行快 16×；findings 数量比单章节 fresh audit 多（因为每条 finding 都覆盖中段纯文字 + 图说 + 表格），但每条都是「本轮可修复的真错」而非历史包袱（agent 必须用 `git log` 过滤历史问题、只对当前 commit 之后或本 fix 阶段引入的行下 Edit）。
 
