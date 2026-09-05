@@ -366,7 +366,7 @@ cache 存储量取决于实现方式。rolling buffer（循环缓冲区）会把
 
 *图 9.3-9 Native Sparse Attention*
 
-图 9.3-9 展示 Native Sparse Attention (NSA) 的结构。三条并行分支都从同一组 query 和 hidden state 出发：compression 分支把连续 block 聚合成 block-level 表示；selection 分支由独立的 Lightning Indexer（基于压缩后的 indexer keys 与 query 计算 Multi-Query Attention 得到 Index Scores）选出 top-n 重要 block；sliding window 分支保留最近窗口的局部 KV。三条分支各自持有一份独立的 KV，由 Top-k Selector 在 indexer scores 上选取，最后通过 Concatenation 汇入 Shared Key-Value Multi-Query Attention 输出。NSA 的设计选择是把 sliding window、selected compressed、compression 三路拼接后共享后续 attention 计算；这种路径与用 MLP + sigmoid 学出 gate 再做加权求和的做法在结构上不同，前者把三路信息保留到 attention 内部，后者先在 attention 之前做一次加权。GQA、MLA、CLA、local attention 和 sparse attention 都在重写 KV cache 账本；它们能换速度和显存，也会改变模型保留长程信息的方式，所以需要和具体任务质量一起评估。
+图 9.3-9 展示 Native Sparse Attention (NSA) 的结构。三条并行分支都从同一组 query 和 hidden state 出发：compression 分支把连续 token 块通过可学习 MLP（$\phi$）聚合成 block-level 表示，并叠加 block 内位置编码；selection 分支基于压缩后的 key 与 query 计算 block 级 importance scores，在 GQA group 内对分数求和后选 top-n 重要 block；sliding window 分支保留最近 $w$ 个 token 的局部 KV。三条分支各自维护一份独立的 KV，分别与 query 做 attention 之后，由一个作用于输入特征的 MLP + sigmoid 输出的门控分数做加权求和（论文 Equation 5），而不是把三路 key/value 拼接后再过一次共享 attention。这一选择把三路信息保留到 attention 之后的线性组合里，避免拼接带来的维度膨胀，也让 gate 权重可端到端联合优化。GQA、MLA、CLA、local attention 和 sparse attention 都在重写 KV cache 账本；它们能换速度和显存，也会改变模型保留长程信息的方式，所以需要和具体任务质量一起评估。
 
 ### 9.3.5 Quantization、Pruning 与 Distillation
 
@@ -534,9 +534,7 @@ PagedAttention 更强调显存分页和碎片管理，RadixAttention 更强调 p
 
 ## 9.6 扩展研究：更换输入、记忆和生成范式
 
-本节收束四类与 §9.1–§9.5 主线不同的扩展研究：prompt compression 改输入长度；SSM / linear attention / hybrid attention 改记忆结构，从「显式保存所有历史 KV」换成「递推状态 + 周期性 softmax attention」；diffusion language model 改生成范式，从逐 token 自回归换成块内并行去噪；speculative cascades 改大小模型协作策略，从保持 target distribution 换成风险感知路由。本节所有方向都按「优化哪个瓶颈、留下什么质量风险」的同一把尺读，与 §9.4 的 speculative sampling 和 §9.5 的 prefix sharing 形成对照。
-
-前面是推理系统主线。本节收束几类扩展研究：prompt compression、SSM / linear attention、diffusion language model 和 speculative cascades。它们都有价值，但要和主线分开读：有些改输入长度，有些改记忆结构，有些改生成范式，有些改大小模型协作策略。
+本节收束四类与 §9.1–§9.5 主线不同的扩展研究：prompt compression 改输入长度；SSM / linear attention / hybrid attention 改记忆结构，从「显式保存所有历史 KV」换成「递推状态 + 周期性 softmax attention」；diffusion language model 改生成范式，从逐 token 自回归换成块内并行去噪；speculative cascades 改大小模型协作策略，从保持 target distribution 换成风险感知路由。本节所有方向都按「优化哪个瓶颈、留下什么质量风险」的同一把尺读，与 §9.4 的 speculative sampling 和 §9.5 的 prefix sharing 形成对照。下面按 §9.6.1–§9.6.4 的顺序分别看 prompt compression、SSM / linear attention、diffusion language model 和 speculative cascades 如何改写 KV cache 账本、留下什么质量风险。
 
 ### 9.6.1 Prompt Compression
 

@@ -222,7 +222,7 @@ Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会�
 
 在深入具体的下游任务基准之前，我们必须理解一个基础且重要的度量标准：困惑度（Perplexity）。
 
-语言模型定义了一个序列概率分布 $p(x)$，它对任意一段 token 序列 $x$ 给出概率值，也就是这个序列在模型分布下有多自然。困惑度衡量模型对某个数据集分配高概率的能力。在预训练阶段，模型的目标就是最小化训练集上的困惑度。数值越小，表示模型越容易预测这些 token。训练侧优化交叉熵的等价表述与具体算式见 [第 2 章 §2.4 算力与算子](../chapter2/chapter2_pytorch与资源核算.md)。
+语言模型定义了一个序列概率分布 $p(x)$，它对任意一段 token 序列 $x$ 给出概率值，也就是这个序列在模型分布下有多自然。困惑度衡量模型对某个数据集分配高概率的能力。在预训练阶段，模型的目标就是最小化训练集上的困惑度。数值越小，表示模型越容易预测这些 token。训练侧优化交叉熵的等价表述与具体算式见 [第 2 章 §2.4 计算效率](../chapter2/chapter2_pytorch与资源核算.md)。
 
 $$
 \text{Perplexity} = \left( \frac{1}{p(D)} \right)^{1/|D|}
@@ -441,7 +441,7 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 *图 11.4-4 Humanity's Last Exam 收集筛选流程*
 
-[HLE 官方站点](https://agi.safe.ai/)提供持续更新的结果。HLE 仍然远未饱和，跟踪其时间序列可观察模型在多学科高难题上的增量进展。HLE 使用私有 held-out 测试集 + 公开开发集，避免训练流直接覆盖评测。
+[HLE 官方站点](https://agi.safe.ai/)提供持续更新的结果。HLE 仍然远未饱和，跟踪其时间序列可观察模型在多学科高难题上的增量进展。HLE 在公开 2,500 题之外保留约 500 道私有 held-out 测试集，用来检测过拟合与训练-测试污染，避免训练流直接覆盖评测。
 
 ## 11.5 指令遵循基准
 
@@ -513,7 +513,7 @@ LLM-as-judge 把评估成本压低到可大规模运行的级别，但也把 jud
 
 工程做法通常同时叠加：多 judge 投票（pairwise 偏好下用 majority vote）、length-controlled win rate、judge ensemble 与 human spot check。JudgeBench ([arXiv:2410.12784](https://arxiv.org/abs/2410.12784)) 等基准则直接评估 judge 模型本身的判别能力，而不是被评模型的能力。
 
-LLM-as-judge 与 RLHF / RLVR 的连接在第 12 章偏好优化和第 13 章 verifier-as-reward 中再次出现：reward model 的偏差直接决定偏好优化的目标偏差，因此 judge 与 reward 的偏差清单需要一起维护。
+reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward 的偏差清单需要一起维护；偏好优化的训练侧细节见 [第 12 章 §12.5 偏好优化与 DPO 系列](../chapter12/chapter12_大模型基本训练流程.md)，RLVR 的验证信号侧见 [第 13 章 §13.3 GRPO 与 Dr. GRPO](../chapter13/chapter13_可验证奖励的强化学习.md)。
 
 ## 11.6 智能体基准
 
@@ -522,7 +522,7 @@ LLM-as-judge 与 RLHF / RLVR 的连接在第 12 章偏好优化和第 13 章 ver
 
 这类基准评估模型作为智能体（Agent） 的能力，即在复杂环境中通过工具调用和迭代规划完成任务。
 
-需要特别区分：智能体基准通常评估的是**语言模型 + agent scaffold** 的系统能力，区别于纯语言模型本身。规划循环、工具调用策略、文件读写、上下文压缩、子任务分解和失败重试都会改变结果，因此同一个底座模型在不同 scaffold 下可能表现差异很大。同一个 benchmark 既是评估工具也是 RL 训练数据：SWE-bench 风格任务在 [第 13 章 RLVR](../chapter13/chapter13_可验证奖励的强化学习.md) 的 agentic RL 训练里被大量构造为可验证 rollout。
+需要特别区分：智能体基准通常评估的是**语言模型 + agent scaffold** 的系统能力，区别于纯语言模型本身。规划循环、工具调用策略、文件读写、上下文压缩、子任务分解和失败重试都会改变结果，因此同一个底座模型在不同 scaffold 下可能表现差异很大。同一个 benchmark 既是评估工具也是 RL 训练数据：SWE-bench 风格任务在 [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md) 的 agentic RL 训练里被大量构造为可验证 rollout。
 
 > [!NOTE]
 > **Agent scaffold 的四个核心组件**：**explicit planning**（显式写出多步计划并勾选进度）、**hierarchical delegation**（任务分层委派，子任务可由更小的 agent loop 完成以保持上下文干净）、**persistent memory**（通过读写文件维护跨 turn 状态，区别于纯上下文窗口）、**extreme context engineering**（在 prompt 中显式给出大量过程性指令，区别于单纯的上下文压缩 / 重组 / 检索）。这四项与 2025-2026 主流 agent 框架（Claude Code、Cursor、Aider 等）的设计选择基本对齐；同一底座模型在不同 scaffold 组合下的 benchmark 分数可能差几倍。
@@ -733,7 +733,7 @@ GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重�
 > [!NOTE]
 > 本节覆盖两类「让分数失真」的源头：训练-测试重叠（contamination，§11.10.1 的四条路线）与数据集质量（题目噪声、scaffold 漏洞、§11.10.2）。读完后的能力：能在面对任一 benchmark 分数时，系统检查「题是否干净」「模型是否可能见过题」「scoring 是否真的奖励了目标行为」三步。
 
-评估的有效性面临两大核心挑战。数据污染的源头在训练侧——具体去重与过滤方案在 [第 10 章 §10.2.2](../chapter10/chapter10_数据工程.md) 详细展开，本节只关注"如何在评估时检测并控制 contamination"。
+评估的有效性面临两大核心挑战。数据污染的源头在训练侧——具体去重与过滤方案在 [第 10 章 §10.2.2 数据去重](../chapter10/chapter10_数据工程.md) 详细展开，本节只关注"如何在评估时检测并控制 contamination"。
 
 ### 11.10.1 训练-测试集重叠（Train-Test Overlap）
 
@@ -795,7 +795,7 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 ## 本章总结与下章衔接
 
-评估设计本身的工程判断可以收成三条规则。第一，**单一分数不足以支撑结论**——perplexity、exam、chat、agent、推理、安全、真实使用这七类评估各回答一个独立问题，任何一份模型评估材料都应先定位它属于哪一类，再判断结论的适用边界。第二，**评估的规则优先于分数本身**——相同的「78%」分数在不同 prompt 范围、采样参数、工具权限、agent scaffold 下含义不同，比较前必须先确认 rules of the game 一致（§11.2 与 §11.11）。第三，**评估与训练相互定义**——LM-as-judge 的偏差清单（§11.5.5）直接决定偏好优化目标（[第 12 章](../chapter12/chapter12_大模型基本训练流程.md) §12.5）和 RLVR 验证信号（[第 13 章](../chapter13/chapter13_可验证奖励的强化学习.md) §13.3）的偏差结构，judge 与 reward 的偏差需要一起维护。
+评估设计本身的工程判断可以收成三条规则。第一，**单一分数不足以支撑结论**——perplexity、exam、chat、agent、推理、安全、真实使用这七类评估各回答一个独立问题，任何一份模型评估材料都应先定位它属于哪一类，再判断结论的适用边界。第二，**评估的规则优先于分数本身**——相同的「78%」分数在不同 prompt 范围、采样参数、工具权限、agent scaffold 下含义不同，比较前必须先确认 rules of the game 一致（§11.2 与 §11.11）。第三，**评估与训练相互定义**——LM-as-judge 的偏差清单（§11.5.5）直接决定偏好优化目标（[第 12 章 §12.5 偏好优化与 DPO 系列](../chapter12/chapter12_大模型基本训练流程.md)）和 RLVR 验证信号（[第 13 章 §13.3 GRPO 与 Dr. GRPO](../chapter13/chapter13_可验证奖励的强化学习.md)）的偏差结构，judge 与 reward 的偏差需要一起维护。
 
 下章进入 [第 12 章 大模型基本训练流程](../chapter12/chapter12_大模型基本训练流程.md)：评估方法定下来后，训练流水线按 pre-training → mid-training → SFT → RLHF/PPO/DPO 组织；其中 RLHF 与 DPO 的偏好数据来源与 judge 偏差控制直接对应本章 §11.5.5 的四类偏差。
 
@@ -816,6 +816,7 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 - [MMLU-Pro, arXiv:2406.01574](https://arxiv.org/abs/2406.01574)
 - [GPQA, arXiv:2311.12022](https://arxiv.org/abs/2311.12022)
 - [Humanity's Last Exam, arXiv:2501.14249](https://arxiv.org/abs/2501.14249)
+- [τ-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains, arXiv:2406.12045](https://arxiv.org/abs/2406.12045) — Yao、Shinn、Razavi、Narasimhan（2024-06），Sierra / Princeton
 - [LAMBADA, arXiv:1606.06031](https://arxiv.org/abs/1606.06031)
 - [Jozefowicz 等, Exploring the Limits of Language Modeling, arXiv:1602.02410](https://arxiv.org/abs/1602.02410)
 - [Oren 等, Proving Test Set Contamination in Black Box Language Models, arXiv:2310.17623](https://arxiv.org/abs/2310.17623) — 用 permutation test 给出 black-box LLM 数据污染的可证明下界

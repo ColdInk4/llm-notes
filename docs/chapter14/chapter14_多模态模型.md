@@ -232,7 +232,7 @@ Qwen-VL 系列展示了 VLM 向更通用多模态模型演进的几个方向：�
 
 *图 14.5-2 Qwen2-VL MRoPE*
 
-MRoPE 把位置信息扩展到多维输入。文本只有一维顺序；图像有高度和宽度；视频还多了时间轴。多模态 rotary position embedding 让模型在同一个 Transformer 中同时理解这些轴，保留视觉 tokens 中的空间和时间结构。RoPE 的基础定义与频率调度见 [第 3 章 §3.2.4](../chapter3/chapter3_语言模型架构和训练技术细节.md)；MRoPE 把同一套 $Q/K$ 旋转思路推广到多维输入，与现代 dense decoder 默认骨架共用 GQA，见 [第 3 章 §3.2.5](../chapter3/chapter3_语言模型架构和训练技术细节.md)。
+MRoPE 把位置信息扩展到多维输入。文本只有一维顺序；图像有高度和宽度；视频还多了时间轴。多模态 rotary position embedding 让模型在同一个 Transformer 中同时理解这些轴，保留视觉 tokens 中的空间和时间结构。RoPE 的基础定义与频率调度见 [第 3 章 §3.2.4 位置编码](../chapter3/chapter3_语言模型架构和训练技术细节.md)；MRoPE 把同一套 $Q/K$ 旋转思路推广到多维输入，与现代 dense decoder 默认骨架共用 GQA，见 [第 3 章 §3.2.5 注意力机制的变体](../chapter3/chapter3_语言模型架构和训练技术细节.md)。
 
 ### 14.5.3 Qwen3-VL
 
@@ -244,7 +244,7 @@ MRoPE 把位置信息扩展到多维输入。文本只有一维顺序；图像�
 
 - **视频帧附带显式文本时间戳**：与 T-RoPE 的隐式时间位置不同，Qwen3-VL 把帧的时间写成可读文本字段（如 `[t = 12.5s]`）放进 prompt，让模型直接读到时间而不是仅从 rotary 频段中推断。文本时间戳与 Interleaved MRoPE 互补，前者负责可读语义、后者负责位置编码一致性。
 
-- **上下文长度**：**256K** token 原生窗口（约 Qwen2-VL 32K 的 8 倍），用于支撑长视频、多图与长文档混合输入；这一长度也意味着工程上必须把视觉 token budget 与 KV cache 占用放回第 9 章推理账本一起算。
+- **上下文长度**：**256K** token 原生窗口（约 Qwen2-VL 32K 的 8 倍），用于支撑长视频、多图与长文档混合输入；这一长度也意味着工程上必须把视觉 token budget 与 KV cache 占用放回 [第 9 章 §9.3 模型与 KV cache 压缩](../chapter9/chapter9_推理系统.md) 一起算。
 
 - **模型规格**：dense 2B / 4B / 8B / 32B 与 MoE 30B-A3B / 235B-A22B 两组；视觉侧与 LM 同时放大，验证 §14.3 NOTE「视觉 / 语言侧规模差」这一判断随模型代数在逐步收窄。
 
@@ -309,7 +309,7 @@ VQ-VAE 把连续图像压缩成离散 codebook indices。Encoder 产生连续 la
 - 数据阶段：大规模图文对负责语义对齐，高质量 instruction data 负责交互能力，任务数据负责 OCR、图表、GUI 和视频等具体能力。
 - 生成目标：理解型 VLM 可以依赖 continuous encoder；统一生成模型通常需要离散 token 或额外 diffusion decoder。
 
-多模态模型的主线是一组表示、对齐、数据、训练稳定性和系统成本的共同选择。部署时还要把视觉 tokens 对 TTFT、KV cache、batching 和工具调用的影响接回第 9 章的推理系统账本。
+多模态模型的主线是一组表示、对齐、数据、训练稳定性和系统成本的共同选择。部署时还要把视觉 tokens 对 TTFT、KV cache、batching 和工具调用的影响接回 [第 9 章 §9.1.2 TTFT、Latency 与 Throughput](../chapter9/chapter9_推理系统.md) 与 [第 9 章 §9.5 Dynamic Serving](../chapter9/chapter9_推理系统.md) 的推理账本。
 
 ## 14.8 模态扩展与延伸阅读
 
@@ -329,7 +329,7 @@ VQ-VAE 把连续图像压缩成离散 codebook indices。Encoder 产生连续 la
 
 多模态的主线是把视觉、文本乃至音频、视频统一到一组 token、一种训练阶段和一个推理账本下：CLIP / SigLIP 用对比学习把视觉信号拉入文本语义空间；LLaVA / Qwen-VL / Chameleon 用 projector 或离散 token 把视觉 token 接到 LLM 上；Qwen3-VL 在 MRoPE、动态分辨率与多阶段训练里继续打磨视觉-文本联合推理的稳定性与长上下文成本。
 
-把多模态放回主线，本章与第 3 章 §3.2.4 RoPE / 第 5 章 §5.7 FlashAttention 的工程接口、第 9 章推理系统的视觉 token KV cache / TTFT / batching 账本、以及第 10 章数据工程的图文配对与多模态去重都直接相关。后续推理行为与多模态系统的评估、多模态 agent trace 与 RLVR 验证放在一起看，见 [推理行为与能力专题](../topics/reasoning_behavior.md)。
+把多模态放回主线，本章与 [第 3 章 §3.2.4 位置编码](../chapter3/chapter3_语言模型架构和训练技术细节.md) 与 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md) 的工程接口、[第 9 章 §9.3 模型与 KV cache 压缩](../chapter9/chapter9_推理系统.md) 的视觉 token KV cache / TTFT / batching 账本、以及 [第 10 章 §10.1.1 训练数据](../chapter10/chapter10_数据工程.md) 与 [第 10 章 §10.2.2 数据去重](../chapter10/chapter10_数据工程.md) 的图文配对与多模态去重都直接相关。后续推理行为与多模态系统的评估、多模态 agent trace 与 RLVR 验证放在一起看，见 [推理行为与能力专题](../topics/reasoning_behavior.md)。
 
 ## 思考
 

@@ -450,7 +450,7 @@ DoReMi（[Xie et al., 2023, *DoReMi: Optimizing Data Mixtures Speeds Up Language
 
 *图 10.2-9 OpenThoughts 数据生成流程*
 
-OpenThoughts 这类数据集用强 teacher model 为已有题目生成长推理轨迹。图 10.2-9 是它的 sankey 流程，从左到右四次收窄：源数据集提供 OpenMath 2.9M、Physics 547k、OpenCode 459k、CodeGolf 116k、Chemistry 46k 道题；filter questions 之后剩 math 180k、code 60k、science 60k；deduplicate 之后剩 math 80k、code 60k、science 50k；随机采样之后剩 math 53k、code 16k、science 6k，合计 75k 道题；最后对每道题用 teacher 采样 16 条答案，得到 1.2M 条样本。
+OpenThoughts 这类数据集用强 teacher model 为已有题目生成长推理轨迹。图 10.2-9 是它的 sankey 流程，从左到右四次收窄：源数据集提供 OpenMath 2.9M、Physics 547k、OpenCodeReasoning 459k、CodeGolf 116k、Chemistry 46k 道题；filter questions 之后剩 math 180k、code 60k、science 60k；deduplicate 之后剩 math 80k、code 60k、science 50k；随机采样之后剩 math 53k、code 16k、science 6k，合计 75k 道题；最后对每道题用 teacher 采样 16 条答案，得到 1.2M 条样本。
 
 图上每一步都是一个可调旋钮：question 来源怎么选、去重和降采样留多少题、每题采样几条答案、用哪个 teacher、要不要按答案正确性过滤。注意题目数在采样这一步掉得最狠（math 从 80k 到 53k、code 从 60k 到 16k），而最终样本量靠最右侧的 ×16 补回来。下面这组 ablation 结论说明，这些旋钮里真正决定质量的并不是直觉上最显眼的那几个。
 

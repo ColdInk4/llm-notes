@@ -182,7 +182,7 @@ GPU 程序通常按 **grid -> block -> warp -> thread** 的层级组织。grid �
 
 一个 **warp** 是 32 个连续编号线程组成的固定小组，是 SM 调度指令的基本单位。warp 内线程以 SIMT 方式执行：指令相同，输入数据不同。若同一 warp 内部分线程走 `if` 分支、部分线程走 `else` 分支，硬件会用 mask 分阶段执行两条路径，形成 **warp divergence**，有效利用率下降。
 
-SM 上同时可驻留最多 **64 个 warp**（典型值，A100/H100 SM 一致），由 4 个 warp 调度器从共享的 warp 池中取指；每个周期 4 个调度器各发射 1 条指令给不同 warp，使 SM 能在数据依赖或访存等待时切换 warp 隐藏延迟。warp 内 32 个线程在 **SIMD 单元**上同步执行。
+SM 上同时可驻留最多 **64 个 warp**（典型值，A100/H100 SM 一致），由 4 个 warp 调度器从共享的 warp 池中取指；每个周期 4 个调度器各发射 1 条指令给不同 warp，使 SM 能在数据依赖或访存等待时切换 warp 隐藏延迟。warp 内 32 个线程在 **SIMT 单元**上同步执行（NVIDIA 文档用 SIMT 描述 warp 调度模型，硬件执行时内部仍按 SIMD 风格分发到一组 lane 上）。
 
 #### Block（线程块）
 
@@ -486,18 +486,18 @@ GPU采用SIMT（单指令多线程）执行架构，**同一线程束（Warp）�
 
 #### 常见的低精度格式
 
-| 精度类型 | 位数 | 表示范围 | 典型场景 | Tensor Core 峰值加速（vs FP32 CUDA Core 19.5 TFLOP/s） |
+| 精度类型 | 位数 | 表示范围 | 典型场景 | Tensor Core 峰值加速（口径说明见下） |
 |----------|------|----------|----------|----------|
 | **FP32** | 32 位 | $3.4 \times 10^{38}$ | 传统训练，精度敏感 | 1×（FP32 CUDA Core 路径） |
-| **TF32** | 19 位 | $3.4 \times 10^{38}$ | A100+ 默认格式 | **8×**（Tensor Core 156 TFLOP/s） |
-| **FP16** | 16 位 | $6.5 \times 10^4$ | 通用训练/推理 | **16×**（Tensor Core 312 TFLOP/s） |
-| **BF16** | 16 位 | $3.8 \times 10^{38}$ | AI 训练首选 | **16×**（Tensor Core 312 TFLOP/s） |
-| **INT8** | 8 位 | 2⁸ ≈ 256 | 量化推理 | **32×**（Tensor Core 624 TOPS） |
-| **INT4** | 4 位 | 2⁴ = 16 | 极致推理 | **64×**（Tensor Core 1,248 TOPS） |
-| **FP8** | 8 位 | 动态范围 | Hopper/Blackwell | **约 30×**（H100 Tensor Core FP8 dense 约 1,979 TFLOP/s ÷ H100 FP32 67 TFLOP/s，H100 自身对照口径） |
+| **TF32** | 19 位 | $3.4 \times 10^{38}$ | A100+ 默认格式 | **8×**（A100 Tensor Core 156 TFLOP/s vs A100 FP32 CUDA 19.5 TFLOP/s） |
+| **FP16** | 16 位 | $6.5 \times 10^4$ | 通用训练/推理 | **16×**（A100 Tensor Core 312 TFLOP/s vs A100 FP32 CUDA 19.5 TFLOP/s） |
+| **BF16** | 16 位 | $3.8 \times 10^{38}$ | AI 训练首选 | **16×**（A100 Tensor Core 312 TFLOP/s vs A100 FP32 CUDA 19.5 TFLOP/s） |
+| **INT8** | 8 位 | 2⁸ ≈ 256 | 量化推理 | **32×**（A100 Tensor Core 624 TOPS vs A100 FP32 CUDA 19.5 TFLOP/s） |
+| **INT4** | 4 位 | 2⁴ = 16 | 极致推理 | **64×**（A100 Tensor Core 1,248 TOPS vs A100 FP32 CUDA 19.5 TFLOP/s） |
+| **FP8** | 8 位 | 动态范围 | Hopper/Blackwell | **约 30×**（H100 Tensor Core FP8 dense 约 1,979 TFLOP/s vs H100 FP32 CUDA 67 TFLOP/s，H100 自身对照口径） |
 
 > [!WARNING]
-> 上表给出的「加速倍数」是 A100 上 Tensor Core dense 峰值除以 FP32 CUDA Core 19.5 TFLOP/s 的理论比值；实际训练可达加速取决于 kernel 实现、是否启用 FP32 master weight、累加器精度和数值稳定性。混合精度（FP32 master copy + FP16/BF16 计算）端到端常见 2-3× 加速，与峰值比 16× 之间留有显著差距。
+> 表中 TF32 / FP16 / BF16 / INT8 / INT4 行均按 A100 上 Tensor Core dense 峰值 ÷ A100 FP32 CUDA Core 19.5 TFLOP/s 得出；FP8 行单独按 H100 自身 Tensor Core FP8 dense ÷ H100 FP32 CUDA Core 67 TFLOP/s 得出，二者分母不同、口径不同（FP8 在 A100 上不可用）。上述「加速倍数」均为理论比值；实际训练可达加速取决于 kernel 实现、是否启用 FP32 master weight、累加器精度和数值稳定性。混合精度（FP32 master copy + FP16/BF16 计算）端到端常见 2-3× 加速，与峰值比 16× 之间留有显著差距。
 
 ---
 
@@ -727,7 +727,7 @@ tile size 需要同时满足几类约束：放得进 shared memory 和寄存器�
 
 ## 5.7 FlashAttention
 
-本节回答一个前置问题：标准 attention 在序列长度 $N$ 时产生的 $N \times N$ 中间矩阵如何被「分块 + online softmax」搬到片上 SRAM 完成，从而避免完整 attention matrix 的 HBM 往返。具体要按三段看：V1 的核心 IO 思路、online softmax 的数学等价性、V2 在 V1 基础上把串行依赖改写成空间并行、V3 在 Hopper 上用 WGMMA 异步流水线和 FP8 把 Tensor Core 喂到接近峰值。读完后读者应能把 FlashAttention 的演进放回 §5.6 的六条优化线索，并理解每代分别解决了哪一类「算力空转」的根因。
+本节回答一个前置问题：标准 attention 在序列长度 $N$ 时产生的 $N \times N$ 中间矩阵如何被「分块 + online softmax」搬到片上 SRAM 完成，从而避免完整 attention matrix 的 HBM 往返。具体要按四节看：V1 的核心 IO 思路、online softmax 的数学等价性、V2 在 V1 基础上把串行依赖改写成空间并行、V3 在 Hopper 上用 WGMMA 异步流水线和 FP8 把 Tensor Core 喂到接近峰值。读完后读者应能把 FlashAttention 的演进放回 §5.6 的六条优化线索，并理解每代分别解决了哪一类「算力空转」的根因。
 
 ![图 5.7-1 FlashAttention V1 原理图](images/5-7-1-flashattention-v1-overview.png)
 

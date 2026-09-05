@@ -1165,7 +1165,7 @@ Qwen3 的后训练流程围绕两类控制展开：
 
 *图 13.4-23 思考模式融合阶段的 SFT 数据示例*
 
-思考模式融合让模型同时见到带 `<think>` 的长推理回答和直接回答，用户则通过 chat template 里的 `/think` 与 `/no_think` 标记选择模式，默认是思考模式，多轮对话按最后一次出现的标记生效。
+思考模式融合让模型同时见到带 `<think>` 的长推理回答和直接回答，用户则通过 chat template 里的 `/think` 与 `/no think` 标记选择模式，默认是思考模式，多轮对话按最后一次出现的标记生效。
 
 模型学会两种模式后，也能处理中间状态：当思考长度达到 thinking budget 时，系统截断 `<think>` 过程并插入一条停止思考的指令（"Considering the limited time by the user, I have to give the solution based on the thinking directly now."），模型再基于已经生成的推理给出最终答案。Qwen 3 报告指出这种按预算截断的能力没有被显式训练，而是从模式融合的训练分布里自然出现的，所以预算控制在实现上只是一层外部逻辑。
 
@@ -1228,9 +1228,9 @@ RLVR 把后训练主线从“人类偏好 → 偏好模型”换成“可验证�
   - [DeepSeek-R1, arXiv:2501.12948](https://arxiv.org/abs/2501.12948) §2.3.1 冷启动、§2.3.3 拒绝采样与 SFT（600k + 200k = 800k，两个 epoch）、§2.4 蒸馏（六个学生基座，只做 SFT）
   - [Dr. GRPO, arXiv:2503.20783](https://arxiv.org/abs/2503.20783) §2.2 template 影响、§2.3 "Aha Moment Already Appears in Base Models Including DeepSeek-V3-Base"、§3.1 "GRPO Leads to Biased Optimization"（response-level length bias 与 question-level difficulty bias）、§3.2 Dr. GRPO 与 `masked_mean` 常量分母
   - [Kimi k1.5, arXiv:2501.12599](https://arxiv.org/abs/2501.12599) §2.1 RL Prompt Set Curation（不带 CoT 猜答案、N = 8 easy-to-hack 过滤）、§2.3.3 Length Penalty、§2.3.5 Reward Modeling for Math（约 800k CoT 标注样本）
-  - [Qwen3, arXiv:2505.09388](https://arxiv.org/abs/2505.09388) §4.2 Reasoning RL（3,995 query-verifier pairs、170 RL steps、AIME 2024 70.1 → 85.1）、§4.3 Thinking Mode Fusion（`/think` 与 `/no_think` 标记、预算耗尽时插入的停止思考指令）、Table 12（Qwen3-32B 在 Stage 2 / 3 / 4 的评测结果）
+  - [Qwen3, arXiv:2505.09388](https://arxiv.org/abs/2505.09388) §4.2 Reasoning RL（3,995 query-verifier pairs、170 RL steps、AIME 2024 70.1 → 85.1）、§4.3 Thinking Mode Fusion（`/think` 与 `/no think` 标记、预算耗尽时插入的停止思考指令）、Table 22（Qwen3-32B 在 Stage 2 / 3 / 4 的评测结果）
   - [s1: Simple test-time scaling, arXiv:2501.19393](https://arxiv.org/abs/2501.19393)（1k 样本 + Qwen2.5-32B-Instruct）
-  - [LIMO, arXiv:2502.03387](https://arxiv.org/abs/2502.03387) v1 §3.3.1（817）与 v3 §3.1.2（top 800）
+  - [LIMO, arXiv:2502.03387](https://arxiv.org/abs/2502.03387) v1 §3.3.1（817）与 v3 §3.1.1（top 800）
   - [LIMR, arXiv:2502.11886](https://arxiv.org/abs/2502.11886)（Qwen2.5-Math-7B + PPO，1,389 / 8,523 样本）
   - [Less is More: Improving LLM Alignment via Preference Data Selection, arXiv:2502.14560](https://arxiv.org/abs/2502.14560)（Deng et al., 2025；UltraFeedback 10% 数据、AlpacaEval 2.0 提升 3%-8%）
   - [Qwen3-Coder-Next 模型卡](https://huggingface.co/Qwen/Qwen3-Coder-Next)（80B 总参 / 3B 激活 / 262,144 原生上下文）

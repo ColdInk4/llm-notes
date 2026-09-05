@@ -920,7 +920,7 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 这一节只说明一个实验流程：IsoFLOP 不限于 autoregressive LM。对每一档固定的训练 FLOP budget，扫描模型大小等配置，找出 validation loss 最低的点，再观察最优配置怎样随预算变化。扩散语言模型可以使用同一流程，但它的 compute-optimal 趋势不必和 autoregressive LM 相同。
 
 > [!NOTE]
-> 本节是方法论扩展。课程 lecture 9 / lecture 11 主线讲的是 autoregressive LM 的 scaling；diffusion 与 MoE 的 IsoFLOP 例子来自 Plaid 等公开论文，用于把同一套工作流推广到 AR 之外，**不是** lecture 9 / lecture 11 的内容。读者可以按"先看 §8.4 流程，再看 §8.5 推广"的顺序读。
+> 本节是方法论扩展。Autoregressive LM 的 scaling 主线见 §8.4；diffusion 与 MoE 的 IsoFLOP 例子来自 Plaid 等公开论文，用于把同一套工作流推广到 AR 之外。读者可以按"先看 §8.4 流程，再看 §8.5 推广"的顺序读。
 
 ![图 8.5-1 Diffusion IsoFLOP curves](images/8-5-1-diffusion-isoflop-curves.png)
 
@@ -1194,14 +1194,14 @@ Hunyuan 的 MoE scaling 强调参数口径：对 MoE 来说，train compute 更�
 
 图 8.6-24 把 Hunyuan-Large 在 fixed sparsity（16 specialized experts / top-1 routing + 1 shared expert）下的 active-parameter IsoFLOP sweep 画成一族曲线，最低点对应 compute-optimal 配置。Hunyuan-Large 论文 §2.3.1 的 compute-optimal sweep 给出约 `58.1B activated / 5.6T tokens`，对应约 96 tokens per active parameter（5.6T ÷ 58.1B ≈ 96.4）；最终发布模型选择 `52B activated / 7T tokens`，对应约 135 tokens per active parameter（7T ÷ 52B ≈ 134.6）。
 
-两个数字的差别反映 compute-optimal 与 serving-cost optimal 之间的取舍：compute-optimal 优化的是给定算力下的 loss，serving-cost optimal 在损失之外叠加推理成本。这个比例绑定 active-parameter 口径；Hunyuan 这组实验没有同时搜索 sparsity level。换 active experts、routing、sparsity 或数据处理方案时，需要重新检查。
+两个数字的差别来自论文的发布策略：scaling-law optimum 给出 58.1B 参数 / 5.6T tokens，但发布模型刻意下移到 52B 参数、上移到 7T tokens，原因是该 optimum 附近的 quadratic curve 比较平滑，往参数小、数据多一端平移可以更充分地利用训练数据。这个比例绑定 active-parameter 口径；Hunyuan 这组实验没有同时搜索 sparsity level。换 active experts、routing、sparsity 或数据处理方案时，需要重新检查。
 
 MoE scaling 的结论必须绑定参数口径。只看 total parameters，MoE 会显得“参数很多但 compute 不高”；只看 active parameters，又会忽略显存和通信成本。
 
 Hunyuan 这类图把参数口径问题放到前台：dense LM 的 $N$ 迁移到 MoE 时，必须说明横轴表示 total parameters、active parameters，还是每 token compute。
 
 > [!NOTE]
-> 本节引用的 MiniMax-01 由 MiniMax（稀宇科技）团队发表于 arXiv [2501.08313](https://arxiv.org/abs/2501.08313)（2025 年 1 月 14 日），论文标题 *MiniMax-01: Scaling Foundation Models with Lightning Attention*；图 8.6-25 来自该论文的 architecture scaling 实验。
+> 图 8.6-25 来自 MiniMax（稀宇科技）团队的 *MiniMax-01: Scaling Foundation Models with Lightning Attention*（[arXiv:2501.08313](https://arxiv.org/abs/2501.08313)，2025-01-14）。
 
 ![图 8.6-25 MiniMax architecture scaling laws](images/8-6-25-minimax-architecture-scaling-laws.png)
 
@@ -1221,9 +1221,9 @@ MiniMax-01 把 architecture choice 也纳入 scaling law。图 8.6-25 比较 lig
 
 ### 8.6.4 Optimizer Scaling：新 optimizer 的规模风险
 
-本节回答一组训练决策问题：如果一个 optimizer 在小模型上更快，怎样判断它是否值得带到更大的 pretraining run？比较时要先看调参是否公平，再看规模放大后收益是否还保持。读完本节应能：识别 AdamW / AdamC / Muon / cautious optimizer 之间的关键差异、把 optimizer speedup 沿 model size 与 Chinchilla ratio 两个轴同时检验，以及在公开发布的 AdamC blow-up 案例中理解 scaling 失败的可能形态。
+本节回答一组训练决策问题：如果一个 optimizer 在小模型上更快，怎样判断它是否值得带到更大的 pretraining run？比较时要先看调参是否公平，再看规模放大后收益是否还保持。读完本节应能：识别 AdamW / AdamH / Muon / cautious optimizer 之间的关键差异、把 optimizer speedup 沿 model size 与 Chinchilla ratio 两个轴同时检验，以及在公开发布的 AdamH loss-spike 案例中理解 scaling 失败的可能形态。
 
-下面分四步处理：先做调参公平性 sanity check，再加 compute scale 与 Chinchilla ratio 两个轴，然后用 StepFun / DeepSeek / OpenAI 三种 LR-batch scaling 视角对照，最后看 AdamC blow-up 与 Muon 这两个具体工程案例。
+下面分四步处理：先做调参公平性 sanity check，再加 compute scale 与 Chinchilla ratio 两个轴，然后用 StepFun / DeepSeek / OpenAI 三种 LR-batch scaling 视角对照，最后看 AdamH loss-spike 与 Muon 这两个具体工程案例。
 
 ![图 8.6-27 Optimizer hyperparameter interactions](images/8-6-27-optimizer-hparam-interactions.png)
 
@@ -1269,15 +1269,15 @@ StepFun 先把 LR 和 batch 放进经验网格。图 8.6-30 把同一固定训�
 
 StepFun 还检查训练设置的鲁棒性。它把 MoE、不同 dataset 和不同训练设置纳入复核，目标是判断这套 LR / batch 选择在相邻配置里是否仍然可用。MoE 在控制 active parameters 后大体能迁移；换数据时最优 LR / batch 会出现漂移，说明这些系数对数据处理方案很敏感。
 
-![图 8.6-33 AdamC scaling blow-up](images/8-6-33-adamc-scaling-blowup.png)
+![图 8.6-33 AdamH loss-spike under extrapolation](images/8-6-33-adamc-scaling-blowup.png)
 
-*图 8.6-33 AdamC scaling blow-up*
+*图 8.6-33 AdamH loss-spike under extrapolation*
 
-图 8.6-33 是一个工程案例，左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，并从约 $10^{21}$ 之后进入 held-out 外推区。外推区里实测点逐档偏离预测：$10^{21}$ 处高 0.8%， $10^{22}$ 处高 2.5%， $10^{23}$ 处这一档的 run 直接发散。发散的训练设置是 cautious AdamC 配合按 batch size 平方根缩放的 learning rate，改动参数化与 scaling 规则后可以修复。这个案例来自 Held 博客（[openathena.ai/blog/delphi](https://openathena.ai/blog/delphi)）。
+图 8.6-33 是一个工程案例，左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，并从约 $10^{21}$ 之后进入 held-out 外推区。外推区里实测点逐档偏离预测：$10^{21}$ 处高 0.8%， $10^{22}$ 处高 2.5%， $10^{23}$ 处这一档的 run 出现明显 loss spike。这组训练设置来自 Delphi open scaling suite，optimizer 是 AdamH（Adam with Hyperball，把投影权重约束在初始化时的 Frobenius 范数球面上），评估指标是 Paloma macro loss；spike 出现在一批重复文本 batch 上，加入 skip-bad-steps 逻辑（按 grad_norm 阈值跳过）后缓解，最终仍以 0.2% 误差落在预测区间内。这个案例来自 Open Athena / Marin 博客 [*Scaling Laws That Extrapolate 300 Past the Fit*](https://openathena.ai/blog/delphi)。
 
 Volkova et al. [Towards Robust Scaling Laws for Optimizers, arXiv:2602.07712](https://arxiv.org/abs/2602.07712) 处理同一类问题的另一面：论文指出 per-optimizer 直接拟合 Chinchilla-style scaling law 是 ill-conditioned 的、拟合参数高度相关，因此改用“共享 power-law exponents + optimizer-specific rescaling factors”，并在 AdamW、Muon、Scion、Shampoo、SOAP 五种 optimizer、两种架构上验证。
 
-这类失败说明，建立可外推的 scaling 趋势并不容易。Muon、AdamC、cautious Adam 等新 optimizer 或 Adam 变体都可能改善某些规模下的训练效率；比较它们时，要把 weight decay、norm 参数、embedding 参数、混合精度和并行切分纳入同一组训练条件，并在 compute 增加、Chinchilla-style 数据比例和大 batch 训练下复核。
+这类失败说明，建立可外推的 scaling 趋势并不容易。Muon、AdamH、cautious Adam 等新 optimizer 或 Adam 变体都可能改善某些规模下的训练效率；比较它们时，要把 weight decay、norm 参数、embedding 参数、混合精度和并行切分纳入同一组训练条件，并在 compute 增加、Chinchilla-style 数据比例和大 batch 训练下复核。
 
 ![图 8.6-34 Muon scaling](images/8-6-34-muon-scaling.png)
 

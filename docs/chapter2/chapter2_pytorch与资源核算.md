@@ -1278,9 +1278,9 @@ class AdaGrad(torch.optim.Optimizer):
 对于一个深度线性模型，总内存需求由四部分组成（定义见 §2.1.3）：
 
 - 参数（parameters）：模型中所有可学习权重的数量。
-- Activation：前向传播过程中产生的中间结果，需要保存下来用于反向传播。
 - 梯度（gradients）：反向传播计算出的梯度，其数量与参数相同。
 - Optimizer states：优化器维护的额外状态信息（如 AdaGrad 的 g2），其数量也与参数相同。
+- Activation：前向传播过程中产生的中间结果，需要保存下来用于反向传播。
 
 假设所有数据都使用 float32 格式（每个元素占 4 字节），则总内存为：
 

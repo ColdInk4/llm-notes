@@ -109,7 +109,7 @@ per-expert balancing 和 per-device balancing 解决两个层级的问题。前�
 
 这个流程说明 router 的核心工作是“打分和调度”。experts 是否形成可解释分工，取决于训练数据、表示空间、负载约束和系统调度共同作用，通常不能直接解释成人类意义上的主题分类。
 
-从系统角度看，最容易被低估的是第 3 步和第 5 步：dispatch 会把同一个 batch 的 token 打散到不同 experts，combine 又必须按原 token 顺序还原。experts 分布在多 GPU 上时，这两步会变成 all-to-all 通信；如果热门 expert 过载，即使单个 expert FFN 很快，整层也会被最慢 expert 拖住。因此学习 MoE 时应同时看 routing 质量、load balancing、通信开销和数值稳定性。all-to-all 的实现、EP/ETP/EDP 拓扑选择、1F1B A2A Overlap 等调度技巧在 [第 7 章 §7.9.2 EP / ETP / EDP](../chapter7/chapter7_分布式训练.md) 展开。
+从系统角度看，最容易被低估的是第 3 步和第 5 步：dispatch 会把同一个 batch 的 token 打散到不同 experts，combine 又必须按原 token 顺序还原。experts 分布在多 GPU 上时，这两步会变成 all-to-all 通信；如果热门 expert 过载，即使单个 expert FFN 很快，整层也会被最慢 expert 拖住。因此学习 MoE 时应同时看 routing 质量、load balancing、通信开销和数值稳定性。all-to-all 的实现、EP/ETP/EDP 拓扑选择、1F1B A2A Overlap 等调度技巧在 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md) 展开。
 
 ![图 4.1-2 基于 per-expert bias 的负载均衡](images/4-1-2-per-expert-bias-balancing.png)
 
@@ -534,7 +534,7 @@ if __name__ == "__main__":
 
 MoE 的变体大多围绕两类问题展开：一类是**路由与专家分化**，也就是 token 是否能稳定进入合适的专家；另一类是**系统效率**，也就是稀疏激活是否真的转化为端到端吞吐。专家数量、共享专家、细粒度专家、top-k、capacity、aux loss、设备级均衡和 grouped GEMM 都是在这两个目标之间折中。
 
-专家分化并不保证自然出现。若 router 训练过慢，专家可能长期接收混合分布；若 aux loss 过强，router 可能为均衡牺牲语义选择；若热门专家持续过载，系统会出现 token dropping 或 all-to-all 尾延迟。因此，现代 MoE 设计通常同时处理结构、损失、初始化和通信。通信成本与拓扑选择的具体账本见 [第 7 章 §7.9.2 EP / ETP / EDP](../chapter7/chapter7_分布式训练.md)。
+专家分化并不保证自然出现。若 router 训练过慢，专家可能长期接收混合分布；若 aux loss 过强，router 可能为均衡牺牲语义选择；若热门专家持续过载，系统会出现 token dropping 或 all-to-all 尾延迟。因此，现代 MoE 设计通常同时处理结构、损失、初始化和通信。通信成本与拓扑选择的具体账本见 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md)。
 
 1. DeepSpeed-MoE 的贡献可以按结构、训练系统和推理加速三层理解：
 
@@ -544,7 +544,7 @@ MoE 的变体大多围绕两类问题展开：一类是**路由与专家分化**
     - 由于不同层的专家数量不一致，它采用 expert parallelism、expert slicing、data parallelism 和 tensor slicing 的组合，让每层获得合适的并行方式。
 
 > [!NOTE]
-> MoE 在系统侧的 all-to-all 通信、expert parallelism（EP）、expert tensor parallelism（ETP）、expert data parallelism（EDP）的拓扑选择与 overlap 调度是 [第 7 章 分布式训练](../chapter7/chapter7_分布式训练.md) §7.9.2 的主线内容；DeepSeek-V3 的 64-way EP（跨 8 节点）+ DualPipe 双向流水线 overlap 等真实训练配置见 §7.11。MoE 算法侧与系统侧的耦合主要在 EP 拓扑选择，通信形状、调度细节与 overlap 实现在 §7.9.2 集中展开。
+> MoE 在系统侧的 all-to-all 通信、expert parallelism（EP）、expert tensor parallelism（ETP）、expert data parallelism（EDP）的拓扑选择与 overlap 调度是 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md) 的主线内容；DeepSeek-V3 的 64-way EP（跨 8 节点）+ DualPipe 双向流水线 overlap 等真实训练配置见 §7.11。MoE 算法侧与系统侧的耦合主要在 EP 拓扑选择，通信形状、调度细节与 overlap 实现在 §7.9.2 集中展开。
     - 这种自适应并行可以减少负载不均与显存浪费，但具体收益依赖硬件拓扑和通信库实现。
     - 在通信方面，DeepSpeed-MoE 通过 tensor slicing、分层 all-to-all 和显式 layout 转换降低跨节点延迟与稀疏重排开销。
 
@@ -1000,7 +1000,7 @@ class MiniMoELLModel(nn.Module):
 
 DeepSeekMoE 的核心思路是把 routed experts 做得更细，并保留少量 shared experts 覆盖通用模式。
 
-DeepSeek v1-v3 的演化可以按三步理解：v1 已经具备 shared + fine-grained experts、standard top-k routing 和 expert/device auxiliary balancing；v2 在 v1 基础上把 experts 数量扩大至 160，加入 device-level routing 与 communication balancing loss。
+DeepSeek v1-v3 的演化可以按三步理解：v1 已经具备 shared + fine-grained experts、standard top-k routing 和 expert/device auxiliary balancing；v2 在 v1 基础上把 routed experts 数量扩大至 160 并把 fine-grained 因子从 4 提到 10，加入 device-limited routing 与 communication balancing loss。
 
 v3 则强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 top-k 内归一化（`scoring_func: "sigmoid"`、`topk_method: "noaux_tc"`、`norm_topk_prob: true`；参考 [DeepSeek-V3 config.json](https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/main/config.json)）。v1/v2 用 softmax + 全局归一化，v3 改 sigmoid 后只在 top-k 内做归一化，参数路径稳定。
 
@@ -1027,7 +1027,7 @@ v3 则强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 
 
 图 4.3-2 把每次前向的激活计算预算控制在相近水平，再改变 shared expert 与 routed expert 的粒度。多数组合中，更细的 routed experts 与少量 shared experts 能提高归一化指标；右侧问答类任务的提升尤其明显，说明 shared expert 对通用能力和 routed expert 分化有互补作用。
 
-随着专家继续细化，收益会逐渐受通信开销、路由稳定性和每个 expert 可获得 token 数限制。[论文](https://arxiv.org/pdf/2401.06066)的消融实验也提供了一个经验：**当共享专家和激活的 routed experts 保持大约 1:3 的比例时，在基准任务上效果仅给出边际优势**——1/2/4 个共享专家的 Pile loss 差距 ≤0.005，原文 *"different ratios... do not significantly impact performance, 1:3 yields marginally better Pile loss"*。
+随着专家继续细化，收益会逐渐受通信开销、路由稳定性和每个 expert 可获得 token 数限制。[论文](https://arxiv.org/pdf/2401.06066) §4.4 在固定总 expert 数 64、激活 expert 数不变的条件下隔离出 1、2、4 个共享 expert 做消融，得到的 Pile loss 分别为 1.808、1.806、1.811，max − min = 0.005；论文直接说明 "different ratios of the shared experts and routed experts do not significantly impact the performance"，并按 1:3 比例扩展 DeepSeekMoE。
 
 因此，在实际操作中，需要在 expert 粒度、激活数量、shared expert 比例、通信开销和路由稳定性之间做 tradeoff，并通过消融实验找到当前硬件和计算预算下的配置。
 
@@ -1098,7 +1098,7 @@ MegaBlocks 或 grouped GEMM 把不规则 expert batch 组织成更高效的矩�
 2. **Expert compute**：每个专家处理自己的 token batch。由于不同专家 token 数不同，MegaBlocks、grouped GEMM 等库会把不规则 batch 打包成更高利用率的矩阵乘法。
 3. **Combine**：把专家输出按路由权重合回原 token 顺序。这里的通信和 layout 转换常常决定 MoE 是否真的比 dense 模型快。
 
-expert parallelism 的意义在于把专家维度也变成可切分资源：attention 部分可能使用 TP/CP/DP，MLP experts 再叠加 EP/ETP/EDP。这样能扩展总参数量，但也让并行策略选择更依赖硬件拓扑。
+expert parallelism 的意义在于把专家维度也变成可切分资源：attention 部分可能使用 TP/SP/CP/DP，MLP experts 再叠加 EP/ETP/EDP。这样能扩展总参数量，但也让并行策略选择更依赖硬件拓扑。
 
 ![图 4.4-1 expert parallelism 中的 dispatch 与 combine](images/4-4-1-expert-parallelism.png)
 
@@ -1106,13 +1106,13 @@ expert parallelism 的意义在于把专家维度也变成可切分资源：atte
 
 图 4.4-1 展示了 expert parallelism 的基本通信形状：MLP experts 被放到不同设备上，router 结果触发 all-to-all dispatch，把 token activation 送到对应 expert；expert 计算结束后再 all-to-all combine 回原来的 token 顺序。
 
-这类通信形状也解释了为什么 attention 与 MoE 的并行策略常要拆开设计：MoE 切的是专家维度，attention 仍需要 TP/CP 等方式处理矩阵和序列维度。
+这类通信形状也解释了为什么 attention 与 MoE 的并行策略常要拆开设计：MoE 切的是专家维度，attention 仍需要 TP/SP/CP 等方式处理矩阵和序列维度。
 
 ![图 4.4-2 MegaBlocks 将不规则 expert batch 组织为稀疏矩阵乘](images/4-4-2-megablocks-sparse-matmul.png)
 
 *图 4.4-2 MegaBlocks 将不规则 expert batch 组织为稀疏矩阵乘*
 
-图 4.4-2 对比了三种 expert compute 组织方式。逐 expert 做许多小 GEMM 会浪费硬件利用率；块对角矩阵乘把多个 expert batch 合并成一个大算子；MegaBlocks 一类 block-sparse 方法进一步允许不同 expert 拿到不同 token 数。这样可以保留 dropless routing 的质量优势，同时避免不规则 batch 把 Tensor Core 利用率拖低。
+图 4.4-2 对比了三种 expert compute 组织方式。逐 expert 做许多小 GEMM 会浪费硬件利用率；grouped GEMM 把多个 expert batch 合并成一个大算子，但要求各 expert 收到的 token 数一致；MegaBlocks 一类 block-sparse 方法进一步允许不同 expert 拿到不同 token 数。这样可以保留 dropless routing 的质量优势，同时避免不规则 batch 把 Tensor Core 利用率拖低。
 
 > [!WARNING]
 > MoE 的“总参数更大但激活参数更少”只有在路由足够均衡、通信可控、expert matmul 利用率足够高时，才会转化为端到端训练或推理收益。

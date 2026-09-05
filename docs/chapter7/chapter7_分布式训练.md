@@ -39,7 +39,7 @@
 > [!TIP]
 > 选择并行策略时先问：要省的是参数显存、优化器显存、activation 显存、通信带宽，还是单步 wall-clock？不同答案对应完全不同的切分方向。
 
-参数显存与优化器状态的 12 字节 / 参数基线在 [第 2 章 §2.5.6 内存账本](../chapter2/chapter2_pytorch与资源核算.md) 给出；本章按这个基线把状态分片推到 ZeRO / FSDP，把 activation 与 sequence 推到 SP / CP。
+参数显存与优化器状态的 12 字节 / 参数基线在 [第 2 章 §2.5.6 资源核算](../chapter2/chapter2_pytorch与资源核算.md) 给出；本章按这个基线把状态分片推到 ZeRO / FSDP，把 activation 与 sequence 推到 SP / CP。
 
 ## 7.1 为什么需要分布式训练与硬件层级
 
@@ -336,7 +336,7 @@ def collective_operations_main(rank: int, world_size: int):
 
 通常流程中，进程首先需要初始化自身。多个进程需要相互发现对方，它们会连接到**同一主机**来确认彼此存在（使用 `setup`）。这里承担协调功能，数据传输仍通过 NCCL 完成；有 GPU 时通常使用 NCCL 后端，否则可以用 Gloo 调试。初始化完成后，才开始实际 collective。
 
-`dist.barrier()` 会等待进程组中的所有进程都到达同一个同步点。这里使用 barrier 主要是为了让打印结果更容易阅读；在真实训练中，它也常用于 debug 或确保某些阶段全部完成。
+`dist.barrier()` 会等待进程组中的所有进程都到达同一个同步点。在这段示例中调用 barrier 主要是为了让打印结果更容易阅读；在真实训练中，它也常用于 debug 或确保某些阶段全部完成。
 
 `tensor = torch.tensor([0., 1, 2, 3], device=cuda_if_available(rank)) + rank` 为每个 rank 创建不同输入：rank 0 得到 `[0, 1, 2, 3]`，rank 1 得到 `[1, 2, 3, 4]`，以此类推。执行 all-reduce 前先打印各 rank 的本地张量。
 
@@ -1063,7 +1063,7 @@ TP 沿矩阵乘法的宽度切分：把大矩阵切成子块在不同 rank 上�
 
 *图 7.8-1 宽度维度模型并行*
 
-对矩阵乘法 $X \cdot A = Y$ 来说，可以把矩阵切成多个子块，在不同设备上计算局部结果，再在需要的位置合并。它和 [第 6 章 §6.5 Matmul tiling](../chapter6/chapter6_GPU高性能编程.md) 的 tiling 有相同直觉：把一个大矩阵乘拆成更小的并行工作单元，只是这里的工作单元分布在不同 GPU 上。
+对矩阵乘法 $X \cdot A = Y$ 来说，可以把矩阵切成多个子块，在不同设备上计算局部结果，再在需要的位置合并。它和 [第 6 章 §6.5 Matmul tiling、PTX 和工具选择](../chapter6/chapter6_GPU高性能编程.md) 的 tiling 有相同直觉：把一个大矩阵乘拆成更小的并行工作单元，只是这里的工作单元分布在不同 GPU 上。
 
 ![图 7.8-2 MLP 示例](images/7-8-2-mlp-example.png)
 
@@ -1317,7 +1317,7 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 
 更实用的结论可以压缩成一句话：**先让模型放得下，再让通信跟得上，最后再追求满算力。** 具体到策略选择时，通常先判断参数、optimizer state、activation 谁是主瓶颈，再根据节点内外带宽决定 TP、PP、DP、SP、CP、EP 的组合；“标准并行方案”只能作为起点，最终仍要由资源账本和 benchmark 校准。
 
-资源账本只能回答"训练会不会爆"和"算力跑满没有"，不能回答"这个规模训下来是什么 loss"。下一章把视角从"训得起"切到"训得对"：[第 8 章 Scaling Laws](../chapter8/chapter8_Scaling_Laws.md) 用 IsoFLOP、Chinchilla、muP 等方法把 compute budget 拆成最优的模型规模和数据量。
+资源账本只能回答"训练会不会爆"和"算力跑满没有"，不能回答"这个规模训下来是什么 loss"。下一章把视角从"训得起"切到"训得对"：[第 8 章 缩放定律](../chapter8/chapter8_Scaling_Laws.md) 用 IsoFLOP、Chinchilla、muP 等方法把 compute budget 拆成最优的模型规模和数据量。
 
 对照章首学习目标，读到这里应能：
 

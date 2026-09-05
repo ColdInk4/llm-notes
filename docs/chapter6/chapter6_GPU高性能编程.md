@@ -251,7 +251,7 @@ check_equal_1d(naive_gelu, compiled_gelu)
 
 Fusion 的收益来自数据路径：朴素版本每个中间 op 都可能读 HBM、算一小段、写回 HBM；融合版本把多个逐元素计算留在同一个 kernel 内，理想情况下每个元素只读一次、写一次。
 
-## 6.4 Triton：从 elementwise 到 reduction
+## 6.4 Triton：从 elementwise 到 row-overflow
 
 本节用三个递进的 Triton 例子展示 block 级 program 的写法：GeLU（§6.4.1，一段连续向量一个 program）、softmax（§6.4.2，一行一个 program，reduction 在 program 内完成）、row sum（§6.4.3，一行太长时 program 内循环 tile）。读完后应能用 `tl.program_id` / `tl.arange` / mask 三件套解释不同模式的 program 划分策略；matmul 把这套二维 tile 思想推到矩阵乘，在 §6.5 展开。
 

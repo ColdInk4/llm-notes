@@ -16,7 +16,7 @@ LLM 推理能力既是可观察的生成行为，也是消耗系统预算的训�
 
 ## 推理能力的研究案例
 
-本节先用三个 2026 年公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖程序合成、定理证明和数学公式推导三类典型应用，后续小节再沿着五条主线拆解能力、概率与系统代价。
+本节先用三个近期公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖图论与组合（2025 年 Knuth）、定理证明（2026 年 Brenner 等）和数学公式推导（2026 年 Feng）三类典型应用，后续小节再沿着五条主线拆解能力、概率与系统代价。
 
 - Anthropic 的 Claude 参与 Donald Knuth 研究过的图论猜想推导过程，记录见 [Knuth 的 PDF](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf)。
 - Brenner（Google Research 与 Harvard SEAS）、Cohen-Addad（Google Research）和 Woodruff（Google Research 与 Carnegie Mellon 联合）在 [arXiv:2603.04735 *Solving an Open Problem in Theoretical Physics using AI-Assisted Discovery*](https://arxiv.org/abs/2603.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
@@ -200,7 +200,7 @@ Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。Mor Ge
 
 专题图 11 可以理解为搜索空间重加权。预训练模型已经覆盖了许多候选轨迹，其中既有正确推理，也有错误捷径、冗长模板和格式化噪声。RLVR 用可验证奖励提高正确轨迹的相对概率，使小规模采样更容易命中有效路径。
 
-但 Yue 等人的实验同时给出反向证据（专题图 11 Problem B 与右侧 Omni-MATH-Train 曲线）：对于基座模型原本就能找到正确路径的部分题目，RLVR 训练会把这些路径的概率压低，使对应题目在新策略下变成不可解；随着训练步数推进，平均 pass@1 在提升，但 pass@256 在下降，说明可解题集合在收缩。这与 §2.3 Pass@k 部分的结论一致——RLVR 的能力上限仍由基座模型的分布决定，它主要重排并稳定调用已有轨迹，副作用是在覆盖范围和平均性能之间做权衡。RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度偏差，还包括这一类能力边界收缩；与 [第 13 章 §13.4 R1-Zero](../chapter13/chapter13_可验证奖励的强化学习.md) 案例中"a-ha moment 在 base 模型中已出现"的观察共同指向同一个结论：基座模型已经把可解题的上限写在分布里，后训练主要是重排触达概率。
+但 Yue 等人的实验同时给出反向证据（专题图 11 Problem B 与右侧 Omni-MATH-Train 曲线）：对于基座模型原本就能找到正确路径的部分题目，RLVR 训练会把这些路径的概率压低，使对应题目在新策略下变成不可解；随着训练步数推进，平均 pass@1 在提升，但 pass@256 在下降，说明可解题集合在收缩。这与 §3.3 Pass@k：基座模型也包含正确轨迹 部分的结论一致——RLVR 的能力上限仍由基座模型的分布决定，它主要重排并稳定调用已有轨迹，副作用是在覆盖范围和平均性能之间做权衡。RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度偏差，还包括这一类能力边界收缩；与 [第 13 章 §13.4.1 R1-Zero](../chapter13/chapter13_可验证奖励的强化学习.md) 案例中"a-ha moment 在 base 模型中已出现"的观察共同指向同一个结论：基座模型已经把可解题的上限写在分布里，后训练主要是重排触达概率。
 
 后训练常见方法包括：
 
@@ -319,7 +319,7 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 - [Transformer 中前馈层网络的探究](https://aclanthology.org/2021.emnlp-main.446/)（[arXiv:2012.14913](https://arxiv.org/abs/2012.14913)）
 - [从生产语言模型中抽取训练数据](https://arxiv.org/abs/2012.07805)
 - [Stanford 与 Google 团队合作提出的类比推理](https://arxiv.org/pdf/2310.01714)
-- [Mind Lab 工程博客：在 1T 参数 Kimi-K2 上用 LoRA + RL 训练的经验](https://macaron.im/mindlab/research/building-trillion-parameter-reasoning-rl-with-10-gpus)
+- [Mind Lab 工程博客：在 1.04T 总参 / 32.6B 激活的 Kimi-K2 上用 LoRA + RL 训练（64 张 H800 / 10% 全参 RL GPU）的经验](https://macaron.im/mindlab/research/building-trillion-parameter-reasoning-rl-with-10-gpus)
 - [第 13 章 可验证奖励的强化学习](../chapter13/chapter13_可验证奖励的强化学习.md)
 - [过犹不及：理解大语言模型中的思维链长度](https://arxiv.org/pdf/2502.07266)
 - [DTR 指标](https://arxiv.org/pdf/2602.13517)
@@ -335,5 +335,5 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 - 来源：本专题与第 9 章的 serving / inference systems 分工互补；具体案例链接见上方「参考资料」一节。
 - 课程映射：提供后训练、RLHF、DPO、RLVR 和现代推理模型案例背景；CoT、多路径解码、DTR、工具增强等主题主要依赖上方公开论文和专题材料。
 - 材料边界：rollout、训练 infra 和 serving 成本等系统侧细节由第 9 章与第 13 章承载；本专题只引用其结论，不重复系统账本。
-- 跨章引用：[第 13 章 §13.4 R1-Zero / Dr.GRPO 案例](../chapter13/chapter13_可验证奖励的强化学习.md) 与本专题 §3 RLVR 副作用部分共享同一组证据（"RL 不必然增加新能力，更可能重排基座模型的轨迹概率"）；[第 14 章 多模态模型](../chapter14/chapter14_多模态模型.md) 在章末把多模态 agent trace 与 RLVR 验证指向本专题。
+- 跨章引用：[第 13 章 §13.4.1 R1-Zero 与 §13.3 GRPO / Dr.GRPO](../chapter13/chapter13_可验证奖励的强化学习.md) 与本专题 §4 后训练：奖励信号如何改变搜索偏好 中的 RLVR 副作用部分共享同一组证据（"RL 不必然增加新能力，更可能重排基座模型的轨迹概率"）；[第 14 章 多模态模型](../chapter14/chapter14_多模态模型.md) 在章末把多模态 agent trace 与 RLVR 验证指向本专题。
 - 查阅日期：2026-09-05。覆盖 CS336 2026 Lecture 10（inference）与 Lecture 15 / 16 后训练背景；外部论文按 arXiv 提交日期记录。
