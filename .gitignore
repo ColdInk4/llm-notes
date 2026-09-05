@@ -1,0 +1,11 @@
+.DS_Store
+.ipynb_checkpoints/
+__pycache__/
+*.py[cod]
+.cache/
+
+# agent 维护副产物：pdftotext 从 sources/lectures/ 抽出供线性读取
+sources/_extracted_pdfs/
+
+# 课程原始材料独立 git 仓库（见 AGENTS.md「资料位置」），父仓库不追踪
+sources/lectures/
