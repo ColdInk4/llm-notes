@@ -236,6 +236,8 @@ $$
 r_\phi(x,y_w) > r_\phi(x,y_l)
 $$
 
+这个不等式只定义了 reward model 的局部排序；它还没有说明策略是否会因此改进。完整实验链条要把三种对象分开：SFT 先固定示范数据得到策略，reward modeling 在同一 prompt 下比较 chosen/rejected，PPO 再用 held-out prompts 检验策略 reward、KL 偏移和任务质量。每一步改变的训练信号不同，混合报告会无法判断收益来自示范、奖励模型还是策略更新。
+
 实际数据收集比公式复杂。标注者是否理解任务、是否检查事实、是否偏好长回答、是否来自特定文化和职业背景，都会改变 reward model 学到的价值函数。
 
 这套 RM + PPO 的两段式范式最早由 [Stiennon et al., 2020, *Learning to summarize from human feedback*, NeurIPS 2020, arXiv:2009.01325](https://arxiv.org/abs/2009.01325) 在摘要任务上给出，并附带完整标注指南；[InstructGPT, arXiv:2203.02155](https://arxiv.org/abs/2203.02155) 把它扩展到通用指令跟随。[Bai et al., 2022, *Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback* (Anthropic HH), arXiv:2204.05862](https://arxiv.org/abs/2204.05862) 补上了安全标注的组织方式，[Bai et al., 2022, *Constitutional AI: Harmlessness from AI Feedback*, arXiv:2212.08073](https://arxiv.org/abs/2212.08073) 把打标主体换成模型本身。这几份材料连同后续开源数据共同说明，偏好数据本身也是模型行为的一部分。

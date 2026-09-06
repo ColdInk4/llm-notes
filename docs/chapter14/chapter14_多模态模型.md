@@ -16,6 +16,8 @@
 
 这个扩展首先是表示问题。Transformer 处理的是 token 序列，因此图像、视频和音频都要先转成某种 token 或 embedding。理解任务通常更需要语义压缩，生成任务还需要保留细粒度细节。两类目标会推动不同的 encoder、adapter、tokenizer 和训练流程。
 
+本章的认识链从 Transformer 的序列输入约束出发：非文本模态必须映射到可参与注意力计算的 token 或 embedding，同时保留任务所需的信息。patch 几何关系给出视觉 token 预算，对比学习、projector 和自回归损失分别检验表示对齐、跨模态接口和生成能力；分辨率、多图数量、视频帧率与 loss 权重作为实验变量，图表结果用于判断收益、显存代价和模态间干扰。
+
 ![图 14.1-1 多模态目标总览](images/14-1-1-multimodality.png)
 
 *图 14.1-1 多模态目标总览*
@@ -46,6 +48,8 @@ Transformer 的核心抽象是 token 序列，因此每种非文本模态都要�
 视觉理解的早期关键问题是：能否利用互联网上大量 image-text pairs，减少对人工标注 ImageNet 式分类标签的依赖。CLIP 和 SigLIP 都从这个问题出发，把图像和文本编码到可比较的表示空间。
 
 这一节先学习“图像语义如何靠文本监督学出来”。训练问题是让一张图靠近匹配 caption，远离不匹配 caption；系统问题是这种目标怎样影响 batch size、通信和后续 VLM encoder 选择。
+
+对比学习实验应固定图文配对来源、图像增强、文本 tokenizer 和 encoder 规模，只改变 batch、温度或损失形式；分别报告 image-to-text、text-to-image 检索和 zero-shot 分类，才能区分表示对齐收益、负样本数量效应与下游迁移效果。
 
 ![图 14.2-1 CLIP 图文对齐框架](images/14-2-1-clip-overview.png)
 

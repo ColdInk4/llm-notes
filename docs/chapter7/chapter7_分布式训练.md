@@ -443,6 +443,8 @@ Rank 3 [after all-gather]: input = tensor([18.], device='cuda:3'), output = tens
 
 benchmark 输出里的 GB/s 由 benchmark 脚本自己按固定公式算出，NCCL 并不回报这个数字，它也不等于“张量大小除以耗时”。脚本沿用 [nccl-tests 的 bus bandwidth 口径](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md)：先算 algorithm bandwidth $S/t$ ，再乘一个只和 collective 类型与 rank 数有关的修正系数——all-reduce 是 $2(p-1)/p$ ，reduce-scatter 和 all-gather 是 $(p-1)/p$ 。这个系数来自 ring 算法的最优传输量推导，但写进脚本后就与 NCCL 实际选中的 ring 或 tree 实现无关。它的价值是比较同一集群、同一 collective、同一消息大小下的趋势；某一次数字不能直接当成硬件上限。
 
+通信实验的可识别条件是固定消息大小、dtype、rank 拓扑和 collective 算法，只改变 world size 或节点布局。先由 ring 的传输量推导理论 $S/t$ 与 bus-bw，再用同步后的实测时间检验趋势；若偏差随消息大小或拓扑改变，应回到 latency、协议切换和链路带宽分别定位。
+
 这里有两层异步需要分开看：`torch.cuda.synchronize()` 等待本 rank 上已经提交的 CUDA / NCCL kernel 完成，`dist.barrier()` 等待所有 rank 都走到同一个同步点。前者解决 GPU 异步执行，后者解决多进程进度不齐；做通信 benchmark 时通常两个都需要。
 
 

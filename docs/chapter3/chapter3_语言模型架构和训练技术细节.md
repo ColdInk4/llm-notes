@@ -1003,6 +1003,8 @@ $$
 
 ## 3.3 超参数考量与设计原则
 
+本节把架构选择转成可检验的超参数实验：每次只改变一个候选变量（FFN expansion、head dim、宽深比或词表大小），固定 tokenizer、训练 tokens、optimizer、batch、scheduler 和评测集，记录 pretraining loss、吞吐和显存。曲线的最低点、斜率和资源代价分别对应质量、缩放趋势与工程约束，具体数值属于实验拟合而非普遍定律。
+
 这一节给出训练一个新 dense decoder 时常用的几个超参数经验区间：FFN expansion ratio（§3.3.1）、head dim 与 model dim 的比例（§3.3.2）、宽深比（§3.3.3）、vocab size（§3.3.4）、dropout 与 weight decay（§3.3.5）。这些区间描述的是分布中心，不是固定常数；具体模型的层数、头数、$d_{\text{ff}}$ 与正则化设置写在各自的论文、模型卡和官方 config 里，读配置时按这些一手数字对照本节即可。
 
 当你突然被要求训练一个新语言模型时，会对超参数产生很多疑问，因为它们的数量相当多。你应该意识到的一个关键点是：在不同成功模型中，实际上只有少数几个超参数会被调整。业界遵循着相当明确的经验法则和指导原则。比如前馈网络的尺寸应该扩大多少？注意力头数量该如何设定？词表规模多大合适？前馈层（FFN）大小应该比隐藏层大小大多少？有多少个头，num_heads 是否总是应该能整除隐藏层大小？人们是如何扩展这些模型的，是变得更深（deep）还是变得更宽（wide）？
@@ -1236,7 +1238,7 @@ $$
 
 到这里应能在「训练稳定性 / 表达能力 / 推理成本 / 长上下文能力」四类判断之间拆解任意 dense decoder 配置：默认骨架（Pre-norm + RMSNorm + no bias + SwiGLU + RoPE）解决稳定性与表达效率；KV cache 共享（MQA / GQA / MLA / CLA）解决推理成本；稀疏读取（SWA / DSA / CSA / HCA）与线性时间替代（linear attention / Mamba-2 / Gated DeltaNet）解决长上下文效率；超参数区间（§3.3）与稳定性技巧（§3.4）共同决定这套骨架在给定硬件和训练设置下能否稳定收敛。
 
-下一步是把 dense FFN 换成 routed experts——同一组 FFN 参数被切成多份，由 router 在每个 token 上挑选 top-k：[第 4 章 混合专家模型](../chapter4/chapter4_混合专家模型.md) 接管条件计算与负载均衡的系统视角。Attention alternatives 的工程实现（FlashAttention、sparse attention）的执行视角在 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md) 展开；PagedAttention 与 serving 调度则在 [第 9 章 推理系统](../chapter9/chapter9_推理系统.md) 中按「算力 vs 显存 vs 调度」展开。
+把 dense FFN 换成 routed experts 后，同一组 FFN 参数被切成多份，由 router 在每个 token 上挑选 top-k；条件计算与负载均衡的系统视角见[第 4 章 §4.1 分析 MoE](../chapter4/chapter4_混合专家模型.md)。Attention alternatives 的工程实现（FlashAttention、sparse attention）的执行视角在[第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md)展开；PagedAttention 与 serving 调度见[第 9 章 §9.5 Dynamic Serving：Continuous Batching 与 PagedAttention](../chapter9/chapter9_推理系统.md)。
 
 ## 来源与更新记录
 

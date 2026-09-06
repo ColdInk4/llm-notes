@@ -699,6 +699,8 @@ y[i, k] = x[i, 0] * w[0, k] +
 ```
 这个求和过程包含 D 次乘法（x[i, j] * w[j, k]）和 D - 1 次加法，总共 ≈ 2D 次 FLOPs（因为 D 通常很大，D - 1 ≈ D）
 
+这条计数链给出理论工作量，代码 benchmark 再测实际 wall-clock。固定 $B,D,K$ 和 dtype，先用 $2BDK$ 估算 FLOPs，再用 CUDA event 测量时间；理论 FLOP/s 与实测值的差距来自内存搬运、kernel launch、并行度和硬件利用率，而不是 FLOPs 公式本身改变。
+
 因此，矩阵乘法的计算量：**总 FLOPs** $\approx 2 \times B \times D \times K$
 
 因为 $D \times K$ 正好是这个线性层的参数数量！所以我们可以重写为： $F_{\text{linear}} = 2 \times N_{\text{data}} \times N_{\text{param}}$ 。

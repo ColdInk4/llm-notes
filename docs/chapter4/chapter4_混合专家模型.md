@@ -90,6 +90,8 @@ MoE 通过将原本的单一前馈网络（如 MLP/FFN）替换为由多个并�
 
 路由质量不能只看 perplexity。真实系统里还要同时看四个指标：专家负载是否均衡，token 是否被丢弃，all-to-all 通信是否成为瓶颈，以及 router logits 是否在低精度下稳定。router 常常需要比专家计算更保守的精度和正则化，例如 router FP32、router z-loss、aux loss 或 per-expert bias。
 
+路由消融应固定模型主干、训练 tokens 和总 FLOPs，只改变 routing 规则、$k$、capacity factor 或 balancing 系数；同时记录 validation loss、expert utilization、drop rate、all-to-all 时间和 logits 溢出。这样才能把“模型质量变化”与“通信/负载变化”拆开解释。
+
 > [!NOTE]
 > DSA（DeepSeek Sparse Attention）虽然也会出现 top-k 选择，但它属于注意力稀疏化。前者在挑“该读哪些历史 token”，MoE routing 在挑“该激活哪些专家 FFN”。
 

@@ -12,6 +12,8 @@
 
 推理系统是语言模型把能力交给用户和下游系统的工程层。训练决定模型学到了什么，推理系统决定这些能力能以多高吞吐、多低延迟、多少显存和多少服务成本被释放出来。对话、代码补全、搜索、智能体调用、批量数据处理、评测和 RL rollout 都在消耗推理预算。
 
+本章的认识链从自回归分解 $p(x_{1:T})=\prod_t p(x_t\mid x_{<t})$ 和硬件带宽约束出发：prefill 一次处理整段输入，generation 每步读取权重与历史 KV cache。由此推导 TTFT、latency、throughput 和 KV cache 的账本；每种压缩、speculative 或 serving 调度方法都通过 workload 对照实验验证它减少了哪类数据搬运，同时记录输出分布和质量边界。
+
 推理系统里有一个很直接的账本：生成 token 就是在花 compute。聊天产品里，人类阅读速度常常是瓶颈；但 agent、代码执行、搜索增强、RL rollout 和合成数据生成会产生大量中间 trace，许多 token 甚至不会被最终用户看到。因此推理优化不只是“让一个回答更快”，还包括控制系统里所有可见和不可见 token 的成本。
 
 本章按一条推理系统主线展开：先理解 workload，再建立 KV cache 与 `arithmetic intensity` 账本，然后讨论模型与 KV cache 压缩、保持分布的 speculative sampling，最后进入在线 serving 的动态 workload。
@@ -439,6 +441,8 @@ $$
 当 draft model 过度偏向某个 token 时，第一次拒绝后从归一化的残差分布 $r_i(y) \propto \max(q_i(y) - p_i(y), 0)$ 采样一个 token。若 $k$ 个候选全部被接受，再从 target model 采样一个额外 token。接受与残差采样共同补偿 proposal distribution 的偏差。
 
 关键性质在于分布保持。正确的 speculative sampling 是修改过的 rejection sampling，可以保持从 target model 分布精确采样。它减少 target model 串行 generation 步数，同时保留 target model 的目标分布。
+
+速度实验要把分布保持与加速收益分开验证：固定 target model、提示集合和采样温度，扫描 draft model 大小与候选长度 $k$，分别记录接受率、每轮接受 token 数、target forward 次数和端到端 latency。接受率只说明候选质量；只有当并行检查节省的 target 计算超过 draft 开销时，吞吐才会上升。
 
 ### 9.4.2 速度取决于 Draft 质量和候选长度
 

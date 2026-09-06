@@ -68,6 +68,8 @@ Scaling workflow 的目标是把最贵的不确定性前移到小实验：
 4. 用 IsoFLOP 分析选择固定预算下的配置。
 5. 在中等规模复核之后，再启动大训练。
 
+这五步分别切断一类混杂因素：第 1 步把数据、实现和评测锚定，避免曲线变化来自实验协议；第 2 步用正交的资源扫描建立可识别的因果对照；第 3 步把观测点压缩成可检验的函数，并保留拟合残差；第 4 步在同一 $C$ 约束下比较 $N$ 与 $D$ 的替代关系；第 5 步用未参与拟合的中等规模点检查外推误差。五步完整时，大训练配置才同时具备因果对照和复用依据。
+
 初学者先记住一个粗略训练预算关系：
 
 $$
@@ -134,6 +136,8 @@ $$
 其中 $\hat{h}$ 是学到的假设， $h^*$ 是假设类里的最优假设， $\epsilon(\cdot)$ 是泛化误差， $m$ 是样本数， $d$ 是模型类复杂度。它说明样本数会影响泛化误差，但这类理论通常给出 worst-case upper bound，和实际训练 loss 还有距离。
 
 这和现代 scaling law 的关系是：两者都在问“资源增加后误差怎么下降”。区别在于，理论 bound 往往很保守，关心最坏情况；LLM scaling law 更像工程测量，关心某组固定训练条件在真实数据和真实模型上的经验曲线。因此它不能替代理论证明，但能直接服务训练预算决策。
+
+认识链在这里要把理论陈述和实验陈述分开：VC 维上界的起点是假设类复杂度与样本数，结论是最坏情况下的泛化误差随 $m$ 的上界；LLM scaling 实验则把模型、数据和优化器固定，只改变一个资源轴，再用 held-out loss 测量曲线。两者共享“资源增加—误差下降”的问题形式，证据类型和可外推范围不同。
 
 ### 8.2.2 早期实证研究
 
@@ -222,6 +226,8 @@ Hestness 的另一个重要贡献是把 scaling、emergence、compute 和 system
 *图 8.3-1 Kaplan language model scaling*
 
 图 8.3-1 把 Kaplan 等人 2020 年论文里三条曲线放在同一张图里：横轴分别为 dataset size、parameter count 和 compute，纵轴都是 validation loss，每张子图拟合出一条 power law 直线。读图时先固定一个横轴，再看另一条曲线斜率。三张子图横轴单位、点密度不同，对应不同训练设置下的拟合结果。
+
+这类单变量实验的可识别条件是：改变 dataset size 时，模型结构、optimizer、训练步数口径和 validation set 保持一致；改变 parameter count 时，数据和优化流程保持一致；改变 compute 时，明确 compute 是通过模型大小、训练长度还是二者共同改变得到。只有先写清这些控制变量，曲线斜率才有明确含义。
 
 这三条曲线服务同一个判断：scaling law 只能回答固定账本下的问题。账本一变，曲线的含义也会变。曲线变平时，先看瓶颈落在哪里：数据不够、模型太小，还是优化设置不合适。
 
@@ -366,6 +372,8 @@ Data composition 主要回答一个比“数据越多越好吗”更具体的问
 
 真实数据工作通常比理想曲线更 noisy。常见做法是先训练一批小模型，挑小规模上表现最好的 data mix，再把这个 mix 放大。这个做法依赖一个前提：不同 mix 的 slope 接近，放大后的排序主要由曲线高低决定。如果某个 mix 在小规模低 loss，但 slope 更平，放大后优势可能消失。
 
+因此，data-mix 实验至少要固定总 tokens、模型配置、训练 compute 和评测集，只改变来源比例 $q$；重复数据实验还要固定 unique-token 池，单独改变 epoch 数。左图的曲线偏移、右图的比例扫描和 effective-data 拟合分别对应“质量差异”“混合比例”和“重复收益递减”三个可检验假设。
+
 #### Data Repetition：重复数据
 
 Data repetition 处理的是有限数据集的放大问题。无限新数据的 scaling law 不能直接套到有限数据集上；重复同一批 token 的价值会递减。现实问题是：如果高质量数据有限，重复训练它几遍，是否等价于拿到了同样多的新数据？
@@ -427,6 +435,8 @@ $$
 *图 8.3-10 Data selection finiteness*
 
 数据选择也要随 scale 调整。小模型或小预算下，高质量小数据可能更好；大预算下，过度过滤会让 unique tokens 不够，质量稍低的新数据反而更有价值。
+
+把过滤阈值当作可测变量时，先固定模型、训练 tokens、optimizer、batch、学习率和评测集，只改变保留规则或阈值；对每个 compute 档位记录保留 token 数、重复率、held-out loss 与下游指标。若阈值变化同时改变了数据量和数据分布，就无法区分收益来自质量还是覆盖面；只有在这组控制下，图中的最优阈值移动才能解释为“数据规模改变了过滤强度的折中”。
 
 图 8.3-10 来自 Goyal et al. 的 data filtering scaling law 工作（[*Scaling Laws for Data Filtering — Data Curation cannot be Compute Agnostic*, arXiv:2404.07177](https://arxiv.org/abs/2404.07177)）。图把 DataComp 的 web 数据按质量切成 A–F 若干 bucket（`E` 是质量最高的一档，往下依次变差），组合方式用累加池（`E only`、`E+D`、`E+D+C`）表示；横轴是 compute，纵轴是 optimal filtering 强度。读图重点是阈值随 compute 单调下降：small compute 下最优是 highly aggressive filtering，medium compute 下退到 mildly aggressive filtering，更大 compute 下阈值继续放松，让更多但稍差的数据进入训练。
 
@@ -966,6 +976,8 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 
 扩散语言模型（diffusion LM）可以把同样的 IsoFLOP 流程跑一遍：对每档训练 FLOP budget 扫描模型大小，标出最低点，再拟合 scaling 曲线。与 autoregressive LM 的关键差异是单 token 的训练成本不同，因此 diffusion 达到相近 NLL 通常需要约 64× 的训练 compute（Plaid 论文 [arXiv:2305.18619](https://arxiv.org/abs/2305.18619) §5 报告的常数因子）。该论文同时给出：compute-optimal Plaid 模型约比 compute-optimal AR **小 ~4×、训练长 ~4×**——4× smaller × 4× longer 是 diffusion 在同一 FLOP 预算下的 compute-optimal 前沿形状（与 AR 的 compute-optimal 形状并行），而 64× 是"追平 AR 同等 NLL 所需额外 compute"这一独立常数因子。沿用同一套 IsoFLOP 工作流意味着：先得到每档预算的最优配置，再把这些最优点拟合到 power law。趋势稳定时，小规模 sweep 仍可用于规划更大的训练预算。
 
+这里的迁移是实验设计的迁移，不是结论的直接继承：AR 与 diffusion 必须分别定义一次训练 step、token 预算和 NLL 评测协议，再在相同 FLOP budget 下比较。只有当数据、模型容量、优化器和评测分布对齐时，4×/64× 才能解释为 compute efficiency 差异；否则它们只是不同实验协议下的比例。
+
 ![图 8.5-2 Diffusion optimal scaling](images/8-5-2-diffusion-optimal-scaling.png)
 
 *图 8.5-2 Diffusion optimal scaling*
@@ -985,6 +997,8 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 本节回答 §8.5 留出的另一个具体问题：把 IsoFLOP 流程扩展到 MoE 时，新增的第三轴 sparsity 怎样参与 sweep。读完应能：在 fixed FLOP budget 下同时扫描 total params、active params、sparsity 三轴网格；解释 active params 边际收益先饱和的现象；以及理解 DeepSeek / Qwen / Kimi K2 在 §8.6 如何复用这一三轴网格选 MoE 配置。
 
 MoE 给 IsoFLOP 加了一个变量：total parameters 与 active parameters 之比。固定 FLOP budget 下，扫描 total params、active params 和 sparsity 三轴网格，比较每种组合的 validation loss。与 dense LM 相比，MoE 的 scaling rule 通常表现为：total params 更大时 loss 更低，但 active params 增加带来的边际收益会先饱和。这一现象在 §8.6 现代报告里被 DeepSeek / Qwen / Kimi K2 反复使用：先确定 FLOP budget，再在 MoE 三轴网格上选 active params 与 sparsity。
+
+三轴 sweep 要把路由成本纳入同一账本：固定总 FLOPs 只约束 expert compute，还要记录 router、dispatch、all-to-all 和 capacity overflow。实验中分别报告 total parameters、active parameters、每 token FLOPs、expert utilization 和 validation loss，才能判断 loss 改善来自容量增加、激活计算增加，还是路由/通信条件变化。
 
 ## 8.6 Scaling in Practice：MiniCPM、DeepSeek 与现代报告
 
@@ -1254,6 +1268,8 @@ MiniMax-01 把 architecture choice 也纳入 scaling law。图 8.6-25 比较 lig
 本节回答一组训练决策问题：如果一个 optimizer 在小模型上更快，怎样判断它是否值得带到更大的 pretraining run？比较时要先看调参是否公平，再看规模放大后收益是否还保持。读完本节应能：识别 AdamW / AdamH / Muon / cautious optimizer 之间的关键差异、把 optimizer speedup 沿 model size 与 Chinchilla ratio 两个轴同时检验，以及在公开发布的 AdamH loss-spike 案例中理解 scaling 失败的可能形态。
 
 下面分四步处理：先做调参公平性 sanity check，再加 compute scale 与 Chinchilla ratio 两个轴，然后用 StepFun / DeepSeek / OpenAI 三种 LR-batch scaling 视角对照，最后看 AdamH loss-spike 与 Muon 这两个具体工程案例。
+
+比较 optimizer 的认识链从“更新规则改变了什么”开始：先固定模型、数据和训练预算，只替换 optimizer 并为每种方法分别搜索学习率、weight decay 与 batch；再沿 model size 和 tokens-per-parameter 扫描，记录 loss、吞吐、梯度稳定性和发散率；最后在未参与拟合的规模上复测。这样才能把单点速度优势与真正的 scale robustness 分开，也能定位收益来自更新几何、超参调优还是实现效率。
 
 ![图 8.6-27 Optimizer hyperparameter interactions](images/8-6-27-optimizer-hparam-interactions.png)
 
