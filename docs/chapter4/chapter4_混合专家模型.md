@@ -509,7 +509,7 @@ if __name__ == "__main__":
 
 | 路由方式 | 核心思路 | 是否可学习 | 优点 | 缺点 | 典型用途 |
 |---------|----------|------------|-------|--------|-----------|
-| **top-k routing**（TC、EC） | gating network 为 token-expert 对计算得分，选择 top-k experts 参与计算 | 是 | 语义灵活、可适应数据分布；可结合 load balancing loss、noisy gating 等技巧 | 需要训练；大规模时有负载倾斜风险；通信开销较高 | DeepSeek-MoE、GPT-MoE、Qwen、Switch Transformer 等 |
+| **top-k routing**（TC、EC） | gating network 为 token-expert 对计算得分，选择 top-k experts 参与计算 | 是 | 语义灵活、可适应数据分布；可结合 load balancing loss、noisy gating 等技巧 | 需要训练；大规模时有负载倾斜风险；通信开销较高 | DeepSeek-MoE、GPT-OSS、Qwen、Switch Transformer 等 |
 | **哈希路由** | 通过固定哈希函数将输入映射到专家，例如 LSH 或随机哈希 | 否 | 天然负载均衡；无需训练 router；实现便宜；通信成本低 | 语义表达能力弱；无法根据任务动态分配专家 | 大规模推理、轻量级 MoE、部分稀疏训练实验 |
 
 尽管 MoE 结构早在较早时期就已提出，但其在大规模语言模型中的广泛应用主要发生在 2021 年之后（如 Switch Transformer、GLaM 等工作）。近年来，DeepSeek-R1 等模型展示了 MoE 在高性能推理任务中的潜力，但其核心挑战仍主要体现在训练稳定性与优化效率方面：
@@ -1039,9 +1039,9 @@ v3 则强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 
 > [!TIP]
 > DeepSeek-V3 这类设计可以粗略记成“传输低精度、关键计算中等精度”：通信中的激活和部分梯度可用 FP8 压缩以省带宽，而专家输出 combine 等敏感计算仍保留 BF16 来维持稳定。
 
-#### DeepSeek-V3 的另外两项关键架构创新
+#### DeepSeek-V3 的另外三项关键创新
 
-DeepSeek-V3 论文在 MoE 之外同时披露了两项与 MoE 并列的核心架构创新，本节统一吸收：
+DeepSeek-V3 论文在 MoE 之外同时披露了两项与 MoE 并列的核心架构创新和一项重要的后训练经验，本节统一吸收：
 
 - **Multi-Head Latent Attention（MLA）**：把 K/V 压缩到低秩潜空间后再做注意力，相比 MHA 大幅压缩 KV cache（DeepSeek-V3 每 token 每层 MHA 需缓存 $2 h d_k = 2 \times 128 \times 128 = 32768$ 个元素，MLA 只缓存 $d_c + d_k^R = 512 + 64 = 576$ 个；细节见 [第 9 章 §9.3.2](../chapter9/chapter9_推理系统.md)）。MLA 与本节 MoE 路线在 DeepSeek-V3 中同时启用，是 V3 在长上下文与高吞吐推理两个方向都能维持竞争力的关键。
 - **Multi-Token Prediction（MTP）**：训练目标中允许模型一次预测未来多个 token，可以作为辅助训练信号提升数据效率，也能在 decoding 时作为 speculative decoding 的草稿使用。MTP 在大多数主流开源模型里尚未普及，目前主要在 DeepSeek 系列内部规模化使用。
@@ -1155,7 +1155,7 @@ expert parallelism 的意义在于把专家维度也变成可切分资源：atte
 | Qwen 1.5 MoE | 60 routed + 4 shared = 64 | 4 | 4 | (4 routed + 4 shared) / 64 = 8/64 = 1/8 = 12.5% | [Qwen/Qwen1.5-MoE-A2.7B config](https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B)：`num_experts: 60`、`num_experts_per_tok: 4`；shared expert 计数见下方 NOTE |
 | DeepSeek v3 | 256 routed + 1 shared = 257 | 8 | 1 | (8 routed + 1 shared) / 257 = 9/257 ≈ 3.5% ≈ 1/28.6 | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) + [DeepSeek-V3 config](https://huggingface.co/deepseek-ai/DeepSeek-V3) |
 | OlMoE | 64 | 8 | 0 | 8/64 = 1/8 | [arXiv:2409.02060](https://arxiv.org/abs/2409.02060) |
-| Llama 4 Maverick | 128 routed + 1 shared = 129 | 1 | 1 | (1 routed + 1 shared) / 129 = 2/129 ≈ 1.55% | [Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct) |
+| Llama 4 Maverick | 128 routed + 1 shared = 129 | 2 | 1 | (2 routed + 1 shared) / 129 = 3/129 ≈ 2.33% | [Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct)：`num_local_experts: 128`、`num_experts_per_tok: 2` |
 | MiniMax-M1 | 32 routed + 0 shared = 32 | 2 | 0 | 2/32 = 1/16 ≈ 6.25% | [MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k)：`num_local_experts: 32`、`num_experts_per_tok: 2`、`shared_intermediate_size: 0` |
 
 > [!NOTE]
@@ -1165,7 +1165,7 @@ expert parallelism 的意义在于把专家维度也变成可切分资源：atte
 > **MiniMax-M1 混合架构**：attention 侧按 7 层 linear attention 配 1 层 full attention 的 7:1 比例堆叠，`MiniMax-M1-80k` config 的 `attn_type_list` 共 80 项，取值为 1 的位置在索引 7、15、23 … 79，对应 70 层 linear attention 加 10 层 full attention。表中列出的是它的 MoE 配置。
 
 > [!NOTE]
-> **DeepSeek 与 Llama 4 的设计哲学对比**：DeepSeek v3 把激活比压到约 1/28.6（极稀疏，强调参数规模扩大与计算效率），Llama 4 Maverick 在共享 expert 常驻 + 每 token 仅 1 个 routed 的极稀疏设置下激活 2/129 ≈ 1.55%（强调专家利用度）。两种选择都能 work，但意味着 all-to-all 通信、expert parallelism、负载均衡的设计权衡完全不同。
+> **DeepSeek 与 Llama 4 的设计哲学对比**：DeepSeek v3 把激活比压到约 1/28.6（极稀疏，强调参数规模扩大与计算效率），Llama 4 Maverick 在共享 expert 常驻 + 每 token 2 个 routed 的设置下激活 3/129 ≈ 2.33%（强调专家利用度）。两种选择都能 work，但意味着 all-to-all 通信、expert parallelism、负载均衡的设计权衡完全不同。
 
 > [!NOTE]
 > **Switch Transformer expert 数**：本表这一行的 64 experts / 1/64 对应 [Fedus et al., 2022, *Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity*, arXiv:2101.03961](https://arxiv.org/abs/2101.03961) Table 9 里的 Switch-XXL（395B，64 experts）。同一张 Table 9 还给出 Switch-Base 7B / 128 experts、Switch-Large 26B / 128 experts、Switch-C 1571B / 2048 experts，四个变体的 top-k 均为 1；表中另一列 “Expert freq.” 是 Switch 层替换 FFN 层的频率，Base / Large / XXL 为 1/2，Switch-C 为 1。
