@@ -452,7 +452,7 @@ DoReMi（[Xie et al., 2023, *DoReMi: Optimizing Data Mixtures Speeds Up Language
 
 ### 10.2.4 后训练合成数据
 
-后训练数据按 “env → task → response → verifier” 的流程构造：先定义环境（代码沙盒 / 数学形式化 / agent 仓库）、任务（指令与约束）、响应（强模型生成或人工标注）、验证（自动判分或执行反馈），再通过过滤器筛掉不合格样本。数学与代码任务适合自动生成，因为答案、测试用例或环境反馈可以提供较强验证信号；通用 SFT 通常在指令格式的人工标注或合成指令上完成。这里构造出来的样本，在 [第 12 章 大模型基本训练流程](../chapter12/chapter12_大模型基本训练流程.md) 的 SFT 阶段被当作监督目标使用，在 [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md) 中则由 verifier 转成奖励信号。
+后训练数据按 “env → task → response → verifier” 的流程构造：先定义环境（代码沙盒 / 数学形式化 / agent 仓库）、任务（指令与约束）、响应（强模型生成或人工标注）、验证（自动判分或执行反馈），再通过过滤器筛掉不合格样本。数学与代码任务适合自动生成，因为答案、测试用例或环境反馈可以提供较强验证信号；通用 SFT 通常在指令格式的人工标注或合成指令上完成。这些样本在[第 12 章 §12.3 大模型训练的第二个阶段：监督微调（SFT，Supervised Fine-Tuning）](../chapter12/chapter12_大模型基本训练流程.md)中作为监督目标，在[第 13 章 §13.1.3 RLVR 的定位](../chapter13/chapter13_可验证奖励的强化学习.md)中由 verifier 转成奖励信号。
 
 ![图 10.2-9 OpenThoughts 数据生成流程](images/10-2-9-openthoughts-pipeline.png)
 
@@ -558,7 +558,7 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 
 本章把数据工程拆成四步：来源获取（Common Crawl / Wikipedia / GitHub / 公开 dataset）→ 转换（HTML→text / PDF→text / code tokenize）→ 过滤（KenLM / fastText / 质量分类器）+ 去重（精确 / Bloom Filter / MinHash+LSH）→ 混合（UniMax / RegMix / simulated epoching）。每一步都对应一组公开工具和代表数据集。工程经验层面，过滤能用更少训练步数换更高的下游分数、小来源 epoch cap 防止过拟合、合成数据需要可靠 verifier 才能形成有效训练信号——这三类工程经验在数据工程中具有跨数据集通用性。
 
-下章进入 [第 11 章 评估与基准测试](../chapter11/chapter11_评估与基准测试.md)：训练数据准备好之后，需要回答"这个模型到底有多好"，对应的四类评估维度（perplexity / exam / chat / agent）+ 真实性 / 有效性 / contamination 检查。
+下章进入[第 11 章 §11.1 简介](../chapter11/chapter11_评估与基准测试.md)：训练数据准备好之后，需要回答"这个模型到底有多好"，对应的四类评估维度（perplexity / exam / chat / agent）+ 真实性 / 有效性 / contamination 检查。
 
 ## 来源与更新记录
 
