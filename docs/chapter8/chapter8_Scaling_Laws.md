@@ -744,6 +744,36 @@ $$
 
 这条公式在这里只负责拆分两种 loss 来源。$L_0$ 是任务和数据分布留下的底线，$A$ 和 $B$ 是拟合常数，$\alpha$ 和 $\beta$ 表示参数量、数据量继续增加时各自的收益速度。后面比较 Kaplan 和 Chinchilla 时，再讨论具体函数形式、IsoFLOP 包络线、参数口径和 optimizer 设置怎样改变外推结果。
 
+#### 从联合损失推导 compute-optimal 配比
+
+把联合损失和计算预算联立，才能得到最优配比的来源。固定 $C$ 时，约束式给出
+
+$$
+D=\frac{C}{6N}.
+$$
+
+代回联合损失并省略与 $N$ 无关的 $L_0$：
+
+$$
+\tilde L(N)=A N^{-\alpha}+B\left(\frac{C}{6N}\right)^{-\beta}
+=A N^{-\alpha}+B\left(\frac{6N}{C}\right)^{\beta}.
+$$
+
+对 $N$ 求导并令其为零：
+
+$$
+-\alpha A N^{-\alpha-1}+\beta B\left(\frac{6}{C}\right)^{\beta}N^{\beta-1}=0.
+$$
+
+整理得到
+
+$$
+N_{\mathrm{opt}}\propto C^{\frac{\beta}{\alpha+\beta}},\qquad
+D_{\mathrm{opt}}\propto C^{\frac{\alpha}{\alpha+\beta}}.
+$$
+
+因此，compute 增大时，模型和数据都应增长；增长指数由拟合得到的 $\alpha,\beta$ 决定。当 $\alpha\approx\beta$ 时，两者近似按 $C^{1/2}$ 同步增长，tokens per parameter 在相邻预算间变化较小。Chinchilla 的 IsoFLOP sweep、lower envelope 和 joint fit 都是在实验上估计这两个指数及其常数，而非从公式之外预先指定一个固定的 20 tokens/parameter。
+
 ![图 8.4-1 Joint model-data scaling](images/8-4-1-joint-model-data-scaling.png)
 
 *图 8.4-1 Joint model-data scaling*
