@@ -115,7 +115,7 @@ $$
 
 ## 13.2 PPO 与 DPO 边界
 
-理解 DeepSeek-R1 等推理模型背后的 GRPO 算法，需要先回顾 PPO 在语言模型后训练中承担的角色，再看 GRPO 如何降低 value model、advantage estimation 和 rollout 调参成本。本节先讲 PPO 流程与实现痛点，再讲 DPO 的边界；下一节 (§13.3) 进入 GRPO 与 Dr. GRPO。
+理解 DeepSeek-R1 等推理模型背后的 GRPO 算法，需要先回顾 PPO 在语言模型后训练中承担的角色，再看 GRPO 如何降低 value model、advantage estimation 和 rollout 调参成本。§13.2 先讲 PPO 流程与实现痛点，再讲 DPO 的边界；§13.3 接着给出 GRPO 与 Dr. GRPO。
 
 ### 13.2.1 PPO 流程与实现痛点
 
@@ -148,7 +148,7 @@ $$
 于是得到**REINFORCE**算法（最基础的策略梯度）：
 
 $$
-\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \left( \sum_{t=1}^T R_t \right) \sum_{t=1}^T \nabla_\theta \log \pi_\theta(a_t|s_t) \right]
+\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=1}^T R_t \, \nabla_\theta \log \pi_\theta(a_t|s_t) \right]
 $$
 
 其中 $R_t = \sum_{k=t}^T \gamma^{k-t} r_k$ 是从时间 $t$ 开始的折扣回报。
@@ -954,7 +954,7 @@ DeepSeek-R1 论文 [arXiv:2501.12948](https://arxiv.org/abs/2501.12948) §2.4 "D
 
 [s1: Simple test-time scaling](https://arxiv.org/pdf/2501.19393)（Muennighoff 等，2025）使用 1k 个高质量、带有长思维链的数据，在 Qwen2.5-32B-Instruct 上进行 SFT，从而明显提升数学推理表现。
 
-上海交通大学刘鹏飞团队的 [LIMO: Less is More for Reasoning](https://arxiv.org/abs/2502.03387) 得到相似结论：用不到千条高质量、带长思维链的样本在 Qwen2.5-32B-Instruct 上做 SFT，就能显著提高数学推理表现。数据集规模在论文修订过程中有过调整，首版报告 817 条，2025-07 的修订版（v3 §3.1.1）从 2,125 条质量分候选里按分数取 top 800，最终发布的 LIMO 数据集是 800 条。
+上海交通大学刘鹏飞团队的 [LIMO: Less is More for Reasoning](https://arxiv.org/abs/2502.03387) 得到相似结论：用不到千条高质量、带长思维链的样本在 Qwen2.5-32B-Instruct 上做 SFT，就能显著提高数学推理表现。论文最初报告 817 条样本；2025-07 的修订版（v3 §3.1.1）描述候选筛选路径从约 2,125 条按质量分加权（solution length 30% + self-verification 20% + exploratory language 25% + adaptive granularity 25%）取 top 800 作为最终训练集合，Hugging Face 公开的 `GAIR/LIMO` 数据集目前含 817 行。
 
 ![图 13.4-13 LIMO 使用 800 个高质量样本提升数学推理](images/13-4-13-limo-small-data-math.png)
 
@@ -975,11 +975,11 @@ Base+RL 也能直接得到推理模型。除 DeepSeek-R1-Zero 外，[LIMR: Less 
 
 图 13.4-14 把四行放在同一个 7B 基座上比较，第二列 #Questions 是各方法使用的题目数，后四列是 AIME 2024、MATH-500、AMC 2023 和平均分。第一行是未经后训练的 Qwen-Math-7B（平均 40.5）；中间两行把 s1 的 1,000 条和 LIMO 的 817 条 SFT 数据搬到 7B 基座上，平均分分别是 38.0 和 45.7，AIME 2024 都停在 15.8，没有复现 32B 上的增益；最后一行 LIMR 用 1,389 条题目做 RL，AIME 2024 提到 32.5、平均分 58.1。这张表同时支持两个判断：小数据 SFT 的收益强依赖基座规模，而在同等量级的数据上，RL 比 SFT 更能把 7B 基座的能力挖出来。
 
-偏好优化一侧有方向一致的证据。[Less is More: Improving LLM Alignment via Preference Data Selection](https://arxiv.org/abs/2502.14560)（Deng et al., 2025）在 Llama、Mistral 和 Qwen 三个家族上做偏好数据选择，只用 UltraFeedback 约 10% 的数据，就在 AlpacaEval 2.0 上拿到 3% 到 8% 的提升。这条线的任务不是可验证数学题，但同样说明数据选择带来的收益可以超过单纯堆数据量。
+偏好优化一侧有方向一致的证据。[Less is More: Improving LLM Alignment via Preference Data Selection](https://arxiv.org/abs/2502.14560)（Deng et al., 2025）在 Llama-3 / Llama-3.2-3B 和 Mistral-7B-Instruct-v0.2 上做偏好数据选择，Dual-Margin 方法筛出 UltraFeedback 约 10% 的高质量子集，就在 AlpacaEval 2.0 上拿到 3% 到 8% 的相对提升。这条线的任务不是可验证数学题，但同样说明数据选择带来的收益可以超过单纯堆数据量。
 
 ### 13.4.5 R1 探索期不成功的尝试
 
-DeepSeek-R1 的早期探索也说明了两类更复杂方案的落地难点：
+DeepSeek-R1 论文 §2.2 "Unsuccessful Attempts"（[arXiv:2501.12948](https://arxiv.org/abs/2501.12948)）说明了两类更复杂方案的落地难点：
 
 **过程奖励模型（Process Reward Model, PRM）**：PRM 试图通过对中间推理步骤进行评估来 rerank、引导搜索或改进思路，但在实际应用中存在若干问题。
 - 难以明确界定细粒度的中间步骤。很难给出一个通用、可自动化评估的“正确中间步骤”定义，导致对中间过程的逐步注释和评估困难。
@@ -1187,7 +1187,7 @@ Qwen3 的后训练流程围绕两类控制展开：
 
 表格按列展开 Stage 2 Reasoning RL、Stage 3 Thinking Mode Fusion 和 Stage 4 General RL 之后的成绩，Stage 3 和 Stage 4 各分 Thinking 与 Non-Thinking 两列，绿色和红色数字是相对上一阶段的增减。
 
-通用与格式类任务一路上升：LiveBench 从 68.6 到 70.9 再到 74.9，Arena-Hard 从 86.8 到 93.8，衡量模式切换是否被遵守的 ThinkFollow 从 88.7 升到 98.9。代价出现在推理密集任务上：Thinking 模式下 AIME 2024 从 83.8 降到 81.9 再到 81.4，LiveCodeBench v5 从 68.4 降到 65.7。Qwen 3 报告把这种回退归因于模型被摊到更广的通用任务上、专门能力被稀释。工程上这是一个明确的取舍：换来的是通用可用性和模式可控性，付出的是数学与代码分数的小幅下降。
+通用与格式类任务一路上升：LiveBench 从 68.6 到 70.9 再到 74.9，Arena-Hard 从 86.8 到 93.8，衡量模式切换是否被遵守的 ThinkFollow 从 88.7 升到 98.9。代价出现在推理密集任务上：Thinking 模式下 AIME 2024 从 83.8 降到 81.9 再到 81.4，LiveCodeBench v5 从 68.4 经 67.2 降到 65.7。Qwen 3 报告把这种回退归因于模型被摊到更广的通用任务上、专门能力被稀释。工程上这是一个明确的取舍：换来的是通用可用性和模式可控性，付出的是数学与代码分数的小幅下降。
 
 #### Qwen3-Coder-Next：agentic RL
 
@@ -1225,12 +1225,12 @@ RLVR 把后训练主线从“人类偏好 → 偏好模型”换成“可验证�
   - [DeepSeekMath, arXiv:2402.03300](https://arxiv.org/abs/2402.03300) §4.1.2 / §4.1.3 / §4.2 / §5.2.1（outcome vs process supervision、GRPO+OS / GRPO+PS、约 144K 条 GSM8K + MATH CoT 训练数据、RFT = Rejection Sampling Fine-tuning）
   - [Implementation Matters in Deep Policy Gradients, arXiv:2005.12729](https://arxiv.org/abs/2005.12729)（Engstrom et al., 2020）
   - [alpaca_farm PPO trainer](https://github.com/tatsu-lab/alpaca_farm/blob/30717ddae735365de756ee2085191b491a71788d/src/alpaca_farm/rl/ppo_trainer.py)（`objective/kl_sum_seq`、`objective/rewards`、`objective/non_score_rewards`、`objective/shaped_rewards` 的定义）
-  - [DeepSeek-R1, arXiv:2501.12948](https://arxiv.org/abs/2501.12948) §2.3.1 冷启动、§2.3.3 拒绝采样与 SFT（600k + 200k = 800k，两个 epoch）、§2.4 蒸馏（六个学生基座，只做 SFT）
+  - [DeepSeek-R1, arXiv:2501.12948](https://arxiv.org/abs/2501.12948) §2.2 "Unsuccessful Attempts"（PRM / MCTS 落地难点）、§2.3.1 冷启动、§2.3.3 拒绝采样与 SFT（600k + 200k = 800k，两个 epoch）、§2.4 蒸馏（六个学生基座，只做 SFT）
   - [Dr. GRPO, arXiv:2503.20783](https://arxiv.org/abs/2503.20783) §2.2 template 影响、§2.3 "Aha Moment Already Appears in Base Models Including DeepSeek-V3-Base"、§3.1 "GRPO Leads to Biased Optimization"（response-level length bias 与 question-level difficulty bias）、§3.2 Dr. GRPO 与 `masked_mean` 常量分母
   - [Kimi k1.5, arXiv:2501.12599](https://arxiv.org/abs/2501.12599) §2.1 RL Prompt Set Curation（不带 CoT 猜答案、N = 8 easy-to-hack 过滤）、§2.3.3 Length Penalty、§2.3.5 Reward Modeling for Math（约 800k CoT 标注样本）
   - [Qwen3, arXiv:2505.09388](https://arxiv.org/abs/2505.09388) §4.2 Reasoning RL（3,995 query-verifier pairs、170 RL steps、AIME 2024 70.1 → 85.1）、§4.3 Thinking Mode Fusion（`/think` 与 `/no think` 标记、预算耗尽时插入的停止思考指令）、Table 22（Qwen3-32B 在 Stage 2 / 3 / 4 的评测结果）
   - [s1: Simple test-time scaling, arXiv:2501.19393](https://arxiv.org/abs/2501.19393)（1k 样本 + Qwen2.5-32B-Instruct）
   - [LIMO, arXiv:2502.03387](https://arxiv.org/abs/2502.03387) v1 §3.3.1（817）与 v3 §3.1.1（top 800）
   - [LIMR, arXiv:2502.11886](https://arxiv.org/abs/2502.11886)（Qwen2.5-Math-7B + PPO，1,389 / 8,523 样本）
-  - [Less is More: Improving LLM Alignment via Preference Data Selection, arXiv:2502.14560](https://arxiv.org/abs/2502.14560)（Deng et al., 2025；UltraFeedback 10% 数据、AlpacaEval 2.0 提升 3%-8%）
+  - [Less is More: Improving LLM Alignment via Preference Data Selection, arXiv:2502.14560](https://arxiv.org/abs/2502.14560)（Xun Deng et al., 2025；Dual-Margin 数据选择、UltraFeedback 约 10% 子集、Llama-3 / Llama-3.2-3B 与 Mistral-7B-Instruct-v0.2 上 AlpacaEval 2.0 相对提升 3%-8%）
   - [Qwen3-Coder-Next 模型卡](https://huggingface.co/Qwen/Qwen3-Coder-Next)（80B 总参 / 3B 激活 / 262,144 原生上下文）

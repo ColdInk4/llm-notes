@@ -463,7 +463,7 @@ RMSNorm 运行时的收益已经能在论文中观察到；更重要的可迁移
 
 **Post-norm 的训练稳定性问题**
 
-直观解释是残差连接使得网络从**顶层到底层保持恒等映射**，这对训练极深网络时的**梯度传播**非常有利。LSTM 这类循环网络需要沿时间步反复乘以同一组权重，梯度在长序列上容易衰减或爆炸；残差连接提供的恒等通路直接绕开了这个问题。在中间插入 LayerNorm 可能会干扰这种梯度行为，这一点正好与之前展示的梯度尖峰现象吻合。虽然 LayerNorm 效果良好，**但如今许多模型已转向使用 RMSNorm，这已成为共识性改进**。
+直观解释是残差连接使得网络从**底层到顶层**始终保留一条与原始输入等价的直通路径（residual stream），而反向传播时梯度可经这条路径**从顶层到底层**直接回传。这对训练极深网络时的**梯度传播**非常有利：LSTM 这类循环网络需要沿时间步反复乘以同一组权重，梯度在长序列上容易衰减或爆炸；残差连接提供的恒等通路直接绕开了这个问题。在中间插入 LayerNorm 会把 LayerNorm 的可学习缩放叠加进 residual stream，因此 Pre-norm 把 LayerNorm 移到子层输入前，让 residual stream 保持「纯」恒等。这一点正好与之前展示的梯度尖峰现象吻合。虽然 LayerNorm 效果良好，**但如今许多模型已转向使用 RMSNorm，这已成为共识性改进**。
 
 ### 3.2.2 前馈网络
 
@@ -523,7 +523,7 @@ $$
 \Phi(x) = P(X \le x) = \frac{1}{2} \left[1 + \text{erf}\left(\frac{x}{\sqrt{2}}\right)\right]
 $$
 
-直观上，GeLU 是 ReLU 的平滑版本：负值不会被硬截断，靠近原点的过渡也更连续。GPT-1/2/3、GPT-J 等模型都使用过 GeLU。它的代价是计算比 ReLU 更复杂，实际系统通常使用 tanh 或多项式近似；第 6 章会用 GeLU 作为 kernel fusion 和 Triton 的例子。
+直观上，GeLU 是 ReLU 的平滑版本：负值不会被硬截断，靠近原点的过渡也更连续。GPT-1/2/3、GPT-J 等模型都使用过 GeLU。它的代价是计算比 ReLU 更复杂，实际系统通常使用 tanh 或多项式近似；第 6 章 §6.3 Kernel fusion：GeLU 作为最小案例给出可执行的 kernel fusion 和 Triton 案例。
 
 **3. 门控线性单元（GLU）**
 
@@ -985,7 +985,7 @@ $$
 
 其中 $\gamma_t=f(x_t)$ 控制旧状态保留程度。这样做的目标是保留线性时间推理的优势，同时通过 gating 提升表达能力。
 
-实践中的落地形态是 hybrid attention：一部分层使用线性/状态空间类模块，一部分层保留 full attention，以折中长上下文效率和复杂推理质量。MiniMax-01（[arXiv:2501.08313](https://arxiv.org/abs/2501.08313)）用 lightning attention + softmax attention + MoE；Nemotron-H（[arXiv:2504.03624](https://arxiv.org/abs/2504.03624)）把 self-attention 层压到总层数的约 8%（8B 版 52 层里 4 层 attention，56B 版 118 层里 10 层），其余层由 Mamba-2 与 FFN 各占一半交替排布；Qwen3-Next（[Qwen3-Next blog](https://qwen.ai/blog?id=qwen3-next)）用 Gated DeltaNet + full attention 的 3:1 组合。
+实践中的落地形态是 hybrid attention：一部分层使用线性/状态空间类模块，一部分层保留 full attention，以折中长上下文效率和复杂推理质量。MiniMax-01（[arXiv:2501.08313](https://arxiv.org/abs/2501.08313)）用 lightning attention + softmax attention + MoE 的 7:1 组合（线性注意力层数: softmax attention 层数 = 7:1）；Nemotron-H（[arXiv:2504.03624](https://arxiv.org/abs/2504.03624)）把 self-attention 层压到总层数的约 8%（8B 版 52 层里 4 层 attention，56B 版 118 层里 10 层），其余层由 Mamba-2 与 FFN 各占一半交替排布；Qwen3-Next（[Qwen3-Next blog](https://qwen.ai/blog?id=qwen3-next)）用 Gated DeltaNet + full attention 的 3:1 组合。
 
 **3.2.5.8.2 Gated DeltaNet**
 
@@ -999,7 +999,7 @@ $$
 
 [Gated DeltaNet 论文](https://arxiv.org/abs/2412.06464) §3.1 的状态更新式取转置约定 $S_t \in \mathbb{R}^{d_v \times d_k}$，因此写成 $S_t = S_{t-1}\bigl(\alpha_t (I - \beta_t k_t k_t^\top)\bigr) + \beta_t v_t k_t^\top$，转移矩阵从右侧作用、delta 外积用 $v_t k_t^\top$。两种写法互为转置，逐元素含义一致。
 
-该形式兼具 RNN 的局部遗忘门控和 linear attention 的并行训练形式；Qwen3-Next 用 3:1 hybrid，Gated DeltaNet 占 3/4 层、softmax attention 占 1/4 层（`full_attention_interval=4`，见 [Qwen3-Next-80B-A3B config](https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct)）。Hybrid 比例越高，长上下文检索类任务的退化越明显，因此比例本身需要按目标任务调优。
+该形式兼具 RNN 的局部遗忘门控和 linear attention 的并行训练形式；Qwen3-Next 用 3:1 hybrid，Gated DeltaNet 占 3/4 层、softmax attention 占 1/4 层（`full_attention_interval=4`，见 [Qwen3-Next-80B-A3B config](https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct)）。线性层的状态大小固定为 $d_k \times d_v$，而输入序列长度 $n$ 可以继续增长；因此它无法像 full attention 那样为每个历史 token 保留独立键值，精确检索能力会受到状态容量约束。提高 linear-attention 层比例可能放大这项取舍，但退化幅度依赖任务和训练配方，需用长上下文检索评测确定比例。
 
 ## 3.3 超参数考量与设计原则
 
@@ -1236,11 +1236,11 @@ $$
 
 到这里应能在「训练稳定性 / 表达能力 / 推理成本 / 长上下文能力」四类判断之间拆解任意 dense decoder 配置：默认骨架（Pre-norm + RMSNorm + no bias + SwiGLU + RoPE）解决稳定性与表达效率；KV cache 共享（MQA / GQA / MLA / CLA）解决推理成本；稀疏读取（SWA / DSA / CSA / HCA）与线性时间替代（linear attention / Mamba-2 / Gated DeltaNet）解决长上下文效率；超参数区间（§3.3）与稳定性技巧（§3.4）共同决定这套骨架在给定硬件和训练设置下能否稳定收敛。
 
-下一步是把 dense FFN 换成 routed experts——同一组 FFN 参数被切成多份，由 router 在每个 token 上挑选 top-k：[第 4 章 混合专家模型](../chapter4/chapter4_混合专家模型.md) 接管条件计算与负载均衡的系统视角。Attention alternatives 的工程实现（FlashAttention、PagedAttention、sparse attention）的执行视角在 [第 5 章 §5.8 KV cache：HBM 上的另一笔账](../chapter5/chapter5_GPU和GPU相关优化.md) 与 [第 9 章 推理系统](../chapter9/chapter9_推理系统.md) 中按"算力 vs 显存 vs 调度"展开。
+下一步是把 dense FFN 换成 routed experts——同一组 FFN 参数被切成多份，由 router 在每个 token 上挑选 top-k：[第 4 章 混合专家模型](../chapter4/chapter4_混合专家模型.md) 接管条件计算与负载均衡的系统视角。Attention alternatives 的工程实现（FlashAttention、sparse attention）的执行视角在 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md) 展开；PagedAttention 与 serving 调度则在 [第 9 章 推理系统](../chapter9/chapter9_推理系统.md) 中按「算力 vs 显存 vs 调度」展开。
 
 ## 来源与更新记录
 
 - 课程映射：Lecture 3 提供现代 dense Transformer 默认骨架；Lecture 4 补充 attention alternatives 与 MoE 边界；Lecture 10 支撑 GQA、MLA、CLA 与 KV cache 的推理成本讨论。
 - 相关论文：Transformer、RMSNorm、SwiGLU/GLU、RoPE（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864)）、[GQA](https://arxiv.org/abs/2305.13245)、[MLA / DeepSeek-V2](https://arxiv.org/abs/2405.04434)、CLA、[Gated DeltaNet](https://arxiv.org/abs/2412.06464)。
 - 架构消融与超参数：[Narang et al., EMNLP 2021](https://arxiv.org/abs/2102.11972)（Table 1 的 step/s 与 final loss）、[Kaplan et al., 2020](https://arxiv.org/abs/2001.08361)（Figure 5 的 FFN ratio / aspect ratio / head dim 扫描）、[PaLM](https://arxiv.org/abs/2204.02311) Table 1 与训练设置、[ST-MoE](https://arxiv.org/abs/2202.08906)（router z-loss 与 Mesh TensorFlow z-loss 的关系）、[OLMo 2](https://arxiv.org/abs/2501.00656) Table 3 的稳定性配方、[Methods of improving LLM training stability, arXiv:2410.16682](https://arxiv.org/abs/2410.16682) Table 4 的困惑度对比、[Bhojanapalli et al., ICML 2020](https://arxiv.org/abs/2002.07028)（Low-Rank Bottleneck in Multi-head Attention Models）。
-- 官方配置：[`mistralai/Mistral-7B-v0.1`](https://huggingface.co/mistralai/Mistral-7B-v0.1)、[`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m)、[`Qwen/Qwen2-7B`](https://huggingface.co/Qwen/Qwen2-7B)、`Gemma2Config` 与 `Gemma4TextConfig`（Hugging Face Transformers main 分支）、[Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/model_doc/deepseek_v4)与 [DeepSeek-V4-Pro 配置](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)。查阅日期：2026-09-04。
+- 官方配置：[`mistralai/Mistral-7B-v0.1`](https://huggingface.co/mistralai/Mistral-7B-v0.1)、[`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m)、[`Qwen/Qwen2-7B`](https://huggingface.co/Qwen/Qwen2-7B)、`Gemma2Config` 与 `Gemma4TextConfig`（Hugging Face Transformers main 分支）、[Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/model_doc/deepseek_v4)与 [DeepSeek-V4-Pro 配置](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)。查阅日期：2026-09-06。

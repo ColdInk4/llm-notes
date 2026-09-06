@@ -21,7 +21,7 @@
 4. EP/ETP/EDP 如何把 MoE experts 变成可切分的系统资源？
 5. 在给定硬件拓扑下，如何组合这些维度让模型既放得下又跑得动？
 
-后文先把 collective 和最小 `torch.distributed` 代码讲清楚，再把这些原语组合成 ZeRO/FSDP、TP/PP/SP/EP/CP 和混合并行策略。代码示例使用第 2 章的设备 helper：`cuda_if_available(rank)` 表示有 CUDA 时使用第 `rank` 张 GPU，否则回退到 CPU。
+本章先定义 collective 和最小 `torch.distributed` 代码，再把这些原语组合成 ZeRO/FSDP、TP/PP/SP/EP/CP 和混合并行策略。代码示例使用第 2 章的设备 helper：`cuda_if_available(rank)` 表示有 CUDA 时使用第 `rank` 张 GPU，否则回退到 CPU。
 
 ## 7.0 并行策略的统一视角：沿维度切分
 
@@ -1317,7 +1317,7 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 
 更实用的结论可以压缩成一句话：**先让模型放得下，再让通信跟得上，最后再追求满算力。** 具体到策略选择时，通常先判断参数、optimizer state、activation 谁是主瓶颈，再根据节点内外带宽决定 TP、PP、DP、SP、CP、EP 的组合；“标准并行方案”只能作为起点，最终仍要由资源账本和 benchmark 校准。
 
-资源账本只能回答"训练会不会爆"和"算力跑满没有"，不能回答"这个规模训下来是什么 loss"。下一章把视角从"训得起"切到"训得对"：[第 8 章 缩放定律](../chapter8/chapter8_Scaling_Laws.md) 用 IsoFLOP、Chinchilla、muP 等方法把 compute budget 拆成最优的模型规模和数据量。
+资源账本只能回答"训练会不会爆"和"算力跑满没有"，不能回答"这个规模训下来是什么 loss"。下一章把视角从"训得起"切到"训得对"：[第 8 章 §8.1 Scaling Workflow：先拟合，再放大](../chapter8/chapter8_Scaling_Laws.md) 用 IsoFLOP、Chinchilla、muP 等方法把 compute budget 拆成最优的模型规模和数据量。
 
 对照章首学习目标，读到这里应能：
 

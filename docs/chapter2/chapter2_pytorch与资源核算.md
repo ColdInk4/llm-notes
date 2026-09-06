@@ -729,7 +729,7 @@ actual_flop_per_sec = actual_num_flops / actual_time  # 实际每秒能完成多
 promised_flop_per_sec = get_promised_flop_per_sec(x.dtype)  # 获取硬件的理论峰值性能
 ```
 
-`get_promised_flop_per_sec(dtype)` 只接收 dtype；设备信息在函数内部通过 `torch.cuda.get_device_properties(cuda_if_available())` 取得。它按 GPU 名称匹配 **A100 / H100 / B200** 三个分支，再按 `float32 / bf16 / fp16` 返回不同的理论峰值：A100 是 19.5 / 312 TFLOP/s，H100 是 67.5 / 989.5 TFLOP/s（NVIDIA H100 产品页把 FP32 标为 67 TFLOPS，CS336 代码讲义中的 `get_promised_flop_per_sec` 取整到 67.5；1979 是稀疏口径，dense 取一半），B200 是 75 TFLOP/s / 2.25 PFLOP/s；GPU 名称不落在这三个分支时返回 `None`，由调用方处理。H200 走的就是这条回退路径，数字可以直接复用 H100 分支：它沿用 Hopper SM 与 FP8/FP16 路径，BF16 Tensor Core 同样是 1,979 TFLOPS（含稀疏）、dense 989.5 TFLOP/s，差异在于显存换成 141 GB HBM3e、带宽抬到 4.8 TB/s（[NVIDIA H200 产品页](https://www.nvidia.com/en-us/data-center/h200/)，查阅日期 2026-09-03）。
+`get_promised_flop_per_sec(dtype)` 只接收 dtype；设备信息在函数内部通过 `torch.cuda.get_device_properties(cuda_if_available())` 取得。它按 GPU 名称匹配 **A100 / H100 / B200** 三个分支，再按 `float32 / bf16 / fp16` 返回不同的理论峰值：A100 是 19.5 / 312 TFLOP/s，H100 是 67.5 / 989.5 TFLOP/s（NVIDIA H100 产品页把 FP32 标为 67 TFLOPS，CS336 代码讲义中的 `get_promised_flop_per_sec` 取整到 67.5；1979 是稀疏口径，dense 取一半），B200 是 75 TFLOP/s / 2.25 PFLOP/s；GPU 名称不落在这三个分支时返回 `None`，由调用方处理。H200 目前就属于这条 fall-through 路径——helper 不会自动返回 H200 的数字，调用方要么显式处理 `None`，要么把 H200 加进 helper 的分支表。需要 H200 数字时可直接查产品页：它沿用 Hopper SM 与 FP8/FP16 路径，BF16 Tensor Core 同样为 1,979 TFLOPS（含稀疏）、dense 989.5 TFLOP/s，差异集中在显存换成 141 GB HBM3e、带宽抬到 4.8 TB/s（[NVIDIA H200 产品页](https://www.nvidia.com/en-us/data-center/h200/)，查阅日期 2026-09-03）。
 
 这个 helper 体现的是一个实用工程习惯：同样的 FLOPs 公式可以复用，但换到不同代际 GPU 时，峰值算力、带宽和低精度路径都要重新代入。
 
@@ -1499,7 +1499,7 @@ class CruncherCheckpointed(nn.Module):
 
 ## 本章总结与下章衔接
 
-本章围绕四张资源账本展开：tensor 的 shape / dtype / device 与 stride、$6 \times N_{\text{data}} \times N_{\text{param}}$ 量级的 FLOPs、activation + optimizer state + gradient + parameter 的显存组合、以及 roofline 上的 arithmetic intensity / MFU。PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通：换硬件（A100 / H100 / B200）或换精度（fp32 / bf16 / fp16 / fp8）时只需替换峰值数字，账本形状不变。[第 9 章 §9.2 Arithmetic Intensity](../chapter9/chapter9_推理系统.md) 把同一套算术强度与带宽账本搬到推理侧，用来解释 decode 阶段为什么受 KV cache 读取带宽支配。
+本章围绕四张资源账本展开：tensor 的 shape / dtype / device 与 stride、$6 \times N_{\text{data}} \times N_{\text{param}}$ 量级的 FLOPs、activation + optimizer state + gradient + parameter 的显存组合、以及 roofline 上的 arithmetic intensity / MFU。PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通：换硬件（A100 / H100 / B200）或换精度（fp32 / bf16 / fp16 / fp8）时只需替换峰值数字，账本形状不变。[第 9 章 §9.2 Arithmetic Intensity：为什么 generation 常常 memory-bound](../chapter9/chapter9_推理系统.md) 把同一套算术强度与带宽账本搬到推理侧，用来解释 decode 阶段为什么受 KV cache 读取带宽支配。
 
 下章进入 [第 3 章 语言模型架构和训练的技术细节](../chapter3/chapter3_语言模型架构和训练技术细节.md)：把 token 和算力账本当作输入侧准备之后，第 3 章讨论现代 dense decoder 的默认骨架（Pre-norm / RMSNorm / no bias / SwiGLU / RoPE / GQA / MLA / CLA）、attention 替代和训练稳定性。
 

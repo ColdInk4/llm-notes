@@ -20,7 +20,7 @@
 
 本章的成本账本也会支撑后续 reasoning 章节：CoT、多路径采样、工具调用、agent trace 和 RLVR rollout 都会把更多 token 交给 `prefill`、`generation`、KV cache 和 scheduler。
 
-训练这些行为的 RL 系统细节放在 [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md) 中讨论；模型为什么会展开思考、这些方法怎样改变可见推理行为，放到 [推理行为与能力专题](../topics/reasoning_behavior.md) 中讨论。
+训练这些行为的 RL 系统细节放在 [第 13 章 §13.1 为什么需要 RLVR？](../chapter13/chapter13_可验证奖励的强化学习.md) 中讨论；模型为什么会展开思考、这些方法怎样改变可见推理行为，放到 [推理行为与能力专题](../topics/reasoning_behavior.md) 中讨论。
 
 读这一章时要始终区分四类问题：
 
@@ -29,7 +29,7 @@
 - 它是否改变模型输出分布或质量？
 - 它是否依赖请求长度、并发数、共享前缀和显存碎片情况？
 
-后文的每个优化都可以沿着这四个问题定位：先看它减少哪一类数据搬运或串行步骤，再看它把收益转化成 latency、throughput 还是 `TTFT`，最后检查质量和 workload 假设。
+各优化均可沿着这四个问题定位：先看它减少哪一类数据搬运或串行步骤，再看它把收益转化成 latency、throughput 还是 `TTFT`，最后检查质量和 workload 假设。
 
 ## 本章主线与读图路径
 
@@ -120,11 +120,11 @@ $$
 
 *图 9.1-2 Transformer decoder block*
 
-图 9.1-2 给出 Transformer decoder block 的标准结构：底部 token embedding 与 absolute position embeddings 拼成输入张量（shape `(batch_size, seq_len, d_model)`），向上经过若干 Transformer Block（每个 block 内含 causal multi-head self-attention、add & dropout、position-wise feed-forward、add & dropout），最终经过 norm、output embedding、softmax 得到输出概率。
+图 9.1-2 给出一个 Transformer decoder block 的通用结构：底部 token embedding 与 absolute position embeddings 拼成输入张量（shape `(batch_size, seq_len, d_model)`），向上经过若干 Transformer Block（每个 block 内含 causal multi-head self-attention、add & dropout、position-wise feed-forward、add & dropout），最终经过 norm、output embedding、softmax 得到输出概率。现代 decoder-only LLM 常把 absolute position embeddings 换成 RoPE 等相对位置机制；图中位置编码仅用于说明张量流。
 
 中间张量的形状记号采用 `B` (batch size)、`S` (已有上下文 token 数)、`T` (本次要处理或生成的 token 数)、`D` (model dim)、`F = 4D` (MLP up-projection dim)、`H` (head dim)、`N` (query head 数)。`B`、`S`、`T` 在张量里是 batch 维度，`D` / `F` / `H` 在张量里是 contracting / model 维度。
 
-注意力头记号采用 $N = K_{\mathrm{kv}} G$：$K_{\mathrm{kv}}$ 是 KV head 数，$G$ 是每个 KV head 对应的 query heads 数。后文把 key 张量仍记作 $K$，把 KV head 数固定写作 $K_{\mathrm{kv}}$，避免混淆。
+注意力头记号采用 $N = K_{\mathrm{kv}} G$：$K_{\mathrm{kv}}$ 是 KV head 数，$G$ 是每个 KV head 对应的 query heads 数。下文把 key 张量仍记作 $K$，把 KV head 数固定写作 $K_{\mathrm{kv}}$，避免混淆。
 
 训练时通常可以把很多位置一起处理；推理 generation 时，$T = 1$，这正是后面 `arithmetic intensity` 下降的根源。
 
@@ -340,7 +340,7 @@ KV cache 大小大致与 $K_{\mathrm{kv}} \times H$ 成正比，所以从 MHA �
 
 ### 9.3.3 CLA：跨层共享 KV
 
-`CLA` 把共享维度从“head 之间”扩展到“layer 之间”。正常 Transformer 每层都有自己的 key/value；CLA 只在部分层计算 KV，其他层复用邻近层或前一层的 KV。
+`CLA` 把共享维度从“head 之间”扩展到“layer 之间”。正常 Transformer 每层都有自己的 key/value；CLA 只在部分层计算 KV，其他层复用相邻层（adjacent layers）的 KV。论文 [Reducing Transformer Key-Value Cache Size with Cross-Layer Attention](https://arxiv.org/abs/2405.12981) 把这一思路推到 MQA 之上，在 1B 与 3B 规模上验证了“近似 MQA 准确率下额外 2× KV cache 压缩”的 Pareto 改进。
 
 ![图 9.3-6 CLA diagram](images/9-3-6-cla-diagram.png)
 
@@ -544,7 +544,9 @@ PagedAttention 更强调显存分页和碎片管理，RadixAttention 更强调 p
 
 ## 9.6 扩展研究：更换输入、记忆和生成范式
 
-本节收束四类与 §9.1–§9.5 主线不同的扩展研究：prompt compression 改输入长度；SSM / linear attention / hybrid attention 改记忆结构，从「显式保存所有历史 KV」换成「递推状态 + 周期性 softmax attention」；diffusion language model 改生成范式，从逐 token 自回归换成块内并行去噪；speculative cascades 改大小模型协作策略，从保持 target distribution 换成风险感知路由。本节所有方向都按「优化哪个瓶颈、留下什么质量风险」的同一把尺读，与 §9.4 的 speculative sampling 和 §9.5 的 prefix sharing 形成对照。下面按 §9.6.1–§9.6.4 的顺序分别看 prompt compression、SSM / linear attention、diffusion language model 和 speculative cascades 如何改写 KV cache 账本、留下什么质量风险。
+本节收束四类与 §9.1–§9.5 主线不同的扩展研究：prompt compression 改输入长度；SSM / linear attention / hybrid attention 改记忆结构，从「显式保存所有历史 KV」换成「递推状态 + 周期性 softmax attention」；diffusion language model 改生成范式，从逐 token 自回归换成块内并行去噪；speculative cascades 改大小模型协作策略，从保持 target distribution 换成风险感知路由。
+
+四条方向与主线共享「优化哪个瓶颈、留下什么质量风险」这把尺，分别在 §9.6.1 prompt compression、§9.6.2 SSM / linear attention、§9.6.3 diffusion language model 与 §9.6.4 speculative cascades 里和 §9.4 的 speculative sampling、§9.5 的 prefix sharing 形成对照。
 
 ### 9.6.1 Prompt Compression
 
@@ -647,10 +649,10 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 - Quantization、pruning、distillation 减少权重或模型本体成本，但真实加速依赖 kernel 和硬件支持。
 - Speculative sampling 用 draft model 起草、target model 并行验收，可以保持 target distribution。
 - Continuous batching 和 PagedAttention 面向动态 serving，把 ragged workload、KV fragmentation、prefix sharing 和 copy-on-write 变成可管理的问题。
-- CoT、多路径采样、工具搜索和 RL rollout 会放大 token 生成、KV cache 与调度压力；训练侧分析见 [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md)，能力侧分析见 [推理行为与能力专题](../topics/reasoning_behavior.md)。
+- CoT、多路径采样、工具搜索和 RL rollout 会放大 token 生成、KV cache 与调度压力；训练侧分析见 [第 13 章 §13.1 为什么需要 RLVR？](../chapter13/chapter13_可验证奖励的强化学习.md)，能力侧分析见 [推理行为与能力专题](../topics/reasoning_behavior.md)。
 - SSM、linear attention、diffusion language model 和 speculative cascades 是更激进的扩展方向，应该按“优化哪个瓶颈、留下什么质量风险”来读。
 
-推理系统决定了 token 的产出成本，token 产出又受数据规模与配比约束：压得越狠，蒸馏 / 量化校准 / draft model 训练数据的需求越高；这些都把视角从模型与系统切到训练数据本身。下一章把这些数据侧工程串起来：[第 10 章 数据工程](../chapter10/chapter10_数据工程.md)。
+推理系统决定了 token 的产出成本，token 产出又受数据规模与配比约束：压得越狠，蒸馏 / 量化校准 / draft model 训练数据的需求越高；这些都把视角从模型与系统切到训练数据本身。数据侧工程串在 [第 10 章 §10.1 数据获取](../chapter10/chapter10_数据工程.md) 中。
 
 ## 思考
 

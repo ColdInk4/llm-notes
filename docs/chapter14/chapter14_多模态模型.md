@@ -56,7 +56,7 @@ Transformer 的核心抽象是 token 序列，因此每种非文本模态都要�
 这种目标把视觉分类问题改写成图文匹配问题。模型不需要固定类别表，而是学会把图像语义放到文本描述附近。下游做 zero-shot classification 时，可以把类别名写成文本 prompt，再比较图像 embedding 和这些文本 embedding 的相似度。
 
 > [!NOTE]
-> **CLIP 训练规模**：用约 4 亿 image-text pairs 训练 ViT-L/14@336px（best variant），文本编码器是 GPT-2 风格的 12 层 Transformer（约 63M，512 宽、8 头）；在 ImageNet zero-shot 上达到与在 1.28M ImageNet 图像上训练的 ResNet-50 可比 / 略高的精度（论文原文 "matches the performance of the original ResNet-50 despite using none of the 1.28 million crowd-labeled training examples"）。CLIP 最大的 Vision Transformer 在 256 张 V100 GPU 上训练 12 天（[arXiv:2103.00020](https://arxiv.org/abs/2103.00020) §2.5 Training）。
+> **CLIP 训练规模**：CLIP 最大的 Vision Transformer 是 ViT-L/14：基模型用约 4 亿 image-text pairs 在 224px 分辨率训练 12 天 / 256 张 V100 GPU（[arXiv:2103.00020](https://arxiv.org/abs/2103.00020) §2.5 Training），再在 336px 分辨率 fine-tune 一个 epoch 得到 ViT-L/14@336px（论文报告的 best variant）。文本编码器是 GPT-2 风格的 12 层 Transformer（约 63M，512 宽、8 头）；ViT-L/14 在 ImageNet zero-shot 上达到与在 1.28M ImageNet 图像上训练的 ResNet-50 可比 / 略高的精度（论文原文 "matches the performance of the original ResNet-50 despite using none of the 1.28 million crowd-labeled training examples"）。
 >
 > **SigLIP 训练规模**：把 softmax 对比损失换成 sigmoid 二分类，去掉 batch size 与 loss 的耦合；在 batch < 16K 时 sigmoid 损失明显优于 softmax；batch 变大时差距收敛。SigLIP 论文 Table 1 给出 B/16 在 32 张 TPUv4 + 32K batch 下：随机初始化（from-scratch）训练 2 天 / 72.1% 与 5 天 / 73.4% ImageNet zero-shot（两行都是随机初始化，Table 1 caption 明确写 "The last two rows show results with randomly initialized models"）；预训练 init 的版本是单独一行（71.0% / 16k batch / 16 TPUv4 / 3 days，初始权重为 ViT-Augreg-B/16 公开 checkpoint）([arXiv:2303.15343](https://arxiv.org/abs/2303.15343) Table 1）。
 >
@@ -91,6 +91,14 @@ SigLIP 保留图文对齐目标，但把 CLIP 的 batch 内 multiclass softmax �
 *图 14.2-6 Vision Transformer patch tokenization*
 
 ViT 把图像切成固定大小 patches，再把每个 patch 投影成 token。这个设计让视觉 encoder 可以直接复用 Transformer 架构。图像 token 的数量由分辨率和 patch size 决定：分辨率越高，token 越多，OCR、图表和细节理解更好，但 prefill 成本和显存压力也更高。
+
+若输入分辨率为 $H\times W$、patch 边长为 $P$，不含额外的分类 token 时，视觉 token 数近似为
+
+$$
+N_{\mathrm{vision}}=\left\lceil\frac{H}{P}\right\rceil\left\lceil\frac{W}{P}\right\rceil .
+$$
+
+这条几何关系把分辨率选择直接连接到第 9 章的 prefill 与 KV cache 账本；AnyRes 或 dynamic resolution 只是对 $H,W,P$ 的组合做了更灵活的预算分配。
 
 ## 14.3 VLM 模板：vision encoder + projector / adaptor + LLM
 
@@ -222,7 +230,7 @@ Qwen-VL 系列展示了 VLM 向更通用多模态模型演进的几个方向：�
 - 视觉编码器：更大 ViT（约 675M 参数）；支持 **dynamic resolution**。
 - 224×224 图像切成 14×14 patches，经 ViT/14 编码后产生 16×16 = 256 个 token；再做 2×2 空间压缩，最终约 66 tokens。
 - 视频采样 2 帧/秒，单视频 token 上限 16384。
-- 引入 **Multimodal Rotary Position Embedding（MRoPE）**——把时间、宽度、高度作为三个独立 rotary 轴。
+- 引入 **Multimodal Rotary Position Embedding（MRoPE）**——把时间、高度、宽度作为三个独立 rotary 轴，与 Qwen2-VL M-RoPE 表 `[t t t t h h h h w w w w]` 分块对应。
 - LM 初始化自 Qwen2；视觉编码器初始化自 DFN。
 - 引用：[arXiv 2409.12191](https://arxiv.org/abs/2409.12191)。
 
@@ -232,7 +240,7 @@ Qwen-VL 系列展示了 VLM 向更通用多模态模型演进的几个方向：�
 
 *图 14.5-2 Qwen2-VL MRoPE*
 
-MRoPE 把位置信息扩展到多维输入。文本只有一维顺序；图像有高度和宽度；视频还多了时间轴。多模态 rotary position embedding 让模型在同一个 Transformer 中同时理解这些轴，保留视觉 tokens 中的空间和时间结构。RoPE 的基础定义与频率调度见 [第 3 章 §3.2.4 位置编码](../chapter3/chapter3_语言模型架构和训练技术细节.md)；MRoPE 把同一套 $Q/K$ 旋转思路推广到多维输入，与现代 dense decoder 默认骨架共用 GQA，见 [第 3 章 §3.2.5 注意力机制的变体](../chapter3/chapter3_语言模型架构和训练技术细节.md)。
+MRoPE 把位置信息扩展到多维输入。文本只有一维顺序；图像有高度和宽度；视频还多了时间轴。多模态 rotary position embedding 让模型在同一个 Transformer 中同时理解这些轴，保留视觉 tokens 中的空间和时间结构。RoPE 的基础定义与频率调度见 [第 3 章 §3.2.4 位置编码与 RoPE](../chapter3/chapter3_语言模型架构和训练技术细节.md)；MRoPE 把同一套 $Q/K$ 旋转思路推广到多维输入，与现代 dense decoder 默认骨架共用 GQA，见 [第 3 章 §3.2.5 注意力机制的变体](../chapter3/chapter3_语言模型架构和训练技术细节.md)。
 
 ### 14.5.3 Qwen3-VL
 
@@ -287,7 +295,7 @@ interleaved MRoPE 把时间、高度和宽度轴交错分配到不同频段，�
 VQ-VAE 把连续图像压缩成离散 codebook indices。Encoder 产生连续 latent，quantization 把 latent 映射到最近的 codebook entry，decoder 再重建图像。对语言模型来说，codebook index 就像视觉词表中的 token。
 
 > [!NOTE]
-> Chameleon 训练规模（[arXiv:2405.09818](https://arxiv.org/abs/2405.09818)）：VQ-VAE 把 512×512 图像编码为 1024 个离散 tokens（codebook 大小 8192）。训练分两阶段：第一阶段约占 80% tokens，包含约 2.9T 文本 token、1.5T 文本/图像 token 与 400B 文本/图像交错 token；第二阶段约 20% tokens，混入等量的高质量数据。
+> Chameleon 训练规模（[arXiv:2405.09818](https://arxiv.org/abs/2405.09818)）：VQ-VAE 把 512×512 图像编码为 1024 个离散 tokens（codebook 大小 8192）。训练分两阶段：第一阶段占训练前 80%（论文原文 "the first stage takes up the first 80% of training"），使用约 2.9T 文本 token、1.5T 文本/图像 token 与 400B 文本/图像交错 token；第二阶段占训练后 20%，把第一阶段数据权重降低 50%，混入高质量数据集（论文 §2.2 Pre-Training Data）。
 >
 > 训练稳定性方面，文本 token 的熵低、图像 token 的熵高，二者交错会产生 norm growth 和 logit drift；常用 **$QK$ norm** 与 **z-loss regularization** 来抑制。
 
@@ -317,7 +325,7 @@ VQ-VAE 把连续图像压缩成离散 codebook indices。Encoder 产生连续 la
 
 这一节把本章主线之外、但工程上同样重要的若干方向单列出来作为延伸阅读指针，覆盖音频、视频原生模型与「omni 模型」三类话题。
 
-本章主体聚焦视觉 + 文本的多模态路线（CLIP / SigLIP / LLaVA / Qwen-VL / Chameleon），但完整的多模态系统还需要覆盖音频与视频之外的其余模态。音频与视频作为延伸方向小节列出：
+本章主体聚焦视觉 + 文本的多模态路线（CLIP / SigLIP / LLaVA / Qwen-VL / Chameleon）；完整的多模态系统还需要覆盖音频、视频及其他模态。音频与视频作为延伸方向小节列出：
 
 - **音频 + 文本**：[Qwen2-Audio](https://arxiv.org/abs/2407.10759)、AudioPaLM、Whisper 等用 audio encoder + projector 注入语言模型；与 LLaVA 同型，主要变化是 encoder 输入从图像 patch 变成梅尔频谱帧。
 - **联合 audio-visual**：一些公开工作尝试视频生成时同步音频；当前 [LTX-Video](https://arxiv.org/abs/2501.00103) 的论文与官方文档仅覆盖视频生成，未声明同步训练音频。
@@ -331,7 +339,7 @@ VQ-VAE 把连续图像压缩成离散 codebook indices。Encoder 产生连续 la
 
 多模态的主线是把视觉、文本乃至音频、视频统一到一组 token、一种训练阶段和一个推理账本下：CLIP / SigLIP 用对比学习把视觉信号拉入文本语义空间；LLaVA / Qwen-VL / Chameleon 用 projector 或离散 token 把视觉 token 接到 LLM 上；Qwen3-VL 在 MRoPE、动态分辨率与多阶段训练里继续打磨视觉-文本联合推理的稳定性与长上下文成本。
 
-把多模态放回主线，本章与 [第 3 章 §3.2.4 位置编码](../chapter3/chapter3_语言模型架构和训练技术细节.md) 与 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md) 的工程接口、[第 9 章 §9.3 模型与 KV cache 压缩](../chapter9/chapter9_推理系统.md) 的视觉 token KV cache / TTFT / batching 账本、以及 [第 10 章 §10.1.1 训练数据](../chapter10/chapter10_数据工程.md) 与 [第 10 章 §10.2.2 数据去重](../chapter10/chapter10_数据工程.md) 的图文配对与多模态去重都直接相关。后续推理行为与多模态系统的评估、多模态 agent trace 与 RLVR 验证放在一起看，见 [推理行为与能力专题](../topics/reasoning_behavior.md)。
+把多模态放回主线，本章与 [第 3 章 §3.2.4 位置编码与 RoPE](../chapter3/chapter3_语言模型架构和训练技术细节.md) 与 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md) 的工程接口、[第 9 章 §9.3 模型与 KV cache 压缩：减少每步数据搬运](../chapter9/chapter9_推理系统.md) 的视觉 token KV cache / TTFT / batching 账本、以及 [第 10 章 §10.1.1 训练数据](../chapter10/chapter10_数据工程.md) 与 [第 10 章 §10.2.2 数据去重](../chapter10/chapter10_数据工程.md) 的图文配对与多模态去重都直接相关。推理行为、多模态系统评估、多模态 agent trace 与 RLVR 验证共同落在[推理行为与能力专题](../topics/reasoning_behavior.md)。
 
 ## 思考
 

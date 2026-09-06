@@ -435,7 +435,7 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ### 11.4.4 Humanity's Last Exam
 
-[Humanity's Last Exam](https://arxiv.org/abs/2501.14249)（HLE）是一个由社区贡献的多模态、多学科基准，包含 2,500 道公开题与精确匹配题，覆盖数学、人文与自然科学等数十个学科。约 14% 的题目需要同时理解文本和图像，约 24% 是选择题，其余 76% 是精确匹配题。奖金池 50 万美元按贡献题目的难度分档：最难的 50 题各 5,000 美元，再往后 500 题各 500 美元。题目由社区贡献，先用前沿 LLM 筛选掉过于简单的题，再经过多阶段专家审查。HLE 的局限在于问题征集过程可能存在严重的选择偏差，且问题类型仍局限于有标准答案的”考试”形式。
+[Humanity's Last Exam](https://arxiv.org/abs/2501.14249)（HLE）是一个由社区贡献的多模态、多学科基准，公开题库共 2,500 道，覆盖数学、人文与自然科学等数十个学科。约 14% 的题目需要同时理解文本和图像，约 24% 是选择题，其余 76% 是精确匹配题。奖金池 50 万美元按贡献题目的难度分档：最难的 50 题各 5,000 美元，再往后 500 题各 500 美元。题目由社区贡献，先用前沿 LLM 筛选掉过于简单的题，再经过多阶段专家审查。HLE 的局限在于问题征集过程可能存在严重的选择偏差，且问题类型仍局限于有标准答案的”考试”形式。
 
 ![图 11.4-4 Humanity's Last Exam 收集筛选流程](images/11-4-4-hle-pipeline.png)
 
@@ -452,7 +452,7 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ### 11.5.1 Chatbot Arena
 
-[Chatbot Arena](https://arxiv.org/abs/2403.04132)（现改名 LMArena）采用”盲测”和 ELO 评分系统。真实用户提交提示，同时收到两个匿名模型的回复，并选择更优者。优点是输入动态、能容纳新模型。问题在于评估者是网站访客，样本可能存在偏差；ELO 分数可能被策略性操纵。
+[Chatbot Arena](https://arxiv.org/abs/2403.04132)（现改名 LMArena）采用盲测配对比较和 Bradley-Terry（BT）系数估计（早期版本使用 ELO，2024 论文已切换为 BT）。真实用户提交提示，同时收到两个匿名模型的回复，并选择更优者。优点是输入动态、能容纳新模型。问题在于评估者是网站访客，样本可能存在偏差；BT 分数可能被策略性操纵。
 
 ![图 11.5-1 Chatbot Arena 分数排行榜](images/11-5-1-chatbot-arena-leaderboard.png)
 
@@ -488,7 +488,7 @@ AlpacaEval 2.0 的一个重要变化，是用回归方式修正长度偏置，�
 
 [WildBench](https://arxiv.org/pdf/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（论文 §2.1）。主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude-3-Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。
 
-论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。WildBench 与 Chatbot Arena 高度相关，论文 §4.2 Table 3 报告的 Pearson 相关系数为：WB-Reward（GPT-4-Turbo, K=500）对 top-ranking 模型 0.99、WB-Score 0.95，均高于 ArenaHard 的 0.91 和 AlpacaEval 2.0 length-controlled win rate 的 0.89。这些数值随评测设置而异，但总体说明 WildBench 已成为新基准有效性的“事实上的”检验标准之一。
+论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。WildBench 与 Chatbot Arena 高度相关，论文 §4.2 Table 3 报告的 Pearson 相关系数为：WB-Reward（Claude-3-Haiku baseline, K=500）对 top-ranking 模型 0.99、WB-Score 0.95，均高于 ArenaHard 的 0.91 和 AlpacaEval 2.0 length-controlled win rate 的 0.89（论文同时报告其他 baseline 与 K 取值的相关系数随设置变化）。这些数值随评测设置而异，但总体说明 WildBench 已成为新基准有效性的“事实上的”检验标准之一。
 
 ![图 11.5-5 WildBench 构建流程](images/11-5-5-wildbench-pipeline.png)
 
@@ -542,7 +542,7 @@ reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward
 
 [Terminal-Bench](https://www.tbench.ai/) 将任务放在通用终端环境中，要求模型通过 shell、文件系统和命令行工具完成开放式工作流。它比单步问答更接近真实工程任务，也更能暴露 agent scaffold 在规划、执行和恢复错误上的影响。
 
-Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 个任务构成 Terminal-Bench 2.0 数据集（[arXiv:2601.11868](https://arxiv.org/abs/2601.11868) 与官方 https://www.tbench.ai/，后续版本可能扩展）。论文署名作者为 Mike A. Merrill 等 85 位。Terminal-Bench 不使用 first-solve time 作为难度指标：先解时间用来度量任务难度是 Cybench 的做法（见 §11.6.3），Terminal-Bench 通过环境多样性和人工解法时长分布来体现任务量级。
+Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 个任务构成 Terminal-Bench 2.0 数据集（[arXiv:2601.11868](https://arxiv.org/abs/2601.11868) 与官方 https://www.tbench.ai/，后续版本可能扩展）。论文署名作者由 Mike A. Merrill 领衔，完整合著者名单需查官方 PDF 首列与致谢页。Terminal-Bench 不使用 first-solve time 作为难度指标：先解时间用来度量任务难度是 Cybench 的做法（见 §11.6.3），Terminal-Bench 通过环境多样性和人工解法时长分布来体现任务量级。
 
 ![图 11.6-2 Terminal-Bench 任务示例](images/11-6-2-terminal-bench-task-example.png)
 
@@ -572,7 +572,7 @@ Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 �
 
 ### 11.6.4 MLE-bench
 
-[MLE-bench](https://arxiv.org/abs/2410.07095) 自动化参与 75 个 Kaggle 机器学习竞赛，包括数据处理、模型训练、超参调优和结果提交。在论文给定的设置下，当前最佳模型获得任何 Kaggle 奖牌（bronze / silver / gold）的比例为约 **16.9%**。
+[MLE-bench](https://arxiv.org/abs/2410.07095) 自动化参与 75 个 Kaggle 机器学习竞赛，包括数据处理、模型训练、超参调优和结果提交。在论文给定的设置下，最佳智能体（o1-preview + AIDE scaffold）在 pass@1 条件下获得任何 Kaggle 奖牌（bronze / silver / gold）的比例约为 **16.9%**（论文 Table 2）；同一最佳智能体在 pass@8 时这一比例上升至约 34.1%。
 
 ![图 11.6-7 MLE-bench 评测流程](images/11-6-7-mlebench-workflow.png)
 

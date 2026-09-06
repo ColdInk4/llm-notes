@@ -19,7 +19,7 @@ GPU 高性能编程先从一条可复用的排查链开始：
 
 读完本章后，应当能把一段高层 PyTorch 代码拆成三层问题：Python 表达式触发了哪些 kernel；这些 kernel 在 GPU 上受哪些硬件约束；需要下探时，Triton program、thread block 和 PTX 信号如何对应到实际执行。
 
-硬件基础参见 [第 5 章 GPU 和 GPU 相关的优化](../chapter5/chapter5_GPU和GPU相关优化.md)；本章侧重编程模型、benchmark / profile 流程和 Triton / PTX 的工程落点。
+硬件基础参见 [第 5 章 §5.2 GPU 的执行模型 SM（流式多处理器）](../chapter5/chapter5_GPU和GPU相关优化.md) 与 [第 5 章 §5.3 GPU 的内存模型](../chapter5/chapter5_GPU和GPU相关优化.md)；本章侧重编程模型、benchmark / profile 流程和 Triton / PTX 的工程落点。
 
 正文中的代码片段保留核心结构，省略的 import、helper 和检查函数不影响主线。
 
@@ -41,7 +41,7 @@ GPU 高性能编程先从一条可复用的排查链开始：
 | 每 SM register | 256 KB | 256 KB | 256 KB |
 | 每 SM L1 + shared memory | 192 KB | 256 KB | 256 KB |
 | L2 cache | 40 MB | 50 MB | 单颗 GB200 / B200 GPU（全封装，含 2 个 GB100 die）L2 = 126 MB（[NVIDIA Blackwell tuning guide §1.4.2.2](https://docs.nvidia.com/cuda/blackwell-tuning-guide/)）；折算每 GB100 die ≈ 63 MB |
-| HBM 容量 | 80 GB | 80 GB | 192 GB（HGX B200 公开口径 180 GB HBM3e；GB200 NVL72 datasheet 按总 HBM3e 13.4 TB / 72 GPU 推回 186 GB） |
+| HBM 容量与类型 | 80 GB HBM2e | 80 GB HBM3 | B200 全封装（HBM3e 物理 192 GB，[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) 标 180 GB HBM3e 为可寻址上限，HGX B200 / GB200 NVL72 公开 datasheet 同样取 180 GB；GB200 NVL72 按总 HBM3e 13.4 TB / 72 GPU 反推 186 GB/GPU） |
 | HBM 带宽量级 | 2 TB/s | 3.35 TB/s | 8 TB/s |
 
 *表 6.1 A100/H100/B200 硬件数量级*
@@ -464,7 +464,7 @@ PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微�
 
 读完本章后应能做到：写一个可复用的 benchmark 和 `torch.profiler` 排查流程，在 Triton 里覆盖 elementwise / reduction / row-overflow / matmul tiling 四类 block 级 kernel，并在 PTX 文本中读出执行模型与 thread coarsening 信号。第 5 章 给出硬件数量级与优化原则，本章把同一套判断落到具体 kernel 和工具选择链上。
 
-下章进入 [第 7 章 分布式训练](../chapter7/chapter7_分布式训练.md)：单卡账本成立之后，把同一组账本扩展到跨卡——collective 语义、NCCL / torch.distributed 的实际接口、ZeRO / FSDP 的状态分片，以及 TP / PP / SP / CP / EP 在混合并行中的组合（EP 在 [第 7 章 §7.9 SP / CP / EP：Activation 与长上下文 / MoE 维度的并行](../chapter7/chapter7_分布式训练.md) 与 [第 4 章 §4.4 MoE 与深度学习](../chapter4/chapter4_混合专家模型.md) 章节交叉）。
+下章进入 [第 7 章 §7.2 通信编程模型](../chapter7/chapter7_分布式训练.md)：单卡账本成立之后，把同一组账本扩展到跨卡——collective 语义、NCCL / torch.distributed 的实际接口、ZeRO / FSDP 的状态分片，以及 TP / PP / SP / CP / EP 在混合并行中的组合（EP 在 [第 7 章 §7.9 SP / CP / EP：Activation 与长上下文 / MoE 维度的并行](../chapter7/chapter7_分布式训练.md) 与 [第 4 章 §4.4 MoE 与深度学习](../chapter4/chapter4_混合专家模型.md) 章节交叉）。
 
 ## 思考
 

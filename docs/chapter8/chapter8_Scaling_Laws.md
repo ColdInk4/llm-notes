@@ -480,7 +480,7 @@ pretraining loss 和 downstream accuracy 往往相关，但不是一一对应。
 
 图 8.3-13 把比较对象换成 Transformer variants：横轴是 compute，纵轴是 loss，每条曲线对应一种架构改动（GLU / Performer / Switch / MoE 等）。曲线在多个 compute 区间稳定低于 baseline，意味着这个改动在同等资源下持续降低 loss；曲线斜率与 baseline 平行则说明改动主要带来 offset。
 
-这组 T5-style scaling 给出几个具体判断。Gated linear unit 的趋势很好，后来进入很多主流模型设计。Performer 这类 efficient attention 在这些实验里 scaling trend 不够好。Switch / MoE 的趋势有吸引力，因为 MoE 每个 token 只激活一部分 experts：active compute 更接近每个 token 的实际计算量，训练和推理都会受它影响；total parameters 更接近容量和存储上限；routing 成本则决定通信和吞吐。MoE 的 routing / load balancing / expert 配置在 [第 4 章 混合专家模型](../chapter4/chapter4_混合专家模型.md) 展开。
+这组 T5-style scaling 给出几个具体判断。Gated linear unit 的趋势很好，后来进入很多主流模型设计。Performer 这类 efficient attention 在这些实验里 scaling trend 不够好。Switch / MoE 的趋势有吸引力，因为 MoE 每个 token 只激活一部分 experts：active compute 更接近每个 token 的实际计算量，训练和推理都会受它影响；total parameters 更接近容量和存储上限；routing 成本则决定通信和吞吐。MoE 的 routing / load balancing / expert 配置在 [第 4 章 §4.4 MoE 与深度学习](../chapter4/chapter4_混合专家模型.md) 展开。
 
 小规模曲线的作用是先筛掉放大后不划算的架构。大训练再集中验证剩下的候选。很多架构改动主要带来 offset：曲线整体更低，但斜率变化不大。这个 offset 在大训练里很值钱，因为它可能等价于少花一大段 compute。
 
@@ -920,7 +920,7 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 这一节只说明一个实验流程：IsoFLOP 不限于 autoregressive LM。对每一档固定的训练 FLOP budget，扫描模型大小等配置，找出 validation loss 最低的点，再观察最优配置怎样随预算变化。扩散语言模型可以使用同一流程，但它的 compute-optimal 趋势不必和 autoregressive LM 相同。
 
 > [!NOTE]
-> 本节是方法论扩展。Autoregressive LM 的 scaling 主线见 §8.4；diffusion 与 MoE 的 IsoFLOP 例子来自 Plaid 等公开论文，用于把同一套工作流推广到 AR 之外。读者可以按"先看 §8.4 流程，再看 §8.5 推广"的顺序读。
+> Autoregressive LM 的 scaling 主线见 §8.4；diffusion 与 MoE 的 IsoFLOP 例子来自 Plaid 等公开论文，用于把同一套工作流推广到 AR 之外。它们共享固定 FLOP budget、扫描候选配置、比较 lower envelope 的分析步骤，但计算图和质量指标有所不同。
 
 ![图 8.5-1 Diffusion IsoFLOP curves](images/8-5-1-diffusion-isoflop-curves.png)
 
@@ -972,7 +972,7 @@ MiniCPM 的具体答案是：用 muP 改参数化让 base learning rate 跨宽�
 
 *图 8.6-1 MiniCPM performance comparison*
 
-图 8.6-1 把 MiniCPM 与同代 1-2.5B 参数规模的开源模型放在一起比较 benchmark 分数，标出 MiniCPM 在这一区间的相对位置。它本身不解释具体数字——后续小节（§8.6.1 的 muP / WSD / 数据 sweep）会回到这些数字背后用到的训练配置。后面的重点转向训练过程：哪些超参数可以先在小模型上定，哪些仍需要随规模重新测。
+图 8.6-1 把 MiniCPM 与同代 1-2.5B 参数规模的开源模型放在一起比较 benchmark 分数，标出 MiniCPM 在这一区间的相对位置。它本身不解释具体数字。本节下面三张图（§8.6.1 的 muP / WSD / 数据 sweep）逐一展开训练过程：哪些超参数可以先在小模型上定，哪些仍需要随规模重新测。
 
 ![图 8.6-2 MiniCPM muP operations](images/8-6-2-minicpm-mup-operations.png)
 
@@ -1102,7 +1102,7 @@ DeepSeek LLM 的具体做法是：在多个小模型上同时扫 batch × learni
 
 *图 8.6-14 DeepSeek scaling analysis case*
 
-图 8.6-14 把 DeepSeek LLM 7B / 67B 与同代 7B 级开源模型放在一起比较 benchmark 分数，标出 DeepSeek 在这两档规模上的相对位置。它公开了 7B 和 67B 模型，并给出比较细的训练设置分析，本图本身不解释训练设置——后续图 8.6-15–8.6-19 会回到 batch / LR / IsoFLOP sweep 的具体曲线。和 MiniCPM 相比，DeepSeek 的实验重心是直接测量超参数如何随规模变化。
+图 8.6-14 把 DeepSeek LLM 7B / 67B 与同代 7B 级开源模型放在一起比较 benchmark 分数，标出 DeepSeek 在这两档规模上的相对位置。它公开了 7B 和 67B 模型，并给出比较细的训练设置分析。本图只标 DeepSeek 7B / 67B 的相对位置；§8.6.2 的图 8.6-15–图 8.6-19 给出 batch / LR / IsoFLOP sweep 的具体曲线。和 MiniCPM 相比，DeepSeek 的实验重心是直接测量超参数如何随规模变化。
 
 这条路线的代价是实验量更大，因为每个规模都需要扫一片 LR-batch space；好处是少依赖参数化迁移假设。只要低 loss 区域在多个规模上形成稳定趋势，就可以把趋势外推到目标训练。
 
@@ -1269,11 +1269,15 @@ StepFun 先把 LR 和 batch 放进经验网格。图 8.6-30 把同一固定训�
 
 StepFun 还检查训练设置的鲁棒性。它把 MoE、不同 dataset 和不同训练设置纳入复核，目标是判断这套 LR / batch 选择在相邻配置里是否仍然可用。MoE 在控制 active parameters 后大体能迁移；换数据时最优 LR / batch 会出现漂移，说明这些系数对数据处理方案很敏感。
 
-![图 8.6-33 AdamH loss-spike under extrapolation](images/8-6-33-adamc-scaling-blowup.png)
+![图 8.6-33 Cautious AdamC scaling blow-up under extrapolation](images/8-6-33-adamc-scaling-blowup.png)
 
-*图 8.6-33 AdamH loss-spike under extrapolation*
+*图 8.6-33 Cautious AdamC scaling blow-up under extrapolation*
 
-图 8.6-33 是一个工程案例，左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，并从约 $10^{21}$ 之后进入 held-out 外推区。外推区里实测点逐档接近预测：$10^{21}$ 处高 0.5%， $10^{22}$ 处从 Delphi attempt 1 的 2.5% 改进到 +0.2%， $10^{23}$ 处这一档在加入 skip-bad-steps 后从原先的发散回到 +0.2%。这组训练设置来自 Delphi open scaling suite，optimizer 是 AdamH（Adam with Hyperball，把投影权重约束在初始化时的 Frobenius 范数球面上），评估指标是 Paloma macro loss；attempt 1 的 spike 出现在一批重复文本 batch 上，加入 skip-bad-steps 逻辑（按 grad_norm 阈值跳过）后缓解，最终仍以 0.2% 误差落在预测区间内。这个案例来自 Open Athena / Marin 博客 [*Scaling Laws That Extrapolate 300 Past the Fit*](https://openathena.ai/blog/delphi)。
+图 8.6-33 是一个工程案例，也是 §8.6.4“Optimizer Scaling：新 optimizer 的规模风险”讨论的具体失效样本。左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，$10^{21}$ 处的虚线把图分成 fit 与 extrapolation 两段。
+
+图中外推区的三个点展示 Cautious AdamC 的失败形态：$10^{22}$ 处两个不同 seed 给出 `0.8% worse` 与 `2.5% worse` 两档偏离，$10^{23}$ 处标注 *Run Diverged*。caption 将这组设置概括为 *Cautious AdamC + Sqrt batch-size scaling of learning rates*，并指出需要重新设计参数化、缩放或 optimizer 才能修复外推。
+
+Open Athena / Marin 的 Delphi 博客 [*Scaling Laws That Extrapolate 300 Past the Fit*](https://openathena.ai/blog/delphi) 给出 fix 之后的结果：把 optimizer 从 Cautious AdamC 换成 AdamH（Adam with Hyperball——按 Frobenius 范数把权重重新缩放到当前 $\|W\|_F$ 球面上，等价于把 weight decay 从超参搜索里拿掉），并把 LR scaling 从 $\sqrt{\mathrm{batch}}$ 改成 token-horizon $(T_0/T)^{0.3}$ 形式。在这套 fix 下，$10^{21}$、$10^{22}$、$10^{23}$ 三档 held-out 预测全部落在 observed Paloma macro loss 的 $\sim 0.5\%$ 误差带内；其中 $10^{23}$、25B 参数、600B tokens 的预注册预测相对实测偏差约 $0.2\%$，是博客标题里 *Extrapolate 300 Past the Fit* 的具体口径（外推到拟合所用最大 compute 的约 300 倍）。同一博客还提到 attempt 1 在一批重复文本 batch 上出现 spike，按 grad_norm 阈值跳过 bad steps 后缓解，是 fix 链路上的一环而非独立机制。
 
 Volkova et al. [Towards Robust Scaling Laws for Optimizers, arXiv:2602.07712](https://arxiv.org/abs/2602.07712) 处理同一类问题的另一面：论文指出 per-optimizer 直接拟合 Chinchilla-style scaling law 是 ill-conditioned 的、拟合参数高度相关，因此改用“共享 power-law exponents + optimizer-specific rescaling factors”，并在 AdamW、Muon、Scion、Shampoo、SOAP 五种 optimizer、两种架构上验证。
 
@@ -1450,13 +1454,13 @@ $$
 
 训练侧的所有决策最终都要面对部署侧的成本账：serving 时的 GPU 时间、KV cache 显存、TTFT、throughput、continuous batching 与 PagedAttention 等具体工程对象。Train-optimal 模型上线后被实际负载压成的形状，往往和 IsoFLOP sweep 给出的最佳点不一样。
 
-[第 9 章 推理系统](../chapter9/chapter9_推理系统.md) 把视角从训练侧切到 serving 侧，继续回答"算力最优的模型怎么被高效部署"这一组工程问题。读完本章后，读者可以带着 §8.1 末尾的检查表去看公开推理报告：横轴换成 QPS / latency / serving cost 后，哪些结论仍然成立、哪些需要重写。
+[第 9 章 §9.1 Inference Workload：为什么推理不同于训练](../chapter9/chapter9_推理系统.md) 把视角从训练侧切到 serving 侧，继续回答"算力最优的模型怎么被高效部署"这一组工程问题。读完本章后，读者可以带着 §8.1 末尾的检查表去看公开推理报告：横轴换成 QPS / latency / serving cost 后，哪些结论仍然成立、哪些需要重写。
 
 ## 思考
 
 - 看一张 scaling 图时，先固定横轴的资源（compute / tokens / parameters / downstream score）和被钉住的训练条件（tokenizer、optimizer、batch、scheduler），再判断结论能外推到多大的目标训练。这条读图动作对应学习目标 1 和 §8.1 末尾检查表。
 - 给定训练 FLOPs $C$ 和目标 loss，用 Chinchilla / IsoFLOP / critical batch size / tokens per parameter 这些概念在公开报告的网格上读出模型大小、训练 token 数、batch size 和 learning rate 的起点；起点只是 baseline，仍要在目标规模附近复核。这条对应学习目标 3。
-- 在 tokens per parameter 从 1.7（GPT-3）一路上升到 200+（Llama 3、Mistral 等 overtrained 模型）的趋势里，train-optimal 与 inference-optimal 的差距如何随模型大小和预计请求量变化？overtraining 把更多一次性训练投入换成更低的长期 serving 成本是否划算？这一组问题对应学习目标 4 和 §8.4.3。
+- 在 tokens per parameter 从 1.7（GPT-3）上升到几十乃至数百（不同规模的 overtrained 模型）的趋势里，train-optimal 与 inference-optimal 的差距如何随模型大小和预计请求量变化？Llama 3 405B 约使用 15.6T tokens，即约 39 tokens/parameter；更小模型的公开或估计比例可超过 200。overtraining 把更多一次性训练投入换成更低的长期 serving 成本是否划算？这一组问题对应学习目标 4 和 §8.4.3。
 - 在目标模型上用 muP / WSD / optimizer scaling 时，哪些超参可以从小模型迁移，哪些必须随 compute、tokens per parameter、MoE sparsity 或数据处理方案重新扫描？这条对应学习目标 4 的另一半。
 - 当一个新模型架构（如 Mamba、Gated DeltaNet、hybrid attention）或一个新数据集出现时，如何套 §8.1 末尾的检查表判断它是否值得投入大规模预训练？检查表逐条通过只是必要条件，外推区间和参数化口径仍要单独核。这条对应学习目标 2 与学习目标 5。
 
@@ -1476,7 +1480,7 @@ $$
 ## 来源与更新记录
 
 - 早期 learning-curve 与 data-scaling 论文：Banko & Brill 2001 https://aclanthology.org/P01-1005/；Kolachina et al. 2012 https://aclanthology.org/P12-1003/；Hestness et al. 2017 https://arxiv.org/abs/1712.00409。
-- 论文与技术报告：Kaplan et al. 2020 https://arxiv.org/abs/2001.08361；Chinchilla https://arxiv.org/abs/2203.15556；Likelihood-Based Diffusion Language Models https://arxiv.org/abs/2305.18619（Gulrajani & Hashimoto, 2023）；MiniCPM https://arxiv.org/abs/2404.06395；Language models scale reliably with over-training and on downstream tasks https://arxiv.org/abs/2403.08540（Gadre et al.）；DeepSeek https://arxiv.org/abs/2401.02954；Cerebras-GPT https://arxiv.org/abs/2304.03208；Tensor Programs V https://arxiv.org/abs/2203.03466；A Spectral Condition for Feature Learning https://arxiv.org/abs/2310.17813；Hunyuan-Large https://arxiv.org/abs/2411.02265；MiniMax-01 https://arxiv.org/abs/2501.08313；Towards Robust Scaling Laws for Optimizers https://arxiv.org/abs/2602.07712（Volkova, Safaryan, Lampert, Alistarh, 2026）；Predictable Scale: Part I — Step Law https://arxiv.org/abs/2503.04715（Li et al., StepFun, 2025）；Llama 3 Herd of Models https://arxiv.org/abs/2411.18243；Qwen3 Technical Report https://arxiv.org/abs/2505.09388；Kimi K2 https://arxiv.org/abs/2507.20534；Mamba-2 https://arxiv.org/abs/2405.21060；Gated DeltaNet https://arxiv.org/abs/2412.06464。
+- 论文与技术报告：Kaplan et al. 2020 https://arxiv.org/abs/2001.08361；Chinchilla https://arxiv.org/abs/2203.15556；Likelihood-Based Diffusion Language Models https://arxiv.org/abs/2305.18619（Gulrajani & Hashimoto, 2023）；MiniCPM https://arxiv.org/abs/2404.06395；Language models scale reliably with over-training and on downstream tasks https://arxiv.org/abs/2403.08540（Gadre et al.）；DeepSeek https://arxiv.org/abs/2401.02954；Cerebras-GPT https://arxiv.org/abs/2304.03208；Tensor Programs V https://arxiv.org/abs/2203.03466；A Spectral Condition for Feature Learning https://arxiv.org/abs/2310.17813；Hunyuan-Large https://arxiv.org/abs/2411.02265；MiniMax-01 https://arxiv.org/abs/2501.08313；Towards Robust Scaling Laws for Optimizers https://arxiv.org/abs/2602.07712（Volkova, Safaryan, Lampert, Alistarh, 2026）；Predictable Scale: Part I — Step Law https://arxiv.org/abs/2503.04715（Li et al., StepFun, 2025）；Llama 3 Herd of Models https://arxiv.org/abs/2411.18243（§3.2：405B 模型使用 15.6T tokens，约 39 tokens/parameter，查阅 2026-09-06）；Qwen3 Technical Report https://arxiv.org/abs/2505.09388；Kimi K2 https://arxiv.org/abs/2507.20534；Mamba-2 https://arxiv.org/abs/2405.21060；Gated DeltaNet https://arxiv.org/abs/2412.06464。
 - 现代报告参考：Qwen、Kimi、StepFun、Llama 3、Hunyuan、MiniMax 相关论文或技术报告；其中未公开完整训练网格的案例只作为变量账本和公开口径样例。
 - 2025-2026 新模型与扩展：**Nemotron 3** 系列在 NVFP4 精度下训练；**DeepSeek v3.2** 在 MoE 规模与 RLHF 后训练上扩展；**Qwen 3 / 3.5 / 3 Next / 3 Coder Next** 在 thinking mode fusion、MoE、agentic RL 上持续迭代；**OLMo 3** 系列覆盖完整训练可复现性披露；**MiniMax M2.5** 与 **Kimi K2.5** 在 hybrid attention 上沿用 lightning + softmax 路线；**GLM 5** 与 **Xiaomi MIMO** 进入开源权重榜单前列。TPU 侧，**TPU 8t** 在 3D torus 之上叠加 **Virgo** scale-out fabric，单 fabric 可达 ~134,000 颗 TPU 8t、~47 Pb/s non-blocking bisection；**TPU 8i** 采用 Boardfly 拓扑（Dragonfly 变体）替代 3D torus；两者均以 optical circuit switching 与 flattened two-layer topology 影响大规模训练的 collective 调度。**Cohere Command A** 用 3:1 hybrid attention：3 层 sliding window attention（窗口 4,096，RoPE）+ 1 层 global attention（NoPE）作为 hybrid attention 的另一参考样本。这些 2026 模型的具体超参与 token 数随官方技术报告更新，本节只记录其类别和角色，不替代论文级复核。
 - 官方实践指南：Cerebras / EleutherAI `The Practitioner's Guide to the Maximal Update Parameterization` https://www.cerebras.ai/blog/the-practitioners-guide-to-the-maximal-update-parameterization。

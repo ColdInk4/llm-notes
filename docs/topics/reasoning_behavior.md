@@ -12,15 +12,15 @@ LLM 推理能力既是可观察的生成行为，也是消耗系统预算的训�
 - SFT / RLHF / RLVR 等后训练如何重排搜索偏好与奖励风险；
 - 外部工具与搜索如何扩展信息来源与动作空间。
 
-阅读完本专题后，读者可以判断：在给定的预算与服务约束下，某个推理行为改进主要提升的是 `accuracy`、`efficiency` 还是 `resources`；`多路径 CoT` 这类方法的代价来自哪几项 serving 指标；`RLVR` 的能力上限受哪些信号与覆盖范围限制。第 9 章 serving 系统与第 13 章 RLVR 训练流程是本专题的工程上下文，本专题只讨论推理行为本身。
+阅读完本专题后，读者可以判断：在给定的预算与服务约束下，某个推理行为改进主要提升的是 `accuracy`、`efficiency` 还是 `resources`；`多路径 CoT` 这类方法的代价来自哪几项 serving 指标；`RLVR` 的能力上限受哪些信号与覆盖范围限制。[第 9 章 §9.1 Inference Workload：为什么推理不同于训练](../chapter9/chapter9_推理系统.md)与[第 13 章 §13.1 为什么需要 RLVR？](../chapter13/chapter13_可验证奖励的强化学习.md)提供工程上下文，本专题聚焦推理行为本身。
 
 ## 推理能力的研究案例
 
-本节先用三个近期公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖图论与组合（2025 年 Knuth）、定理证明（2026 年 Brenner 等）和数学公式推导（2026 年 Feng）三类典型应用，能力、概率与系统代价的拆解见后续 §3 预训练与解码、§4 后训练、§5 CoT、§6 Prompt 与 §7 外部工具搜索。
+本节先用三个近期公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖图论与组合（2025 年 Knuth）、理论物理的解析推导（2026 年 Brenner 等）和代数几何中的特征值计算（2026 年 Feng）三类典型应用，能力、概率与系统代价的拆解见后续 §3 预训练与解码、§4 后训练、§5 CoT、§6 Prompt 与 §7 外部工具搜索。
 
 - Donald Knuth 在 2025 年的 [PDF *The Claude cycle in Stanford graph theory*](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf) 中记录了 Claude（Anthropic）在图论开放问题上的独立发现，并把这条新构造的图论环命名为 *Claude cycle*。
 - Brenner（Google Research 与 Harvard SEAS）、Cohen-Addad（Google Research）和 Woodruff（Google Research 与 Carnegie Mellon 联合）在 [arXiv:2603.04735 *Solving an Open Problem in Theoretical Physics using AI-Assisted Discovery*](https://arxiv.org/abs/2603.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
-- Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：核心数学内容由内部推理代理 _Aletheia_（基于 Gemini Deep Think 构建）完整生成，其中 Type A（GL_n）由代理给出一般情形（FYZ25a 仅覆盖 m=1, m=2 两组特殊情形）、Type C（PSp_{2n}）的 spin coweight、Type D（PSO_{2n}）的 spinor coweights 均为代理新算；Type B（SO_{2n+1}）与 Type D 的 standard coweight 沿用 prior work [FYZ25a]。人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
+- Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：核心数学内容由内部推理代理 _Aletheia_（基于 Gemini Deep Think 构建）完整生成，论文把 Feng–Yun–Zhang 在 [FYZ25a] 中只覆盖了若干特殊情形的 eigenweights 推到全部四个经典 Lie 群族（Type A、B、C、D）的一般情形；论文正文给出 Type A（GL_n）、Type C（PSp_{2n}）与 Type D（PSO_{2n}）的完整证明。人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
 
 三个案例从不同角度展示同一类机制：模型负责生成推理轨迹和数学构造，作者负责设定目标、组织验证与最终叙述。CoT、多路径采样与工具扩展主题随后展开；推理行为既可以由模型直接产生，也可以由作者代理作为中间环节。
 
@@ -309,7 +309,7 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 ## 参考资料
 
 - [Brenner / Cohen-Addad / Woodruff：AI 辅助求解宇宙弦引力辐射功率谱解析解](https://arxiv.org/abs/2603.04735)
-- [Tony Feng：Eigenweights for arithmetic Hirzebruch Proportionality（AI 代理生成 Type A/C/D，Type B 沿用 FYZ25a）](https://arxiv.org/abs/2601.23245)
+- [Tony Feng：Eigenweights for arithmetic Hirzebruch Proportionality（Aletheia 代理生成所有经典 Lie 群族 eigenweights 的一般情形）](https://arxiv.org/abs/2601.23245)
 - [Google DeepMind 团队 Denny Zhou 的 LLM 推理研究探讨](https://dennyzhou.github.io/LLM-Reasoning-Stanford-CS-25.pdf)
 - [DeepSeek-R1 的训练经验总结](https://arxiv.org/abs/2501.12948)
 - [Does Reinforcement Learning Really Incentivize Reasoning Capacity in LLMs Beyond the Base Model?](https://arxiv.org/pdf/2504.13837)
@@ -320,11 +320,11 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 - [从生产语言模型中抽取训练数据](https://arxiv.org/abs/2012.07805)
 - [Stanford 与 Google 团队合作提出的类比推理](https://arxiv.org/pdf/2310.01714)
 - [Mind Lab 工程博客：在 1.04T 总参 / 32.6B 激活的 Kimi-K2 上用 LoRA + RL 训练（64 张 H800 / 10% 全参 RL GPU）的经验](https://macaron.im/mindlab/research/building-trillion-parameter-reasoning-rl-with-10-gpus)
-- [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md)
+- [第 13 章 §13.1 为什么需要 RLVR？](../chapter13/chapter13_可验证奖励的强化学习.md)
 - [过犹不及：理解大语言模型中的思维链长度](https://arxiv.org/pdf/2502.07266)
 - [DTR 指标](https://arxiv.org/pdf/2602.13517)
 - [OpenAI 提示词工程指南](https://developers.openai.com/api/docs/guides/prompt-engineering)
-- [第 8 章 Scaling Laws](../chapter8/chapter8_Scaling_Laws.md)
+- [第 8 章 §8.1 Scaling Workflow：先拟合，再放大](../chapter8/chapter8_Scaling_Laws.md)
 - [神经细胞自动机生成非语言合成数据，用于语言模型预训练](https://arxiv.org/pdf/2603.10055)
 - [序列预测器都可以作为压缩器](https://arxiv.org/pdf/2309.10668)
 - [CS336 2026 课程主页](https://cs336.stanford.edu/)

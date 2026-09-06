@@ -2,6 +2,8 @@
 
 专家混合模型（Mixture of Experts, MoE）是扩展 LLM 容量的重要技术。它把一部分 dense FFN 替换为多个 experts，并让每个 token 只激活少数 experts，从而在每 token FLOPs 相对可控的情况下增加总参数量。
 
+从计算账本出发，若单个 FFN 的参数量和计算量分别为 $P$ 与 $F$，共有 $E$ 个 experts、每个 token 激活 $k$ 个，则该层总参数量约为 $E P$，每 token 的 expert 计算量约为 $k F$。只要 $k \ll E$，模型容量随 $E$ 增长，而单 token FLOPs 主要由 $k$ 决定；routing、dispatch 和 combine 的额外通信开销需要另行计入。
+
 DeepSeek、Kimi、Qwen、GLM、MiMo 等模型族都探索过 MoE 架构。MoE 的收益来自条件计算：总参数量可以变大，每个 token 实际经过的 FFN 路径仍保持稀疏；相应代价是 routing、load balancing、all-to-all、expert parallelism 和 training stability 都变成一等工程问题。
 
 ## 本章主线
@@ -371,7 +373,7 @@ routing 机制的选择依据是输入 hidden state。输入 token 在经过 emb
 
 Roller et al. 2021 的 [Hash Layers For Large Sparse Models, arXiv:2106.04426](https://arxiv.org/abs/2106.04426) 走的是**预计算查表**路径：在训练前就把每个 token 映射到固定 expert（random hash 或 balanced assignment），不引入随机投影，也不通过梯度优化哈希参数；其论文 §3.1 明确写明”we generally employ pre-computed hash functions, which use a lookup table during learning – precomputed in advance – to map tokens to expert modules”。这与下文示例代码采用的几何 LSH 是不同的非学习式 routing 范式，应分开理解。
 
-下面给出一个**来自经典 LSH 家族、与 Roller 2021 实现路径不同的**简化示例来说明几何哈希在 routing 上的可能形态，目的是让”非学习 routing”具体可读。
+下面给出一个**来自经典 LSH 家族、与 Roller 2021 实现路径不同的**简化示例来说明几何哈希在 routing 上的可能形态，目的是让「非学习 routing」具体可读。
 
 经典 LSH routing 把每个哈希函数定义为：把输入 token embedding $x \in \mathbb{R}^d$ 投影到由随机向量 $a_i \in \mathbb{R}^d$ 和随机偏置 $b_i$ 定义的平面上，再通过桶宽度 $\epsilon$ 进行量化，从而将 $x$ 映射到一个索引值为 $i$ 的 $h_i(x)$ 整数哈希桶。桶宽度间接控制每个桶的 token 容量。
 
@@ -1031,7 +1033,7 @@ v3 则强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 
 
 因此，在实际操作中，需要在 expert 粒度、激活数量、shared expert 比例、通信开销和路由稳定性之间做 tradeoff，并通过消融实验找到当前硬件和计算预算下的配置。
 
-- **负载均衡策略**：为了缓解负载不均衡导致的 expert collapse、expert starvation 和系统瓶颈，早期 DeepSeekMoE 使用 auxiliary loss；DeepSeek-V3 一类路线改用 per-expert bias / aux-loss-free balancing，通过在线调整 expert bias 平衡负载，同时尽量减少 auxiliary loss 对主目标的干扰。**注意**：DeepSeek-V3 的主要平衡策略是 aux-loss-free，但 [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §2.1.2 仍保留一个 **sequence-wise balance auxiliary loss** 作为兜底，专门防止单条序列内出现极端 imbalance；这是与"完全无辅助损失"的关键区别。
+- **负载均衡策略**：为了缓解负载不均衡导致的 expert collapse、expert starvation 和系统瓶颈，早期 DeepSeekMoE 使用 auxiliary loss；DeepSeek-V3 一类路线改用 per-expert bias / aux-loss-free balancing，通过在线调整 expert bias 平衡负载，同时尽量减少 auxiliary loss 对主目标的干扰。**注意**：DeepSeek-V3 的主要平衡策略是 aux-loss-free，但 [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §2.1.2 仍保留一个 **sequence-wise balance auxiliary loss** 作为兜底，专门防止单条序列内出现极端 imbalance；这是与「完全无辅助损失」的关键区别。
 
     - **expert-level balancing** 关注每个 expert 是否都有足够 token 和梯度，避免少数 experts 富者愈富。
     - **device-level balancing** 关注 experts 分布到多 GPU/多节点后，每台设备是否都在忙；即使 expert 平均负载合理，也可能出现某台设备承载的 experts 整体更热门。
@@ -1041,7 +1043,7 @@ v3 则强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 
 
 #### DeepSeek-V3 的另外三项关键创新
 
-DeepSeek-V3 论文在 MoE 之外同时披露了两项与 MoE 并列的核心架构创新和一项重要的后训练经验，本节统一吸收：
+DeepSeek-V3 论文在 MoE 之外同时披露了两项独立于 MoE 的核心架构创新和一项重要的后训练经验，本节统一吸收：
 
 - **Multi-Head Latent Attention（MLA）**：把 K/V 压缩到低秩潜空间后再做注意力，相比 MHA 大幅压缩 KV cache（DeepSeek-V3 每 token 每层 MHA 需缓存 $2 h d_k = 2 \times 128 \times 128 = 32768$ 个元素，MLA 只缓存 $d_c + d_k^R = 512 + 64 = 576$ 个；细节见 [第 9 章 §9.3.2 MLA：存压缩 latent，再按需展开](../chapter9/chapter9_推理系统.md)）。MLA 与本节 MoE 路线在 DeepSeek-V3 中同时启用，是 V3 在长上下文与高吞吐推理两个方向都能维持竞争力的关键。
 - **Multi-Token Prediction（MTP）**：训练目标中允许模型一次预测未来多个 token，可以作为辅助训练信号提升数据效率，也能在 decoding 时作为 speculative decoding 的草稿使用。MTP 在大多数主流开源模型里尚未普及，目前主要在 DeepSeek 系列内部规模化使用。
@@ -1066,7 +1068,7 @@ MoE 稳定性通常需要同时处理路由更新、激活异常值和损失尖�
 - **SwiGLU clamping**：对 SwiGLU 中容易产生异常值的分支做范围限制，例如将线性分量限制在 `[-10, 10]`，并限制门控分量上界（[DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 中的 `swiglu_limit: 10.0` 即此参数；DeepSeek-V3 config 没有该字段，gpt-oss-120b 取的是 `swiglu_limit: 7.0`）。这样可以降低 activation outlier 和 loss spike 风险，但是否值得使用仍取决于模型规模、精度和训练设置。
 
 > [!NOTE]
-> 这类 MoE 稳定性技巧目前更多来自工程经验和消融实验；同一技巧在同尺度、同数据、同精度的训练栈里通常只能给出边际稳定，跨规模、跨精度的迁移效果需要重新消融。”必然有效””不损害性能”一类无条件结论缺乏公开复现支撑。
+> 这类 MoE 稳定性技巧目前更多来自工程经验和消融实验；同一技巧在同尺度、同数据、同精度的训练栈里通常只能给出边际稳定，跨规模、跨精度的迁移效果需要重新消融。「必然有效」「不损害性能」一类无条件结论缺乏公开复现支撑。
 
 ## 4.4 MoE 与深度学习
 
@@ -1187,13 +1189,13 @@ expert parallelism 的意义在于把专家维度也变成可切分资源：atte
 | DeepSeek V4-Pro | 未公开 | 未公开 | 384 routed + 1 shared / top-6（7/385 ≈ 1.82% 激活） | `topk_method: "noaux_tc"` + `scoring_func: "sqrtsoftplus"`；前 3 层交哈希路由（`num_hash_layers: 3`），降低浅层 MoE 训练不稳定；`swiglu_limit: 10.0` 抑制 activation outlier | [DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) |
 
 > [!TIP]
-> DeepSeek MoE 的"共享专家 + fine-grained experts"组合是 2024-2025 年间公开 MoE 模型最常复用的模板（Qwen 1.5 MoE、Qwen MoE 系列、Llama 4 Maverick 等都用到这一组合或其变体）。但 DeepSeek 与 OlMoE 之间存在一个未解决的开放问题：DeepSeek 的实验表明共享 expert 普遍提升 loss，而 OlMoE 的实验表明共享 expert 没有明显收益、收益主要来自细粒度 expert；这一对立现象不试图在本章内解决，仅作为路由设计的"开放边界"留给读者复核。
+> DeepSeek MoE 的「共享专家 + fine-grained experts」组合是 2024-2025 年间公开 MoE 模型最常复用的模板（Qwen 1.5 MoE、Qwen MoE 系列、Llama 4 Maverick 等都用到这一组合或其变体）。但 DeepSeek 与 OlMoE 之间存在一个未解决的开放问题：DeepSeek 的实验表明共享 expert 普遍提升 loss，而 OlMoE 的实验表明共享 expert 没有明显收益、收益主要来自细粒度 expert；这组相反结果构成路由设计的开放边界，具体收益仍依赖模型规模、数据和训练设置。
 
 ## 本章总结与下章衔接
 
 **MoE 的核心收益与代价**：conditional compute 带来更大的总参数空间，但也把 routing、load balancing、通信和稳定性推到台前。更稳妥的工程结论应围绕 routing quality、expert utilization、all-to-all 开销和并行布局做联合权衡，单一模型的训练设置只能作为具体案例。
 
-下一章进入 [第 5 章 GPU 和 GPU 相关优化](../chapter5/chapter5_GPU和GPU相关优化.md)，把 routing / dispatch / all-to-all 放进 HBM 带宽、SM 占用率和 FlashAttention 的执行视角：第 4 章回答"routing 怎么把 token 派给 expert"，第 5 章回答"这次派发在 SM、HBM 和 SRAM 上的成本是多少"。
+下一章进入 [第 5 章 GPU 和 GPU 相关优化](../chapter5/chapter5_GPU和GPU相关优化.md)，把 routing / dispatch / all-to-all 放进 HBM 带宽、SM 占用率和 FlashAttention 的执行视角：第 4 章回答「routing 怎么把 token 派给 expert」，第 5 章回答「这次派发在 SM、HBM 和 SRAM 上的成本是多少」。
 
 ## 思考
 
