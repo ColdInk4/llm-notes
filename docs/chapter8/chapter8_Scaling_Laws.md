@@ -894,6 +894,8 @@ Method 3 是 joint fit。它假设一个完整的 $L(N,D)$ 函数形式，把不
 
 图 8.4-9 对比 Kaplan 和 Chinchilla 对 compute-optimal 配置的预测。Kaplan 的拟合给出 $N_{\mathrm{opt}} \propto C_{\min}^{0.73}$ 、 $D_{\mathrm{opt}} \propto C_{\min}^{0.27}$ （[arXiv:2001.08361](https://arxiv.org/abs/2001.08361) §6.1 与 Table 附录），也就是新增 compute 主要分给参数量，tokens per parameter 随预算增大而下降；Chinchilla 则让参数量 $N$ 和训练 tokens $D$ 接近同比例增长。
 
+这里的 $C_{\min}$ 表示 Kaplan 定义的“在近似临界 batch 条件下达到目标 loss 所需的最小 non-embedding compute”，对应一组经过 batch 与训练步数优化的运行条件。用它作横轴，可以比较模型规模与数据量怎样随目标 loss 变化；本章其余位置的 $C$ 仍表示给定训练预算的累计 FLOPs。
+
 这个分歧主要来自低 compute 区间的拟合差异。Scaling law 会从小模型、小预算实验外推到大训练；如果小实验的参数口径、训练步数或 optimizer 设置有偏差，外推后的 $N_{\mathrm{opt}}(C)$ 和 $D_{\mathrm{opt}}(C)$ 就会明显分叉。
 
 ![图 8.4-10 Discrepancy explanation 1](images/8-4-10-discrepancy-explanation1.png)
