@@ -18,6 +18,8 @@
 
 本章聚焦“奖励是否可验证”这个分界线：RLHF 依赖人类偏好或奖励模型，RLVR 则尽量在数学、代码、形式化证明等可自动判分任务中直接优化客观结果。读完本章应能理解可验证奖励的扩展性、长度偏差和奖励黑客的来源，以及现代推理模型案例的工程边界。
 
+认识链从任务目标能否被判分开始：先定义状态、动作、轨迹和 verifier 输出的标量奖励，再由 policy-gradient 定理说明奖励如何进入参数更新；组内采样、长度归一化和 KL 约束是为控制方差与分布漂移加入的机制。实验上固定题目池、采样温度和 rollout 数，分别记录 pass@1、pass@k、平均响应长度、verifier 通过率和 KL，才能把能力提升与搜索预算或长度偏差区分开；跨任务、跨 verifier 的迁移仍需独立复测。
+
 学习时可以抓住三条线索。第一，PPO 到 GRPO 的变化主要围绕 advantage 如何估计、value model 能否省掉、更新是否稳定。第二，PPO 和 GRPO 的代码实现都要同时处理 policy loss、KL penalty、reward shaping 和 rollout 数据。第三，DeepSeek R1、Kimi k1.5 和 Qwen 3 这些案例把算法、冷启动数据、长 CoT、长度控制和蒸馏放进同一条后训练流水线。
 
 RLVR 还会把推理系统带进训练循环：rollout 需要慢速 generation，长短不一的回答会形成 ragged batch，verifier 或执行环境会增加等待时间。训练框架和推理框架之间如何分工、rollout 能否复用、on-policy 稳定性和 off-policy 吞吐之间如何取舍，都是本章案例里的系统约束。
