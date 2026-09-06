@@ -150,7 +150,7 @@
 
 *图 11.1-15 评估危机观点*
 
-Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会饱和，公开榜单会被过拟合，社区案例观察又容易受到确认偏误和小样本影响。因此，本章后续会逐类拆解 benchmark，并反复检查 difficulty、realism 和 validity。
+Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会饱和，公开榜单会被过拟合，社区案例观察又容易受到确认偏误和小样本影响。因此，本章按 perplexity、考试基准、聊天基准、agent 基准、纯推理、安全、真实性和有效性七类逐类拆解，反复回到 difficulty、realism 和 validity 三个维度。
 
 ## 11.2 如何看待评估
 
@@ -435,13 +435,13 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ### 11.4.4 Humanity's Last Exam
 
-[Humanity's Last Exam](https://arxiv.org/abs/2501.14249)（HLE）是一个由社区贡献的多模态、多学科基准，包含 2,500 道选择题与精确匹配题，覆盖数学、人文与自然科学等数十个学科。约 14% 的题目需要同时理解文本和图像，约 24% 是选择题，其余 76% 是精确匹配题。奖金池 50 万美元按贡献题目的难度分档：最难的 50 题各 5,000 美元，再往后 500 题各 500 美元。题目由社区贡献，先用前沿 LLM 筛选掉过于简单的题，再经过多阶段专家审查。HLE 的局限在于问题征集过程可能存在严重的选择偏差，且问题类型仍局限于有标准答案的”考试”形式。
+[Humanity's Last Exam](https://arxiv.org/abs/2501.14249)（HLE）是一个由社区贡献的多模态、多学科基准，包含 2,500 道公开题与精确匹配题，覆盖数学、人文与自然科学等数十个学科。约 14% 的题目需要同时理解文本和图像，约 24% 是选择题，其余 76% 是精确匹配题。奖金池 50 万美元按贡献题目的难度分档：最难的 50 题各 5,000 美元，再往后 500 题各 500 美元。题目由社区贡献，先用前沿 LLM 筛选掉过于简单的题，再经过多阶段专家审查。HLE 的局限在于问题征集过程可能存在严重的选择偏差，且问题类型仍局限于有标准答案的”考试”形式。
 
 ![图 11.4-4 Humanity's Last Exam 收集筛选流程](images/11-4-4-hle-pipeline.png)
 
 *图 11.4-4 Humanity's Last Exam 收集筛选流程*
 
-[HLE 官方站点](https://agi.safe.ai/)提供持续更新的结果。HLE 仍然远未饱和，跟踪其时间序列可观察模型在多学科高难题上的增量进展。HLE 在公开 2,500 题之外保留约 500 道私有 held-out 测试集，用来检测过拟合与训练-测试污染，避免训练流直接覆盖评测。
+[HLE 官方站点](https://agi.safe.ai/)提供持续更新的结果。HLE 仍然远未饱和，跟踪其时间序列可观察模型在多学科高难题上的增量进展。HLE 在公开 2,500 题之外保留私有 held-out 测试集，用来检测过拟合与训练-测试污染，避免训练流直接覆盖评测；具体私有题数随维护版本变化，需要在引用时直接查看 HLE 官方站点与论文附录。
 
 ## 11.5 指令遵循基准
 
@@ -488,7 +488,7 @@ AlpacaEval 2.0 的一个重要变化，是用回归方式修正长度偏置，�
 
 [WildBench](https://arxiv.org/pdf/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（论文 §2.1）。主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude-3-Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。
 
-论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。WildBench 与 Chatbot Arena 高度相关，论文 §4.2 Table 3 报告的 Pearson 相关系数为：WB-Reward 对 top-ranking 模型 0.98、WB-Score 0.95，均高于 ArenaHard 的 0.91 和 AlpacaEval 2.0 length-controlled win rate 的 0.89。这些数值随评测设置而异，但总体说明 WildBench 已成为新基准有效性的“事实上的”检验标准之一。
+论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。WildBench 与 Chatbot Arena 高度相关，论文 §4.2 Table 3 报告的 Pearson 相关系数为：WB-Reward（GPT-4-Turbo, K=500）对 top-ranking 模型 0.99、WB-Score 0.95，均高于 ArenaHard 的 0.91 和 AlpacaEval 2.0 length-controlled win rate 的 0.89。这些数值随评测设置而异，但总体说明 WildBench 已成为新基准有效性的“事实上的”检验标准之一。
 
 ![图 11.5-5 WildBench 构建流程](images/11-5-5-wildbench-pipeline.png)
 

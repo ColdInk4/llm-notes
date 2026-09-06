@@ -39,7 +39,7 @@
 > [!TIP]
 > 选择并行策略时先问：要省的是参数显存、优化器显存、activation 显存、通信带宽，还是单步 wall-clock？不同答案对应完全不同的切分方向。
 
-参数显存与优化器状态的 12 字节 / 参数基线在 [第 2 章 §2.5.6 资源核算](../chapter2/chapter2_pytorch与资源核算.md) 给出；本章按这个基线把状态分片推到 ZeRO / FSDP，把 activation 与 sequence 推到 SP / CP。
+参数显存与优化器状态在不同精度假设下有不同基线：[第 2 章 §2.5.6 资源核算](../chapter2/chapter2_pytorch与资源核算.md) 给 **12-14 字节 / 参数**（BF16 + FP32 Adam 一二阶矩，梯度精度可选 BF16 或 FP32，不含 FP32 master weights）；§7.5 / §7.6 按 ZeRO 论文（[arXiv:1910.02054](https://arxiv.org/abs/1910.02054)）使用 **16 字节 / 参数**（FP16 参数 + FP16 梯度 + FP32 master weights 4 + FP32 Adam 一二阶矩 8），把状态分片推到 ZeRO / FSDP。activation 与 sequence 的切分在 §7.9 推到 SP / CP。
 
 ## 7.1 为什么需要分布式训练与硬件层级
 

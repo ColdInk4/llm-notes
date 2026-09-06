@@ -238,11 +238,11 @@ MRoPE 把位置信息扩展到多维输入。文本只有一维顺序；图像�
 
 这一节聚焦 Qwen3-VL 在 MRoPE、视频时间建模与视觉融合三件事上的继续打磨，回答「256K 上下文与多模态推理同时存在时，位置编码和视觉特征注入如何调整」。下面按组件逐项拆开，分别说明它解决的具体问题、机制差异与对应工程后果。
 
-- **视觉编码器**：**SigLIP-2**（与 SigLIP 同架构）。把视觉侧换成 SigLIP-2，是为了继续利用 sigmoid 配对损失在小 batch 训练下的稳定性，让 vision encoder 的预训练与后续 VLM 联合训练在损失耦合上更可控。
+- **视觉编码器**：**SigLIP-2**（与 SigLIP 同架构）。Qwen3-VL 论文默认采用 **SigLIP2-SO-400M** 变体，对 2B / 4B 等小尺寸 LM 则改用参数量更低的 **SigLIP2-Large (300M)**；把视觉侧换成 SigLIP-2，是为了继续利用 sigmoid 配对损失在小 batch 训练下的稳定性，让 vision encoder 的预训练与后续 VLM 联合训练在损失耦合上更可控。
 
-- **Interleaved MRoPE**：把 t / h / w 三个分量在 embedding 维度上交错分配（pattern `[t h w t h w t h w ...]`），让每个轴都同时覆盖低频段与高频段；Qwen2-VL 是按 `[t t t t h h h h w w w w]` 把三个轴分成三个连续块，低频和高频被某一轴独占，长视频上频谱不均衡。Qwen3-VL 的交错方式避免这种偏置，长视频位置建模更稳定。
+- **Interleaved MRoPE**：把 t / h / w 三个分量在 embedding 维度上交错分配（pattern `[t h w t h w t h w ...]`），让每个轴都同时覆盖低频段与高频段；Qwen2-VL 的 MRoPE 是按 `[t t t t h h h h w w w w]` 把三个轴分成三个连续块，低频和高频被某一轴独占，长视频上频谱不均衡。Qwen3-VL 的交错方式避免这种偏置，长视频位置建模更稳定。
 
-- **视频帧附带显式文本时间戳**：与 T-RoPE 的隐式时间位置不同，Qwen3-VL 把帧的时间写成可读文本字段（如 `[t = 12.5s]`）放进 prompt，让模型直接读到时间而不是仅从 rotary 频段中推断。文本时间戳与 Interleaved MRoPE 互补，前者负责可读语义、后者负责位置编码一致性。
+- **视频帧附带显式文本时间戳**：与 Qwen2-VL MRoPE 仅把时间信息隐式放在 rotary 频段中不同，Qwen3-VL 把帧的时间写成可读文本字段（如 `[t = 12.5s]`）放进 prompt，让模型直接读到时间而不是仅从 rotary 频段中推断。文本时间戳与 Interleaved MRoPE 互补，前者负责可读语义、后者负责位置编码一致性。
 
 - **上下文长度**：**256K** token 原生窗口（约 Qwen2-VL 32K 的 8 倍），用于支撑长视频、多图与长文档混合输入；这一长度也意味着工程上必须把视觉 token budget 与 KV cache 占用放回 [第 9 章 §9.3 模型与 KV cache 压缩](../chapter9/chapter9_推理系统.md) 一起算。
 
@@ -287,7 +287,9 @@ interleaved MRoPE 把时间、高度和宽度轴交错分配到不同频段，�
 VQ-VAE 把连续图像压缩成离散 codebook indices。Encoder 产生连续 latent，quantization 把 latent 映射到最近的 codebook entry，decoder 再重建图像。对语言模型来说，codebook index 就像视觉词表中的 token。
 
 > [!NOTE]
-> Chameleon 训练规模（[arXiv:2405.09818](https://arxiv.org/abs/2405.09818)）：VQ-VAE 把 512×512 图像编码为 1024 个离散 tokens（codebook 大小 8192）。训练分两阶段：第一阶段约占 80% tokens，包含约 2.9T 文本 token、1.5T 文本/图像 token 与 400B 文本/图像交错 token；第二阶段约 20% tokens，混入等量的高质量数据。训练稳定性方面，文本 token 的熵低、图像 token 的熵高，二者交错会产生 norm growth 和 logit drift；常用 **$QK$ norm** 与 **z-loss regularization** 来抑制。
+> Chameleon 训练规模（[arXiv:2405.09818](https://arxiv.org/abs/2405.09818)）：VQ-VAE 把 512×512 图像编码为 1024 个离散 tokens（codebook 大小 8192）。训练分两阶段：第一阶段约占 80% tokens，包含约 2.9T 文本 token、1.5T 文本/图像 token 与 400B 文本/图像交错 token；第二阶段约 20% tokens，混入等量的高质量数据。
+>
+> 训练稳定性方面，文本 token 的熵低、图像 token 的熵高，二者交错会产生 norm growth 和 logit drift；常用 **$QK$ norm** 与 **z-loss regularization** 来抑制。
 
 ![图 14.6-3 Chameleon 文本与图像交错生成示例](images/14-6-3-chameleon-example.png)
 

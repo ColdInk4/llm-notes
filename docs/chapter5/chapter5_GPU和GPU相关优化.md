@@ -64,11 +64,11 @@ GPU 的历史背景只需要抓住一条主线：它最初为图形渲染中的�
 
 | 指标 | A100 | H100 | H200 | B200 |
 | --- | --- | --- | --- | --- |
-| SM 数 | 108 | 132 | 132 | GB100 die SM 数 NVIDIA 官方未公布；按第三方拆解资料约 148 SM（部分启用配置）、每 SM 128 个 FP32 core 推算常见；NVIDIA Blackwell 公开 tuning guide 与 datasheet 未给出 SM 数字 |
+| SM 数 | 108 | 132 | 132 | 单 GB100 die = 144 SM（6 GPC × 12 TPC × 2 SM）；B200 公开 SKU 含 2 个 GB100 die，全封装 SM 数为 192（部分 die 内 SM 被禁用）；每 SM 128 个 FP32 core（[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) + TechInsights GB100 teardown） |
 | 每 SM 寄存器 | 256 KB | 256 KB | 256 KB | 256 KB |
 | 每 SM L1 + shared memory | 192 KB | 256 KB | 256 KB | 256 KB |
 | L2 cache | 40 MB | 50 MB | 50 MB | 单颗 GB200 / B200 GPU（全封装，含 2 个 GB100 die）L2 = 126 MB（[NVIDIA Blackwell tuning guide §1.4.2.2](https://docs.nvidia.com/cuda/blackwell-tuning-guide/)）；折算每 GB100 die ≈ 63 MB |
-| HBM 容量 | 80 GB | 80 GB | 141 GB HBM3e | B200 HBM3e 192 GB（HGX B200 公开口径 180 GB HBM3e；GB200 NVL72 datasheet 按总 HBM3e 13.4 TB / 72 GPU 推回 186 GB）[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) |
+| HBM 容量 | 80 GB HBM2e | 80 GB HBM3 | 141 GB HBM3e | B200 HBM3e 192 GB（[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/)、NVIDIA HGX B200 datasheet） |
 | HBM 带宽量级 | 2 TB/s | 3.35 TB/s | ~4.8 TB/s | 8 TB/s |
 
 从编程角度看，可以把它们理解成同一类 GPU 执行模型的几代演化：**A100 是理解 Ampere 时代 kernel 优化的基线，H100 增强了 shared memory、异步执行和 FP8 路径，H200 在 H100 计算能力上把显存换成更大带宽的 HBM3e，B200 则把 HBM/L2 容量和 Blackwell 低精度路径再往前推了一代**。上表数值均为 dense 训练口径；若启用结构化稀疏（Structured Sparsity，俗称 2:4 sparsity），Tensor Core 路径理论峰值翻倍——A100/H100 公开 datasheet 在 "with sparsity" 一列单独列出 2× 系数（[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)）。
@@ -515,7 +515,7 @@ MXFP8 这类格式不会让所有权重统一“一键切换”到同一种表�
 
 #### 低精度提速机制一：硬件因素
 
-我们知道浮点运算器的复杂度与位宽平方成正比。也就是位数越大的浮点运算器的体积和复杂程度越大。FP16 的乘法器晶体管数量仅为 FP32 的**1/4**。代表着能在同样面积里放更多低精度的浮点运算器。而更多的计算单元意味着计算能力更强。
+浮点乘法器的电路规模与位宽呈超线性关系（每多 1 位指数或多 1 位尾数，乘法器部分积 / 加法树都会显著增长）；FP16 乘法器的晶体管数量大致只有 FP32 的 1/4 左右。这样就能在同样面积里放更多低精度的浮点运算器，而更多的计算单元意味着更高的峰值算力。
 
 FP16 数据只占 FP32 一半的寄存器空间，同样 256 KB 寄存器文件可存**两倍数据**，同时 16 位数据总线带宽需求减半，同样带宽可传**两倍数据**，并且 FP16 乘法器延迟更低，频率可更高。
 
@@ -553,7 +553,7 @@ Tensor Core 是 NVIDIA 为低精度矩阵乘设计的**专用电路**，可以�
 
 #### 提速机制四：并行度提升（同样芯片面积，计算单元翻倍）
 
-**芯片面积优化**，之前提到过精度越高的运算单元复杂度越大。按 GA100 整 die 826 mm²、平均分配到 6,912 个 FP32 CUDA 核心这一粗略估计，单个 FP32 核心约占 0.12 mm²；FP16 / INT8 路径的电路复杂度按位宽线性降低，相应单核心面积也按比例缩小，可在相同 die 上集成更多计算单元（NVIDIA 未公开 per-core 面积具体数字，0.1 / 0.05 / 0.025 mm² 仅为粗略量级参考）。
+**芯片面积优化**，之前提到过精度越高的运算单元占用面积更大。按 GA100 整 die 826 mm²、平均分配到 6,912 个 FP32 CUDA 核心这一粗略估计，单个 FP32 核心约占 0.12 mm²；FP16 / INT8 路径的电路复杂度随位宽下降，相应单核心面积也按比例缩小，可在相同 die 上集成更多计算单元（NVIDIA 未公开 per-core 面积具体数字，0.1 / 0.05 / 0.025 mm² 仅为粗略量级参考）。
 
 同时还有独特的**架构设计**。A100 的 SM 中，Tensor Core 复用寄存器文件；**FP32 模式**下 64 个 CUDA 核心活跃，每周期 64 次 FMA；**FP16 模式**下 64 个 CUDA 核心 + 4 个 Tensor Core 活跃，每周期 64 次 FMA + 1024 次矩阵运算。
 

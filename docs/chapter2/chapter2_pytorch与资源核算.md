@@ -227,7 +227,7 @@ y = x.view(3, 2)   # 重塑为3x2
 y = x.transpose(1, 0)  # 转置
 
 # 验证是否共享存储
-assert same_storage(x, y)  # same_storage检查底层存储是否相同
+assert x.untyped_storage().data_ptr() == y.untyped_storage().data_ptr()  # 通过底层 UntypedStorage 的地址判断是否共享存储
 
 # 注意：修改x会影响y
 x[0][0] = 100
@@ -258,7 +258,7 @@ except RuntimeError as e:
 ```python
 # 解决方案：先使张量连续
 y = x.transpose(1, 0).contiguous().view(2, 3)
-assert not same_storage(x, y)  # 现在创建了新存储
+assert x.untyped_storage().data_ptr() != y.untyped_storage().data_ptr()  # .contiguous() 触发了数据复制，底层 storage 地址不同
 ```
 
 `.contiguous()` 会创建一个新的张量，并将数据按顺序复制到新的连续内存块中，这样后续操作就不会出错。
@@ -324,7 +324,7 @@ y = x @ w                    # 矩阵乘法
 assert y.size() == torch.Size([4, 8, 16, 2]) # 结果形状
 ```
 
-在 PyTorch 进行上述运算时，会自动遍历 x 的前两个维度（即 4 和 8），对每一个 $16 \times 32$ 的子矩阵执行与 w 的矩阵乘法。最终结果 y 的形状是 (4, 8, 16, 2)，其中前两个维度保持不变，后两个维度根据矩阵乘法规则变化。
+PyTorch 的矩阵乘法规则是「除最后两维外都按 batch 维广播」：x 的形状是 (4, 8, 16, 32)，最后两维做 $(16, 32) @ (32, 2) = (16, 2)$；前面三个维度 (4, 8, 16) 都作为 batch 维保留。最终结果 y 的形状是 (4, 8, 16, 2)。
 
 ### 2.2.3 使用 Einops 库对张量操作进行优化
 

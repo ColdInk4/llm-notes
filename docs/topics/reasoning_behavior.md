@@ -18,9 +18,9 @@ LLM 推理能力既是可观察的生成行为，也是消耗系统预算的训�
 
 本节先用三个近期公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖图论与组合（2025 年 Knuth）、定理证明（2026 年 Brenner 等）和数学公式推导（2026 年 Feng）三类典型应用，能力、概率与系统代价的拆解见后续 §3 预训练与解码、§4 后训练、§5 CoT、§6 Prompt 与 §7 外部工具搜索。
 
-- Anthropic 的 Claude 参与 Donald Knuth 研究过的图论猜想推导过程，记录见 [Knuth 的 PDF](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf)。
+- Donald Knuth 在 2025 年的 [PDF *The Claude cycle in Stanford graph theory*](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf) 中记录了 Claude（Anthropic）在图论开放问题上的独立发现，并把这条新构造的图论环命名为 *Claude cycle*。
 - Brenner（Google Research 与 Harvard SEAS）、Cohen-Addad（Google Research）和 Woodruff（Google Research 与 Carnegie Mellon 联合）在 [arXiv:2603.04735 *Solving an Open Problem in Theoretical Physics using AI-Assisted Discovery*](https://arxiv.org/abs/2603.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
-- Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：核心数学内容（Type A / Type C / Type D 等经典群的 eigenweight 公式与证明）由内部推理代理（基于 Gemini Deep Think 构建）完整生成，Type B 沿用 prior work [FYZ25a] 计算；人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
+- Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：核心数学内容由内部推理代理 _Aletheia_（基于 Gemini Deep Think 构建）完整生成，其中 Type A（GL_n）由代理给出一般情形（FYZ25a 仅覆盖 m=1, m=2 两组特殊情形）、Type C（PSp_{2n}）的 spin coweight、Type D（PSO_{2n}）的 spinor coweights 均为代理新算；Type B（SO_{2n+1}）与 Type D 的 standard coweight 沿用 prior work [FYZ25a]。人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
 
 三个案例从不同角度展示同一类机制：模型负责生成推理轨迹和数学构造，作者负责设定目标、组织验证与最终叙述。CoT、多路径采样与工具扩展主题随后展开；推理行为既可以由模型直接产生，也可以由作者代理作为中间环节。
 

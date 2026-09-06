@@ -878,7 +878,7 @@ GPT-3 最初发布时就采用了这类技巧来实现更大的注意力窗口�
 最近 LLaMA 4、Gemma 3、Gemma 4、OLMo 3 和 Cohere Command A 等模型采用了局部与全局混合的思路：大多数层使用带 RoPE 的 sliding-window attention，只处理局部上下文；间隔若干层再放入 full attention 层，用于跨窗口信息交换。
 
 > [!NOTE]
-> **Gemma 4 的两项新设计**：(1) **partial rotary embedding（partial RoPE / P-RoPE）**——`Gemma4TextConfig` 给两类层配不同的 RoPE：full-attention 层是 `rope_type="proportional"`、`partial_rotary_factor=0.25`、`rope_theta=1e6`，只旋转每个 head 前 1/4 的维度，其余维度的旋转频率补零；full-attention 层的 head_dim 还会被 `global_head_dim=512` 覆盖，因此被旋转的是前 128 维。sliding-attention 层保持 `rope_type="default"`、`rope_theta=1e4` 的完整 RoPE，head_dim 用基础值 256。这样长程 full-attention 路径只保留低频旋转分量，短程窗口路径保留完整位置分辨率。(2) **per-layer embedding（PLE）**——每层额外取一份 embedding 输入（`vocab_size_per_layer_input=262144`、`hidden_size_per_layer_input=256`），由 token 身份查表分支和上下文投影分支相加后按 $1/\sqrt{2}$ 缩放送进对应 decoder 层，让参数量可以从主干 hidden size 转移到按层展开的 embedding 表上。
+> **Gemma 4 的两项新设计**：(1) **partial rotary embedding（partial RoPE / P-RoPE）**——`Gemma4TextConfig` 给两类层配不同的 RoPE：full-attention 层是 `rope_type="proportional"`、`partial_rotary_factor=0.25`、`rope_theta=1e6`，只旋转每个 head 前 1/4 的维度，其余维度的旋转频率补零；full-attention 层的 head_dim 还会被 `global_head_dim=512` 覆盖，因此被旋转的是前 128 维。sliding-attention 层保持 `rope_type="default"`、`rope_theta=1e4` 的完整 RoPE，head_dim 用基础值 256。这样长程 full-attention 路径只保留低频旋转分量，短程窗口路径保留完整位置分辨率。(2) **per-layer embedding（PLE）**——以 Gemma 4 E2B 的 `text_config` 为例，每层额外取一份 embedding 输入（`vocab_size_per_layer_input=262144`、`hidden_size_per_layer_input=256`），由 token 身份查表分支和上下文投影分支相加后按 $1/\sqrt{2}$ 缩放送进对应 decoder 层，让参数量可以从主干 hidden size 转移到按层展开的 embedding 表上。Gemma 4 31B dense 的 `hidden_size_per_layer_input=0`，PLE 默认不开启；这一参数随模型规模是否启用需要按各 checkpoint 的字段确认。
 
 部分 full attention 层会去掉位置编码，即 **NoPE**，让长距离信息不受 RoPE 外推误差直接限制。这个组合可以理解为：RoPE 负责短程相对位置，SWA 控制计算成本，NoPE/full attention 负责低频全局信息流。
 
@@ -1083,9 +1083,9 @@ Bhojanapalli 等人在 [*Low-Rank Bottleneck in Multi-head Attention Models*, ar
 
 *图 3.3-5 宽深比通常以 $d_{\text{model}}/n_{\text{layer}}$ 观察，不同模型族集中在一段经验区间内*
 
-主流 dense decoder-only 模型的宽深比集中在每层约 100–200 个隐藏维度，即 $d_{\text{model}}/n_{\text{layer}} \approx 100\text{–}200$。按各模型官方 config 计算：BLOOM 176B 14336/70 ≈ **205**、T5 v1.1 XXL 4096/24 ≈ **171**、PaLM 540B 18432/118 ≈ **156**、GPT-3 175B 12288/96 = **128**、OPT-6.7B 与 Mistral-7B v0.1 4096/32 = **128**、Qwen-7B 与 OLMo-3-7B 同样是 4096/32 = **128**、Qwen2-7B 3584/28 = **128**、LLaMA-1 7B 4096/32 = **128**、LLaMA-1 65B 与 LLaMA-3 70B 8192/80 ≈ **102**、Gemma 3 27B 5376/62 ≈ **87**、Gemma 4 E2B 2048/35 ≈ **59**、Gemma 4 31B dense 4608/48 ≈ **96**。
+主流 dense decoder-only 模型的宽深比集中在每层约 100–200 个隐藏维度，即 $d_{\text{model}}/n_{\text{layer}} \approx 100\text{–}200$。按各模型官方 config 计算：BLOOM 176B 14336/70 ≈ **205**、T5 v1.1 XXL 4096/24 ≈ **171**、PaLM 540B 18432/118 ≈ **156**、GPT-3 175B 12288/96 = **128**、OPT-6.7B 与 Mistral-7B v0.1 4096/32 = **128**、Qwen-7B 与 OLMo-3-7B 同样是 4096/32 = **128**、Qwen2-7B 3584/28 = **128**、LLaMA-1 7B 4096/32 = **128**、LLaMA-1 65B 与 LLaMA-3 70B 8192/80 ≈ **102**、Gemma 3 27B 5376/62 ≈ **87**、Gemma 4 E2B 1536/35 ≈ **44**、Gemma 4 31B dense 5376/60 ≈ **90**。
 
-encoder-decoder 族整体更窄：T5-11B 的 `d_model = 1024` 配 `num_layers = 24`，比值降到 40 出头。所以这条经验区间只在 dense decoder-only 内部稳定，跨族外推会失效；Gemma 4 的小模型（E2B）落在 decoder-only 区间偏低的一端，而同代际的 31B dense 又回到接近 LLaMA-2 70B 的 ~96 区间。
+encoder-decoder 族整体更窄：T5-11B 的 `d_model = 1024` 配 `num_layers = 24`，比值降到 40 出头。所以这条经验区间只在 dense decoder-only 内部稳定，跨族外推会失效；Gemma 4 的小模型（E2B）落在 decoder-only 区间偏低的一端，而同代际的 31B dense 又回到接近 LLaMA-1 65B / LLaMA-3 70B 的 ~102 区间。
 
 宽深比的考量非常重要，它会控制可用并行度。如果采用流水线并行，通常会将不同层切割后分配到不同设备或设备块上；对于特别宽的模型，可以采用张量并行，将矩阵切片分布到多个 GPU 上。不同并行范式会产生不同约束：张量并行需要非常高速的网络，而流水线并行对网络速度或延迟的要求可以稍低。因此网络约束可能反过来影响宽度-深度的决策。
 

@@ -954,13 +954,13 @@ DeepSeek-R1 论文 [arXiv:2501.12948](https://arxiv.org/abs/2501.12948) §2.4 "D
 
 [s1: Simple test-time scaling](https://arxiv.org/pdf/2501.19393)（Muennighoff 等，2025）使用 1k 个高质量、带有长思维链的数据，在 Qwen2.5-32B-Instruct 上进行 SFT，从而明显提升数学推理表现。
 
-上海交通大学刘鹏飞团队的 [LIMO: Less is More for Reasoning](https://arxiv.org/abs/2502.03387) 得到相似结论：用不到千条高质量、带长思维链的样本在 Qwen2.5-32B-Instruct 上做 SFT，就能显著提高数学推理表现。数据集规模在论文修订过程中有过调整，首版报告 817 条，2025-07 的修订版按质量分从候选池里取 top 800，最终发布的 LIMO 数据集是 800 条。
+上海交通大学刘鹏飞团队的 [LIMO: Less is More for Reasoning](https://arxiv.org/abs/2502.03387) 得到相似结论：用不到千条高质量、带长思维链的样本在 Qwen2.5-32B-Instruct 上做 SFT，就能显著提高数学推理表现。数据集规模在论文修订过程中有过调整，首版报告 817 条，2025-07 的修订版（v3 §3.1.1）从 2,125 条质量分候选里按分数取 top 800，最终发布的 LIMO 数据集是 800 条。
 
 ![图 13.4-13 LIMO 使用 800 个高质量样本提升数学推理](images/13-4-13-limo-small-data-math.png)
 
 *图 13.4-13 LIMO 使用 800 个高质量样本提升数学推理*
 
-图 13.4-13 把 LIMO（800 条样本）和几组参照放在同一张表里：左边三列是 OpenAI-o1-preview、未微调的 Qwen2.5-32B-Instruct 和 QwQ-32B-preview，中间两列是用 OpenThoughts（114k）与 NuminaMath（100k）大规模数据微调的模型。表格分成 In Domain（AIME 2024、MATH-500、AMC 2023）和 Out of Domain（OlympiadBench、CHMath、Gaokao 等）两段。LIMO 在 AIME 2024 上从基座的 16.5 提到 57.1，平均分 78.1 高于用一百倍数据训练的 OpenThoughts（58.3）和 NuminaMath（32.3）。样本量不是决定性变量，题目难度选择和推理链质量才是。
+图 13.4-13 把 LIMO（800 条样本）和几组参照放在同一张表里：左边三列是 OpenAI-o1-preview、未微调的 Qwen2.5-32B-Instruct 和 QwQ-32B-preview，中间两列是用 OpenThoughts（114k）与 NuminaMath（100k）大规模数据微调的模型。表格分成 In Domain（AIME 2024、MATH-500、AMC 2023）和 Out of Domain（OlympiadBench、CHMath、Gaokao 等）两段。LIMO 在 AIME 2024 上从基座的 16.5 提到 63.3，平均分 78.1 高于用一百倍数据训练的 OpenThoughts（58.3）和 NuminaMath（32.3）。样本量不是决定性变量，题目难度选择和推理链质量才是。
 
 > [!WARNING]
 > 通过少量样本提高模型推理能力，对基座模型能力要求较高。s1 与 LIMO 的公开实验都在 Qwen2.5-32B-Instruct 上展示效果，两篇论文都没有报告更小基座（7B / 3B）上的同等增益。
