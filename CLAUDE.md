@@ -239,10 +239,29 @@ prompt 要求 sub-agent 只报 `refuted + tentative`、**不再报 `confirmed`**
 | 8 | **跨章引用缩写违规** | ch4 L112/537/547 写 `EP / ETP / EDP`，跨章引用应使用完整 H3 标题「第 N 章 §X.Y 章节标题」 | grep「ch[0-9]+」、「第 N 章 §」+ 缩写模式 |
 | 9 | **sub-agent 报告机制漏洞** | ch1 L288 教训：audit-fix agent 报告「改前/改后」时，notes 里的「旧值」可能是已经改过的最终值而不是 git HEAD 改前值 | prompt 强制 agent 在 notes 字段附「`git show <commit-hash>:<file>:<line>` 改前值」+「`git show HEAD:<file>:<line>` 改后值」 |
 | 10 | **结构性内容改动必读课程材料** | ch13 教训：agent 改了 80 行 PPO 详细推导（policy gradient → REINFORCE → TRPO → PPO-clip），但 transcript 显示 **0 次 Read lecture 抽文 / lecture_13.py**——agent 凭印象压缩，notes 写「Read ch12 §12.4 验证 PPO 推导已讲过」也是凭印象编的 | prompt 强制 agent 改结构性内容前必须 `Read` 课程材料，并把 read 路径写进 notes 字段「`lecture read: [路径列表]`」 |
-| 11 | **结构性内容必走第一性原理** | ch8 教训：改图说 / 长公式 / 长算法描述等结构性内容时，不能只做「去冗」——要从第一性原理问 4 个问题：(1) 这段内容回答什么工程决策或论述节点？(2) 为什么放在这一节（哪段论述需要它才能继续往前推）？(3) 不放这段内容，论述会怎么断？(4) 正文（不是图说）现在有没有真正调用这段内容？4 个都是「不需要」→ 删/压缩；任一是「需要」→ 按第一性原理重写 | prompt 强制 agent 对结构性内容按这 4 个问题做 audit |
+| 11 | **论证必走第一性原理（Aristotle 框架）** | 第一性原理 = 方法论（不是分类）。Aristotle 把 archai 定义为「**the first basis from which a thing is known**」（Posterior Analytics I.3）——认识的最初出发点，不可再向下推导的起点。三条审计要求：(1) **公理起点明确**——每段论证标注从哪个公理 / 公式 / 定理 / 物理约束推导过来；(2) **推导链完整**——从公理到结论中间步骤不跳，不写「显然」「可以看到」；(3) **经验 vs 推导清楚区分**——vibes / 行业惯例 / 类比的段落明确标注「这是经验 / 类比，不是公理推导」，不伪装成推导。本仓库典型公理起点（来自 CS336 lecture_09 / 13 / 16）：scaling law `loss(N,D)=E+A/N^α+B/D^β` 推导 Chinchilla 比例 / 临界 batch size / train-vs-inference-optimal；roofline 算力 / 带宽物理约束推导 arithmetic intensity 与瓶颈切换；policy gradient theorem + baseline invariance 推导 PPO / REINFORCE / GRPO 的 baseline 选取；compute / memory / bandwidth 账本（`6ND` FLOPs / `12 N_param` 字节 / pipeline bubble）推导训练时间与资源；attention / FFN / Norm 数学定义推导各自功能；top-k gating / load balancing loss 推导 MoE 训练目标。**当前无清晰推导路径**的论域（明确标注为 vibes / 经验 / 类比，不假装是推导）：数据 filter / dedup / mixing 阈值（lecture_13 L802 明说「data processing is... a lot just based on kind of vibes」）；GRPO 加的 length normalizer + std normalization（lecture_16 L164-167 明说「if you try to derive GRPO from first principles following the policy gradient and baseline theorems you'll end up with something different」）；现代组件具体值选择（SwiGLU / RoPE / RMSNorm 是 scaling 拟合后的「幸存者」）。**与结构审计 5 问并列、互不重复**：第一性原理关心「论证是否从公理推导」，结构审计关心「位置是否成立」——先确认推导来源，再走结构审计确认每个单元必要性 | 写章节或做章节级调整前必须列出本章节每个论证的「推导来源」，notes 字段附「first-principle derivation: [路径]」与「vibes / 待推导: [路径]」 |
+| 12 | **fix verification 误判「字段未公开」而整段删除** | Phase 11.3 ch4 agent 把「DeepSeek V4-Pro 演进」整段删除：表行「总参数 / 激活参数」两列写「未公开」→ agent 推断「不完整就别列」，连带把 §4.3 节首描述、§4.3.2「DeepSeek V4 的改进」整节、§4.6 表头与 V4-Pro 行、章节末来源记录的 V4-Pro config 全部删除；但 ch3 §3.2.5.7.3 与 ch14 都在引用 `DeepSeek-V4-Pro/config.json` 的 `index_topk: 1024` / `compress_ratios` / `swiglu_limit: 10.0`——删除破坏跨章一致性 | sub-agent 删前必须 `rg "<key>"` 全仓库扫引用方 + `git log -S "<key>" -- <file>` 看历史上是否有完整版本可恢复 + WebFetch 一手 config.json / 论文确认「未公开」字段是否真的不可得；不要把「数据稀疏」与「数据错误」混为一谈；同样警惕把 swiglu_limit / num_hash_layers / scoring_func 等「字段非主流」当成「应替换为更主流来源」 |
 
 **每条都按方案 A 就地 Edit 修复**（不归到独立 round），并跑禁用句式 + 元叙述两类 rg 自检零命中才算完成。
-  **每条都按方案 A 就地 Edit 修复**（不归到独立 round），并跑禁用句式 + 元叙述两类 rg 自检零命中才算完成。
+
+### 结构审计 5 问（与「第一性原理」并列、互不重复）
+
+这是「每个结构单元是否挣到自己的位置」的工程审计框架（ch8 教训：图说 / 长公式 / 长算法描述改动时不能只做「去冗」），**与 class 11 第一性原理不同**——前者关心「位置是否成立」，后者关心「论证是否从公理推导」。两者并列使用：先用第一性原理确认论证来源（class 11），再用结构审计确认每个单元的必要性（5 问）。
+
+5 问：
+
+1. **它回答什么工程决策或论述节点？**（不是「展示什么」——是「读者看完能做哪个原本做不了的判断」）
+2. **为什么放在这一节？**（哪段论述需要它才能继续往前推）
+3. **不放这段内容，论述会怎么断？**（如果答案是「不会断」，可能它就是冗余的）
+4. **正文（不是图说）现在有没有真正调用它？**（还是只贴了图说 / 表格就过去了）
+5. **它是不是其他章节的引用目标？**（class 12 新增：如果其他章节在引这个 config 字段 / 模型名 / 数字，删前必须先同步更新引用方）
+
+判定规则：4 / 5 个「不需要」→ 可删 / 大幅压缩；任一是「需要」→ 按第一性原理重写（不是「去冗」），让第一句直接答工程问题、中间写关键元素与正文对应、最后指向章节链下一步。
+
+检测方法：删前必须 `rg "<key>" docs/` + `git log -S "<key>" -- <file>` 看历史。Phase 11.3 ch4 V4-Pro 反例：ch3 / ch14 在引 V4-Pro config，但 ch4 agent 仅扫自己负责的 ch4，没看其他章节怎么引用 V4-Pro。
+
+### Workflow 完成后必须先 diff 复核再 commit
+
 - **多 agent 并行 fix verification 经验**：单章节 fix verification 单独跑一次 agent，16 章节并行启动 16 个 agent，每个 agent 做**全章扫描**（用 `git log` 看最近 commit 历史做参考，但不限于本 commit 引入的行——参见第 7 类反复错误，「中段纯文字描述段漏扫」就是限定本 commit 引入行时漏掉的真实案例）。Schema 仍用简化版（findings_count / edits_applied / fixes / notes），避免 SO retry 超限。16 agent 并行总耗时约 13 分钟，比串行快 16×；findings 数量比单章节 fresh audit 多（因为每条 finding 都覆盖中段纯文字 + 图说 + 表格），但每条都是「本轮可修复的真错」而非历史包袱（agent 必须用 `git log` 过滤历史问题、只对当前 commit 之后或本 fix 阶段引入的行下 Edit）。
 
 ## 工具使用经验
