@@ -27,7 +27,7 @@ mid-training（高质量 / 长上下文 / instruction-like 数据）
 偏好对齐（RLHF / PPO  ↔  DPO  ↔  SimPO / length-normalized DPO）
 ```
 
-§12.1 用监督、自监督、强化学习三种学习方式给出后续术语锚点；§12.2 处理 pre-training 与 mid-training；§12.3 处理 SFT 数据、style、长度与安全；§12.4 处理 RLHF 的数据来源、reward model 与 PPO；§12.5 把 DPO 系列从偏好损失推导到变体对比，并列出 overoptimization、mode collapse 等副作用。可验证奖励（RLVR）、GRPO 与 R1/Kimi k1.5/Qwen 3 案例放在 [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md)。
+§12.1 用监督、自监督、强化学习三种学习方式给出后续术语锚点；§12.2 处理 pre-training 与 mid-training；§12.3 处理 SFT 数据、style、长度与安全；§12.4 处理 RLHF 的数据来源、reward model 与 PPO；§12.5 把 DPO 系列从偏好损失推导到变体对比，并列出 overoptimization、mode collapse 等副作用。可验证奖励（RLVR）、GRPO 与 R1/Kimi k1.5/Qwen 3 案例见[第 13 章 §13.1 为什么需要 RLVR？](../chapter13/chapter13_可验证奖励的强化学习.md)。
 
 ## 本章学习目标
 
@@ -59,7 +59,7 @@ next-token prediction 就是自监督目标。给定文本序列 $x_1,\dots,x_T$
 
 强化学习优化的是策略 $\pi_\theta(a \mid s)$ 。策略在状态 $s$ 下选择动作 $a$ ，环境返回奖励，训练目标是提高长期回报。语言模型中的动作可以看作 token 或完整回答，状态是 prompt 加已经生成的上下文。
 
-后训练里的 RLHF 使用偏好或 reward model 给完整回答打分，再通过 PPO 等算法更新策略。由于奖励通常只在回答结束后出现，算法需要把序列级奖励转成 token 级更新信号，并限制策略离参考模型过远。RLHF 的细节（如 DPO、SimPO、length-normalized DPO 等偏好优化变体及其 overoptimization 副作用）放在本章，PPO → GRPO 的 RLVR 延伸放在 [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md)；两章通过"人类反馈 → 可验证反馈"的边界连接。
+后训练里的 RLHF 使用偏好或 reward model 给完整回答打分，再通过 PPO 等算法更新策略。由于奖励通常只在回答结束后出现，算法需要把序列级奖励转成 token 级更新信号，并限制策略离参考模型过远。RLHF 的细节（如 DPO、SimPO、length-normalized DPO 等偏好优化变体及其 overoptimization 副作用）放在本章，PPO → GRPO 的 RLVR 延伸见[第 13 章 §13.3 GRPO 与 Dr. GRPO](../chapter13/chapter13_可验证奖励的强化学习.md)；两章通过"人类反馈 → 可验证反馈"的边界连接。
 
 ## 12.2 大模型训练的第一个阶段：预训练（Pre-training，PT）
 
@@ -86,7 +86,7 @@ $$
 
 ### 12.2.2 预训练、mid-training 与 post-training
 
-预训练阶段追求覆盖面和规模。数据处理会经历抓取、解析、过滤、去重、配比和采样，目标是让模型接触足够多的语言、知识、代码和推理痕迹。每一步的具体方法和工程取舍见 [第 10 章](../chapter10/chapter10_数据工程.md) §10.2.1 过滤（KenLM / fastText / DSIR 等）与 §10.2.2 去重（精确哈希 / Bloom Filter / MinHash+LSH），以及 §10.2.3 数据混合（UniMax / DoReMi / RegMix、模拟 epoching 等）；本章只在流程层面提及，过滤与去重的细节与配比模型直接对应的边界写在第 10 章。
+预训练阶段追求覆盖面和规模。数据处理会经历抓取、解析、过滤、去重、配比和采样，目标是让模型接触足够多的语言、知识、代码和推理痕迹。每一步的具体方法和工程取舍见[第 10 章 §10.2.1 数据过滤](../chapter10/chapter10_数据工程.md)、§10.2.2 数据去重（精确哈希 / Bloom Filter / MinHash+LSH）与 §10.2.3 数据混合（UniMax / DoReMi / RegMix、模拟 epoching 等）；本章只在流程层面提及，配比模型与过滤边界在第 10 章对应小节给出。
 
 mid-training 位于大规模预训练和短周期 SFT 之间。它常加入更高质量的数据、长上下文数据、instruction-like 数据、代码与数学数据。这样可以在较大 token 规模上塑造能力，同时减轻一次性 SFT 对已有能力的破坏。具体方案与 MiniCPM 的双阶段示例见 §12.2.4。
 
@@ -464,7 +464,7 @@ mode collapse 是另一类副作用。经过强偏好优化后，模型可能减
 
 偏好对齐的两条算法路线（PPO 与 DPO 系列）已经把可验证奖励以外的偏好信号处理方式收束清楚；但只要偏好来自人类或奖励模型，就同时继承这一信号源的噪声、长度偏置和 demographic transfer。可验证奖励（数学、代码、形式化证明）能把奖励从“偏好代理”拉回“任务正确性”，是下一章的边界条件。
 
-下章进入 [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md)：把 RLHF 的偏好信号换成可验证奖励，对应 PPO→GRPO 演进与 R1/Kimi k1.5/Qwen 3 案例研究，及 agentic RL。
+下章进入[第 13 章 §13.1 为什么需要 RLVR？](../chapter13/chapter13_可验证奖励的强化学习.md)：把 RLHF 的偏好信号换成可验证奖励，对应 PPO→GRPO 演进与 R1/Kimi k1.5/Qwen 3 案例研究，及 agentic RL。
 
 ## 来源与更新记录
 

@@ -1,6 +1,6 @@
 # 第 13 章 可验证奖励的强化学习（RLVR）
 
-前面的训练流程章节（[第 12 章 大模型基本训练流程](../chapter12/chapter12_大模型基本训练流程.md)）已经讨论过 RLHF（基于人类反馈的强化学习）。RLHF 是使模型遵循指令的关键，也带来明显的扩展挑战：人类反馈昂贵、缓慢，奖励模型还容易被过度优化（Goodhart's Law）。
+前面的训练流程章节（[第 12 章 §12.4 大模型训练的第三个阶段：对齐人类偏好（RLHF）](../chapter12/chapter12_大模型基本训练流程.md)）已经讨论过 RLHF（基于人类反馈的强化学习）。RLHF 是使模型遵循指令的关键，也带来明显的扩展挑战：人类反馈昂贵、缓慢，奖励模型还容易被过度优化（Goodhart's Law）。
 
 本章讨论 **o1**、**DeepSeek R1**、**Kimi k1.5**、**Qwen 3** 等推理模型背后的训练路线：**RLVR (Reinforcement Learning from Verifiable Rewards)**。
 
@@ -1195,7 +1195,7 @@ Qwen3-Coder-Next 是 agentic RL 的代表性案例。按 [Hugging Face 模型卡
 
 中期数据包括 repository-level GitHub 数据（把同一仓库的文件拼接成长上下文样本，规模 6,000 亿 token）、带 RAG 检索仓库状态的 pull request、Common Crawl 中的 text+code 混合文档、合成 coding QA、由 coding agent 在各类环境中跑出来的轨迹，以及 fill-in-the-middle 数据。
 
-这条线和第 10 章的数据工程相互呼应：SWE-smith、SWE-Zero 这类数据把真实仓库、可执行环境、强模型轨迹和过滤检查组合起来，训练样本本身已经带有评估与系统工程结构。Qwen3-Coder-Next 的 SWE-bench 式自动化环境构建覆盖约 80 万个任务。
+这条线和[第 10 章 §10.2.4 后训练合成数据](../chapter10/chapter10_数据工程.md)相互呼应：SWE-smith、SWE-Zero 这类数据把真实仓库、可执行环境、强模型轨迹和过滤检查组合起来，训练样本本身已经带有评估与系统工程结构。Qwen3-Coder-Next 的 SWE-bench 式自动化环境构建覆盖约 80 万个任务。
 
 后训练再把 web dev、UX、single-turn QA 和 SWE expert 蒸馏进 Qwen3-Coder-Next。这类任务的 verifier 更接近环境反馈：代码能否运行、测试是否通过、网页是否满足视觉检查、agent 是否完成任务。奖励更丰富，系统成本也更高，因为 rollout 要执行环境、调用工具、收集轨迹并处理失败状态。
 
@@ -1214,9 +1214,9 @@ RLVR 把后训练主线从“人类偏好 → 偏好模型”换成“可验证�
 
 三个案例研究给出当前 RLVR 的工程骨架。DeepSeek-R1 用规则奖励 + 冷启动长 CoT + 800k 规模 SFT 数据 + 六个学生模型的蒸馏；Kimi k1.5 用 long-CoT SFT + 不带 CoT 的 8 次猜测过滤 + 长度奖励 $\lambda \in [-0.5, 0.5]$ + 约 800k 样本训练的 CoT reward model；Qwen 3 用 3,995 条 query-verifier pair 的低数据 RLVR + thinking mode fusion，再到 Qwen3-Coder-Next 的 repository-level 中期数据和 agentic RL 蒸馏。
 
-横向来看，RLVR 与 [第 9 章 推理系统](../chapter9/chapter9_推理系统.md)（推理预算与 serving 成本）以及 [推理行为与能力专题](../topics/reasoning_behavior.md)（Pass@k、搜索空间重加权）共同构成“训练 → 行为 → 部署”链；rollout、verifier、agent 环境和 on/off-policy 取舍等系统侧细节归第 9 章与第 13 章共同维护。
+横向来看，RLVR 与[第 9 章 §9.1 Inference Workload：为什么推理不同于训练](../chapter9/chapter9_推理系统.md)（推理预算与 serving 成本）以及[推理行为与能力专题 §3 预训练与解码：潜在推理如何被显式取出](../topics/reasoning_behavior.md)（Pass@k、搜索空间重加权）共同构成“训练 → 行为 → 部署”链；rollout、verifier、agent 环境和 on/off-policy 取舍等系统侧细节在两章中分别给出。
 
-承接这条 RLVR 训练-行为-部署线索，下一章进入 [第 14 章 多模态模型](../chapter14/chapter14_多模态模型.md)：post-training 不止作用于文本，也作用于视觉 / 视频 / 多图输入；CLIP / SigLIP 的图像语义对齐、LLaVA / Qwen-VL 系列把视觉 token 接到 LLM、Chameleon 的统一离散 token、Qwen3-VL 在 MRoPE / 动态分辨率 / 多阶段训练上的工程做法，会把本章的 RLVR 训练信号扩展到多模态 rollout 和 multimodal verifier 场景。
+承接这条 RLVR 训练—行为—部署线索，下一章进入[第 14 章 §14.1 多模态的目标与边界](../chapter14/chapter14_多模态模型.md)：post-training 不止作用于文本，也作用于视觉 / 视频 / 多图输入；CLIP / SigLIP 的图像语义对齐、LLaVA / Qwen-VL 系列把视觉 token 接到 LLM、Chameleon 的统一离散 token、Qwen3-VL 在 MRoPE / 动态分辨率 / 多阶段训练上的工程做法，会把本章的 RLVR 训练信号扩展到多模态 rollout 和 multimodal verifier 场景。
 
 ## 来源与更新记录
 
