@@ -522,7 +522,7 @@ reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward
 
 这类基准评估模型作为智能体（Agent） 的能力，即在复杂环境中通过工具调用和迭代规划完成任务。
 
-需要特别区分：智能体基准通常评估的是**语言模型 + agent scaffold** 的系统能力，区别于纯语言模型本身。规划循环、工具调用策略、文件读写、上下文压缩、子任务分解和失败重试都会改变结果，因此同一个底座模型在不同 scaffold 下可能表现差异很大。同一个 benchmark 既是评估工具也是 RL 训练数据：SWE-bench 风格任务在 [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md) 的 agentic RL 训练里被大量构造为可验证 rollout。
+需要特别区分：智能体基准通常评估的是**语言模型 + agent scaffold** 的系统能力，区别于纯语言模型本身。规划循环、工具调用策略、文件读写、上下文压缩、子任务分解和失败重试都会改变结果，因此同一个底座模型在不同 scaffold 下可能表现差异很大。同一个 benchmark 既是评估工具也是 RL 训练数据：SWE-bench 风格任务在[第 13 章 §13.4 案例研究](../chapter13/chapter13_可验证奖励的强化学习.md)的 agentic RL 训练里被大量构造为可验证 rollout。
 
 > [!NOTE]
 > **Agent scaffold 的四个核心组件**：**explicit planning**（显式写出多步计划并勾选进度）、**hierarchical delegation**（任务分层委派，子任务可由更小的 agent loop 完成以保持上下文干净）、**persistent memory**（通过读写文件维护跨 turn 状态，区别于纯上下文窗口）、**extreme context engineering**（在 prompt 中显式给出大量过程性指令，区别于单纯的上下文压缩 / 重组 / 检索）。这四项与 2025-2026 主流 agent 框架（Claude Code、Cursor、Aider 等）的设计选择基本对齐；同一底座模型在不同 scaffold 组合下的 benchmark 分数可能差几倍。
@@ -797,7 +797,7 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 评估设计本身的工程判断可以收成三条规则。第一，**单一分数不足以支撑结论**——perplexity、exam、chat、agent、推理、安全、真实使用这七类评估各回答一个独立问题，任何一份模型评估材料都应先定位它属于哪一类，再判断结论的适用边界。第二，**评估的规则优先于分数本身**——相同的「78%」分数在不同 prompt 范围、采样参数、工具权限、agent scaffold 下含义不同，比较前必须先确认 rules of the game 一致（§11.2 与 §11.11）。第三，**评估与训练相互定义**——LM-as-judge 的偏差清单（§11.5.5）直接决定偏好优化目标（[第 12 章 §12.5 偏好优化与 DPO 系列](../chapter12/chapter12_大模型基本训练流程.md)）和 RLVR 验证信号（[第 13 章 §13.3 GRPO 与 Dr. GRPO](../chapter13/chapter13_可验证奖励的强化学习.md)）的偏差结构，judge 与 reward 的偏差需要一起维护。
 
-下章进入 [第 12 章 大模型基本训练流程](../chapter12/chapter12_大模型基本训练流程.md)：评估方法定下来后，训练流水线按 pre-training → mid-training → SFT → RLHF/PPO/DPO 组织；其中 RLHF 与 DPO 的偏好数据来源与 judge 偏差控制直接对应本章 §11.5.5 的四类偏差。
+下章进入[第 12 章 §12.2 大模型训练的第一个阶段：预训练（Pre-training，PT）](../chapter12/chapter12_大模型基本训练流程.md)：评估方法定下来后，训练流水线按 pre-training → mid-training → SFT → RLHF/PPO/DPO 组织；其中 RLHF 与 DPO 的偏好数据来源与 judge 偏差控制直接对应本章 §11.5.5 的四类偏差。
 
 ## 思考
 
