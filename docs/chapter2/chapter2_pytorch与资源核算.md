@@ -22,7 +22,7 @@
 
 本章的 PyTorch 代码可以按”形状账本”来读：每个 tensor 的 shape 决定元素数和矩阵乘维度，每个 dtype 决定 bytes，每个中间激活是否保留决定反向传播显存。写一行 tensor 代码时，最好顺手问三件事：它会触发多少矩阵乘、会搬多少字节、反向传播还要保留什么。这样后面学习 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md)、[第 7 章 §7.6 ZeRO / FSDP](../chapter7/chapter7_分布式训练.md) 和 [第 9 章 §9.3 模型与 KV cache 压缩](../chapter9/chapter9_推理系统.md) 时，才不会把性能问题只理解成”代码慢”。
 
-阅读本章代码时，建议把变量名当成账本列： $B$ 通常表示 batch， $S$ 表示 sequence length， $D$ 表示 hidden dim（与 [第 3 章 语言模型架构和训练的技术细节](../chapter3/chapter3_语言模型架构和训练技术细节.md) 写作中的 $d_{\text{model}}$ 同义）， $d_k$ 表示 attention 头维度， $h$ 表示 attention 头数。一个 `einsum` 或 `matmul` 是否昂贵，取决于这些维度相乘后会产生多少元素、多少 FLOPs、多少中间张量。设备选择统一通过 `cuda_if_available()` 管理 CPU 回退。
+阅读本章代码时，建议把变量名当成账本列： $B$ 通常表示 batch， $S$ 表示 sequence length， $D$ 表示当前示例的输入或隐藏维度， $d_k$ 表示 attention 头维度， $h$ 表示 attention 头数。一个 `einsum` 或 `matmul` 是否昂贵，取决于这些维度相乘后会产生多少元素、多少 FLOPs、多少中间张量。设备选择统一通过 `cuda_if_available()` 管理 CPU 回退。
 
 另一个常用 helper 是 `get_promised_flop_per_sec(dtype)`。它按 GPU 代际和 dtype 估算理论峰值，用来把 FLOPs 账本转换成训练时间和 MFU 估算。
 
@@ -45,7 +45,7 @@ F_{\text{total}} \approx 6 \times N_{\text{param}} \times N_{\text{token}}
 $$
 
 > [!NOTE]
-> 公式里的 **6** 倍来自前向和反向的粗略 FLOPs 账：前向传播约为 $2 \times$ 参数量（乘法+加法），反向传播计算梯度约为前向的 2 倍，也就是 $4 \times$ 参数量。本章沿用 §2.1.3 的口径，把 $N_{\text{param}}$ 收窄为非 embedding 参数量；70B 级别模型与总参数量相差通常小于 1%，粗估时可忽略。
+> 公式里的 **6** 倍来自前向和反向的粗略 FLOPs 账：前向传播约为 $2 \times$ 参数量（乘法+加法），反向传播计算梯度约为前向的 2 倍，也就是 $4 \times$ 参数量。这里把 $N_{\text{param}}$ 定义为非 embedding 参数量；70B 级别模型与总参数量相差通常小于 1%，粗估时可忽略。
 
 代入数据：
 
@@ -585,7 +585,7 @@ assert x.device == torch.device("cpu")
 
 CPU 和 GPU 通过 PCI bus 相连。数据在 CPU 和 GPU 之间传输时需要经过这条总线，带宽通常远小于 GPU 内部的 HBM 带宽。因此，实际训练中应尽量减少 CPU/GPU 往返传输，优先直接在目标设备上创建张量或把数据加载流水线做成异步。
 
-后文示例统一使用一个小 helper 来选择设备：
+用一个小 helper 统一设备选择：
 
 ```python
 def cuda_if_available(index: int = 0) -> torch.device:
@@ -594,7 +594,7 @@ def cuda_if_available(index: int = 0) -> torch.device:
     return torch.device("cpu")
 ```
 
-这个函数的作用只是把“有 CUDA 就用第 `index` 张 GPU，否则回退到 CPU”写清楚。后文示例沿用这个名字，避免突然出现未定义的设备选择函数。
+这个函数把“有 CUDA 就用第 `index` 张 GPU，否则回退到 CPU”写清楚，后续代码直接调用它即可。
 
 
 在 PyTorch 中，想要将张量从 CPU 移至 GPU ，需要以下几个步骤：
