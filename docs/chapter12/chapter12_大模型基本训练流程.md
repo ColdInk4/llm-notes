@@ -27,7 +27,7 @@ mid-training（高质量 / 长上下文 / instruction-like 数据）
 偏好对齐（RLHF / PPO  ↔  DPO  ↔  SimPO / length-normalized DPO）
 ```
 
-§12.1 用监督、自监督、强化学习三种学习方式给出后续术语锚点；§12.2 处理 pre-training 与 mid-training；§12.3 处理 SFT 数据、style、长度与安全；§12.4 处理 RLHF 的数据来源、reward model 与 PPO；§12.5 把 DPO 系列从偏好损失推导到变体对比，并列出 overoptimization、mode collapse 等副作用。可验证奖励（RLVR）、GRPO 与 R1/Kimi k1.5/Qwen 3 案例放在 [第 13 章 可验证奖励的强化学习](../chapter13/chapter13_可验证奖励的强化学习.md)。
+§12.1 用监督、自监督、强化学习三种学习方式给出后续术语锚点；§12.2 处理 pre-training 与 mid-training；§12.3 处理 SFT 数据、style、长度与安全；§12.4 处理 RLHF 的数据来源、reward model 与 PPO；§12.5 把 DPO 系列从偏好损失推导到变体对比，并列出 overoptimization、mode collapse 等副作用。可验证奖励（RLVR）、GRPO 与 R1/Kimi k1.5/Qwen 3 案例放在 [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md)。
 
 ## 本章学习目标
 
@@ -59,7 +59,7 @@ next-token prediction 就是自监督目标。给定文本序列 $x_1,\dots,x_T$
 
 强化学习优化的是策略 $\pi_\theta(a \mid s)$ 。策略在状态 $s$ 下选择动作 $a$ ，环境返回奖励，训练目标是提高长期回报。语言模型中的动作可以看作 token 或完整回答，状态是 prompt 加已经生成的上下文。
 
-后训练里的 RLHF 使用偏好或 reward model 给完整回答打分，再通过 PPO 等算法更新策略。由于奖励通常只在回答结束后出现，算法需要把序列级奖励转成 token 级更新信号，并限制策略离参考模型过远。RLHF 的细节（如 DPO、SimPO、length-normalized DPO 等偏好优化变体及其 overoptimization 副作用）放在本章，PPO → GRPO 的 RLVR 延伸放在 [第 13 章 可验证奖励的强化学习](../chapter13/chapter13_可验证奖励的强化学习.md)；两章通过"人类反馈 → 可验证反馈"的边界连接。
+后训练里的 RLHF 使用偏好或 reward model 给完整回答打分，再通过 PPO 等算法更新策略。由于奖励通常只在回答结束后出现，算法需要把序列级奖励转成 token 级更新信号，并限制策略离参考模型过远。RLHF 的细节（如 DPO、SimPO、length-normalized DPO 等偏好优化变体及其 overoptimization 副作用）放在本章，PPO → GRPO 的 RLVR 延伸放在 [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md)；两章通过"人类反馈 → 可验证反馈"的边界连接。
 
 ## 12.2 大模型训练的第一个阶段：预训练（Pre-training，PT）
 

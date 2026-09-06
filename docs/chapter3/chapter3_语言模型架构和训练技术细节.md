@@ -761,7 +761,7 @@ RoPE 把位置信息注入到 Q/K 上，使注意力分数显式依赖相对距�
 
 自回归生成一次只产生一个新 token：模型读取已有上下文，输出下一个 token 的分布，再把新 token 接到上下文后继续生成。由于 generation 阶段不能像 prefill 那样完全并行，系统会缓存历史 token 的 K/V。这样生成新 token 时只需要为新 token 计算新的 Q/K/V，并复用历史 K/V，这个缓存就是 KV cache。
 
-KV cache 的算术强度与 batch × context 维度的 scaling 关系在 [第 9 章 §9.1.3 / §9.2.2](../chapter9/chapter9_推理系统.md) 展开；GPU / HBM 视角下的字节账本与切分维度见 [第 5 章 §5.8](../chapter5/chapter5_GPU和GPU相关优化.md)；serving 端的分页与 prefix sharing 见 [第 9 章 §9.5.2](../chapter9/chapter9_推理系统.md)。
+KV cache 的算术强度与 batch × context 维度的 scaling 关系在 [第 9 章 §9.1.3 prefill 与 generation / §9.2.2 Attention 层：batch 不能同样摊薄 KV cache](../chapter9/chapter9_推理系统.md) 展开；GPU / HBM 视角下的字节账本与切分维度见 [第 5 章 §5.8 KV cache：HBM 上的另一笔账](../chapter5/chapter5_GPU和GPU相关优化.md)；serving 端的分页与 prefix sharing 见 [第 9 章 §9.5.2 PagedAttention：把 KV cache 当分页内存管理](../chapter9/chapter9_推理系统.md)。
 
 ### 3.2.5.2 KV 共享总览
 
@@ -813,7 +813,7 @@ $$
 c_t^{\mathrm{KV}} = W_D^{\mathrm{KV}}h_t
 $$
 
-其中 $c_t^{\mathrm{KV}}$ 是 K/V 共用的压缩向量，维度 $d_c$ 远小于所有 K/V heads 的总维度（DeepSeek-V2 / V3 官方 config 均取 $d_c = 512$；V2 $d_{\text{model}}=5120$ 时约为 $d_{\text{model}}/10$，V3 $d_{\text{model}}=7168$ 时约为 $d_{\text{model}}/14$；具体 KV cache 体积对比见 [第 9 章 §9.3.2](../chapter9/chapter9_推理系统.md)）。Key 和 value 的相关投影由同一个 latent 分别恢复：
+其中 $c_t^{\mathrm{KV}}$ 是 K/V 共用的压缩向量，维度 $d_c$ 远小于所有 K/V heads 的总维度（DeepSeek-V2 / V3 官方 config 均取 $d_c = 512$；V2 $d_{\text{model}}=5120$ 时约为 $d_{\text{model}}/10$，V3 $d_{\text{model}}=7168$ 时约为 $d_{\text{model}}/14$；具体 KV cache 体积对比见 [第 9 章 §9.3.2 MLA：存压缩 latent，再按需展开](../chapter9/chapter9_推理系统.md)）。Key 和 value 的相关投影由同一个 latent 分别恢复：
 
 $$
 k_t^C = W_U^K c_t^{\mathrm{KV}}, \quad v_t^C = W_U^V c_t^{\mathrm{KV}}
@@ -900,7 +900,7 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 2. **细粒度 top-k 选择**
 
-基于索引分，为每个 query 动态构建自己的 top-k 历史集合。如果 $k$ 固定且远小于序列长度 $L$ ，精细注意力部分可以从 $O(L^2)$ 降到近似 $O(Lk)$ 。
+基于索引分，为每个 query 动态构建自己的 top-k 历史集合。如果 $k$ 固定且远小于序列长度 $S$ ，精细注意力部分可以从 $O(S^2)$ 降到近似 $O(Sk)$ 。
 
 这类方法可以作为长上下文适配路线，但是否能后训练接入已有模型，取决于目标模型的注意力分布、稀疏模块训练预算和服务端 kernel 支持。
 

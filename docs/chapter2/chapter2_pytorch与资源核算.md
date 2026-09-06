@@ -15,7 +15,7 @@
 1. **§2.1 资源核算的入口**：用两个 napkin math 例子（70B / 15T / 1024 H100、8 H100 / AdamW 显存）建立数量级直觉，落到三类约束（compute / memory capacity / memory bandwidth）与 roofline。
 2. **§2.2 张量（PyTorch 基础）**：shape / dtype / stride / view / contiguity / 矩阵乘法 / 逐元素算子 / einops，把后续资源账本用到的 PyTorch API 集中放在这里。可以先快速浏览，等读到具体 API 疑问再回来查。
 3. **§2.3 内存（dtype 与存储机制）**：FP32 / FP16 / BF16 / FP8 / NVFP4 的字节数与权衡，stride 与 storage 怎样决定实际占用，CPU↔GPU 移动的代价。
-4. **§2.4 计算效率**：把 `6 N D` 的 FLOPs 账本套到具体算子，给出 arithmetic intensity / MFU 的来源。
+4. **§2.4 计算效率**：把 $6 \times N_{\text{data}} \times N_{\text{param}}$ 的 FLOPs 账本套到具体算子，给出 arithmetic intensity / MFU 的来源。
 5. **§2.5 模型构建与训练基础**：把 §2.1.3 的 4 元素账本（parameter / gradient / optimizer state / activation）落地到代码与训练循环，附 activation checkpointing 的最小实现。
 
 返回路径：需要时通过「见 §X.Y」回查具体概念。
@@ -1271,7 +1271,7 @@ class AdaGrad(torch.optim.Optimizer):
 
 ### 2.5.6 资源核算
 
-本节把 §2.1.3 给出的四元素账本（参数 / 梯度 / optimizer state / activation）落到深度线性网络的具体公式与代码：4 元素如何按层数 $L$ 与维度 $D$ 计数，FLOPs 怎样回到 `6 N D` 的形式。完整的 dtype / mixed-precision 字节数表已写在 §2.1.3，本节不重复展开。
+本节把 §2.1.3 给出的四元素账本（参数 / 梯度 / optimizer state / activation）落到深度线性网络的具体公式与代码：4 元素如何按层数 $L$ 与维度 $D$ 计数，FLOPs 怎样回到 $6 \times N_{\text{data}} \times N_{\text{param}}$ 的形式。完整的 dtype / mixed-precision 字节数表已写在 §2.1.3，本节不重复展开。
 
 #### 内存占用分析
 
@@ -1499,7 +1499,7 @@ class CruncherCheckpointed(nn.Module):
 
 ## 本章总结与下章衔接
 
-本章围绕四张资源账本展开：tensor 的 shape / dtype / device 与 stride、`6ND` 量级的 FLOPs、activation + optimizer state + gradient + parameter 的显存组合、以及 roofline 上的 arithmetic intensity / MFU。PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通：换硬件（A100 / H100 / B200）或换精度（fp32 / bf16 / fp16 / fp8）时只需替换峰值数字，账本形状不变。[第 9 章 §9.2 Arithmetic Intensity](../chapter9/chapter9_推理系统.md) 把同一套算术强度与带宽账本搬到推理侧，用来解释 decode 阶段为什么受 KV cache 读取带宽支配。
+本章围绕四张资源账本展开：tensor 的 shape / dtype / device 与 stride、$6 \times N_{\text{data}} \times N_{\text{param}}$ 量级的 FLOPs、activation + optimizer state + gradient + parameter 的显存组合、以及 roofline 上的 arithmetic intensity / MFU。PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通：换硬件（A100 / H100 / B200）或换精度（fp32 / bf16 / fp16 / fp8）时只需替换峰值数字，账本形状不变。[第 9 章 §9.2 Arithmetic Intensity](../chapter9/chapter9_推理系统.md) 把同一套算术强度与带宽账本搬到推理侧，用来解释 decode 阶段为什么受 KV cache 读取带宽支配。
 
 下章进入 [第 3 章 语言模型架构和训练的技术细节](../chapter3/chapter3_语言模型架构和训练技术细节.md)：把 token 和算力账本当作输入侧准备之后，第 3 章讨论现代 dense decoder 的默认骨架（Pre-norm / RMSNorm / no bias / SwiGLU / RoPE / GQA / MLA / CLA）、attention 替代和训练稳定性。
 

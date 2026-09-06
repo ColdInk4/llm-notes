@@ -907,7 +907,7 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 | LLaMA 65B | 约 22 |
 | Llama 2 70B | 约 29 |
 | Mistral 7B | 约 1100（官方未披露，社区按 ~8T tokens 估计） |
-| Llama 3 70B | 约 215（15T / 70B） |
+| Llama 3 70B | 约 223（15.6T / 70B） |
 
 一个简单账本是：训练只付一次，但推理会在模型生命周期里反复付费。若两个模型 pretraining loss 接近，较小模型通常更容易部署，KV cache 更小，单 token latency 和服务成本也更低。因此生产系统常愿意用更多训练 tokens 换一个更小、更便宜的 serving 模型。
 

@@ -20,7 +20,7 @@
 
 本章的成本账本也会支撑后续 reasoning 章节：CoT、多路径采样、工具调用、agent trace 和 RLVR rollout 都会把更多 token 交给 `prefill`、`generation`、KV cache 和 scheduler。
 
-训练这些行为的 RL 系统细节放在 [第 13 章 可验证奖励的强化学习](../chapter13/chapter13_可验证奖励的强化学习.md) 中讨论；模型为什么会展开思考、这些方法怎样改变可见推理行为，放到 [推理行为与能力专题](../topics/reasoning_behavior.md) 中讨论。
+训练这些行为的 RL 系统细节放在 [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md) 中讨论；模型为什么会展开思考、这些方法怎样改变可见推理行为，放到 [推理行为与能力专题](../topics/reasoning_behavior.md) 中讨论。
 
 读这一章时要始终区分四类问题：
 
@@ -647,7 +647,7 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 - Quantization、pruning、distillation 减少权重或模型本体成本，但真实加速依赖 kernel 和硬件支持。
 - Speculative sampling 用 draft model 起草、target model 并行验收，可以保持 target distribution。
 - Continuous batching 和 PagedAttention 面向动态 serving，把 ragged workload、KV fragmentation、prefix sharing 和 copy-on-write 变成可管理的问题。
-- CoT、多路径采样、工具搜索和 RL rollout 会放大 token 生成、KV cache 与调度压力；训练侧分析见 [第 13 章 可验证奖励的强化学习](../chapter13/chapter13_可验证奖励的强化学习.md)，能力侧分析见 [推理行为与能力专题](../topics/reasoning_behavior.md)。
+- CoT、多路径采样、工具搜索和 RL rollout 会放大 token 生成、KV cache 与调度压力；训练侧分析见 [第 13 章 可验证奖励的强化学习（RLVR）](../chapter13/chapter13_可验证奖励的强化学习.md)，能力侧分析见 [推理行为与能力专题](../topics/reasoning_behavior.md)。
 - SSM、linear attention、diffusion language model 和 speculative cascades 是更激进的扩展方向，应该按“优化哪个瓶颈、留下什么质量风险”来读。
 
 推理系统决定了 token 的产出成本，token 产出又受数据规模与配比约束：压得越狠，蒸馏 / 量化校准 / draft model 训练数据的需求越高；这些都把视角从模型与系统切到训练数据本身。下一章把这些数据侧工程串起来：[第 10 章 数据工程](../chapter10/chapter10_数据工程.md)。

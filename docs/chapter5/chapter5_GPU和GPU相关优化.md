@@ -64,12 +64,12 @@ GPU 的历史背景只需要抓住一条主线：它最初为图形渲染中的�
 
 | 指标 | A100 | H100 | H200 | B200 |
 | --- | --- | --- | --- | --- |
-| SM 数 | 108 | 132 | 132 | 单 GB100 die = 144 SM（6 GPC × 12 TPC × 2 SM）；B200 公开 SKU 含 2 个 GB100 die，全封装 SM 数为 192（部分 die 内 SM 被禁用）；每 SM 128 个 FP32 core（[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) + TechInsights GB100 teardown） |
+| SM 数 | 108 | 132 | 132 | 单 GB100 die 物理 80 SM、启用 74 SM；B200 全封装 2 个 GB100 die，启用 SM 总数 = 148（74 × 2，部分 die 内 SM 被禁用以保良率）；每 SM 128 个 FP32 core，2 个 die 全封装 18,944 个 FP32 CUDA core（[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) + TechInsights GB100 teardown） |
 | 每 SM 寄存器 | 256 KB | 256 KB | 256 KB | 256 KB |
 | 每 SM L1 + shared memory | 192 KB | 256 KB | 256 KB | 256 KB |
 | L2 cache | 40 MB | 50 MB | 50 MB | 单颗 GB200 / B200 GPU（全封装，含 2 个 GB100 die）L2 = 126 MB（[NVIDIA Blackwell tuning guide §1.4.2.2](https://docs.nvidia.com/cuda/blackwell-tuning-guide/)）；折算每 GB100 die ≈ 63 MB |
-| HBM 容量 | 80 GB HBM2e | 80 GB HBM3 | 141 GB HBM3e | B200 HBM3e 192 GB（[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/)、NVIDIA HGX B200 datasheet） |
-| HBM 带宽量级 | 2 TB/s | 3.35 TB/s | ~4.8 TB/s | 8 TB/s |
+| HBM 容量 | 80 GB HBM2e | 80 GB HBM3 | 141 GB HBM3e | B200 SXM / HGX B200 = 192 GB（[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) 上限 180 GB HBM3e，HGX B200 公开 datasheet 取 180 GB；GB200 NVL72 按总 HBM3e 13.4 TB / 72 GPU 反推 186 GB/GPU，详见 [第 2 章 §2.4 资源核算](../chapter2/chapter2_pytorch与资源核算.md) 与 [第 7 章 §7.1.4 GPU、TPU 和数据中心拓扑](../chapter7/chapter7_分布式训练.md)） |
+| HBM 带宽量级 | 2 TB/s | 3.35 TB/s | ~4.8 TB/s | 8 TB/s（HGX B200 datasheet 单 GPU 标 7.7 TB/s；GB200 NVL72 标 8 TB/s/GPU，跨章节口径见上） |
 
 从编程角度看，可以把它们理解成同一类 GPU 执行模型的几代演化：**A100 是理解 Ampere 时代 kernel 优化的基线，H100 增强了 shared memory、异步执行和 FP8 路径，H200 在 H100 计算能力上把显存换成更大带宽的 HBM3e，B200 则把 HBM/L2 容量和 Blackwell 低精度路径再往前推了一代**。上表数值均为 dense 训练口径；若启用结构化稀疏（Structured Sparsity，俗称 2:4 sparsity），Tensor Core 路径理论峰值翻倍——A100/H100 公开 datasheet 在 "with sparsity" 一列单独列出 2× 系数（[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)）。
 

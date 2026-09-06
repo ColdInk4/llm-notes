@@ -7,7 +7,7 @@
 - 区分四类常见的"好模型"定义（绝对能力 / 相对排序 / 任务得分 / 安全性）及其适用场景。
 - 描述 perplexity 作为通用语言建模评估的优缺点：可重复、与训练目标对齐，但与下游任务相关性弱。
 - 列出 MMLU / GPQA / Humanity's Last Exam 等 exam 基准考察的能力维度，并说明 contamination 对它们的冲击。
-- 区分聊天基准（Chatbot Arena / AlpacaEval / WildBench / IFEval）与 agent 基准（`SWE-bench` / Terminal-Bench / Cybench / MLE-Bench）在输入分布和评分规则上的差异。
+- 区分聊天基准（Chatbot Arena / AlpacaEval / WildBench / IFEval）与 agent 基准（`SWE-bench` / Terminal-Bench / Cybench / MLE-bench）在输入分布和评分规则上的差异。
 - 解释 evaluation rules of the game：评分规则、prompt 范围、采样参数、工具与预算不同，分数不能直接横比。
 
 评估的核心问题是**给定一个固定的模型，它到底有多“好”？** 这个问题看似只是打分，实际需要先定义使用目标、输入分布、调用方式和评分规则。评估不仅衡量当前模型，也会反过来影响训练目标、数据选择和产品决策。
@@ -830,7 +830,7 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 - [SWE-bench, arXiv:2310.06770](https://arxiv.org/abs/2310.06770)
 - [Terminal-Bench, arXiv:2601.11868](https://arxiv.org/abs/2601.11868)
 - [Zhang 等, Cybench: A Framework for Evaluating Cybersecurity Capabilities and Risks of Language Models, arXiv:2408.08926](https://arxiv.org/abs/2408.08926)
-- [MLE-Bench, arXiv:2410.07095](https://arxiv.org/abs/2410.07095)
+- [MLE-bench, arXiv:2410.07095](https://arxiv.org/abs/2410.07095)
 - [AIR-Bench, arXiv:2407.17436](https://arxiv.org/abs/2407.17436)
 - [HarmBench, arXiv:2402.04249](https://arxiv.org/abs/2402.04249)
 - [Zou 等, Universal and Transferable Adversarial Attacks (GCG), arXiv:2307.15043](https://arxiv.org/abs/2307.15043)

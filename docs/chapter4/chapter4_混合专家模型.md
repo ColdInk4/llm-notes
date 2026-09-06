@@ -46,7 +46,7 @@ DeepSeek、Kimi、Qwen、GLM、MiMo 等模型族都探索过 MoE 架构。MoE �
 - **通信（§4.4、§7.9.2）**：expert 分布在多 GPU / 多节点时如何避免 dispatch / combine 拖慢整层？这条线从 dispatch / combine 通信形状谈到 EP / ETP / EDP 拓扑与 MegaBlocks。
 - **稳定性（§4.1.3、§4.3.2）**：router logits 在低精度与稀疏梯度下如何不爆炸？这条线把 router FP32、z-loss、swiglu_limit、upcycling 与训练稳定性挂钩。
 
-四个目标对应四条主线：目标 1 串起 §4.1 整节；目标 2 集中在 §4.1.1 的 routing 对比；目标 3 由 §4.1.1、§4.1.3 与 §4.3.2 共同承担；目标 4 由 §4.4、§7.9.2 共同承担。
+四个目标对应四条主线：目标 1 串起 §4.1 整节；目标 2 集中在 §4.1.1 的 routing 对比；目标 3 由 §4.1.1、§4.1.3 与 §4.3.2 共同承担；目标 4 由 §4.4 与 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md) 共同承担。
 
 ## 4.1 分析 MoE
 
@@ -544,7 +544,7 @@ MoE 的变体大多围绕两类问题展开：一类是**路由与专家分化**
     - 由于不同层的专家数量不一致，它采用 expert parallelism、expert slicing、data parallelism 和 tensor slicing 的组合，让每层获得合适的并行方式。
 
 > [!NOTE]
-> MoE 在系统侧的 all-to-all 通信、expert parallelism（EP）、expert tensor parallelism（ETP）、expert data parallelism（EDP）的拓扑选择与 overlap 调度是 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md) 的主线内容；DeepSeek-V3 的 64-way EP（跨 8 节点）+ DualPipe 双向流水线 overlap 等真实训练配置见 §7.11。MoE 算法侧与系统侧的耦合主要在 EP 拓扑选择，通信形状、调度细节与 overlap 实现在 §7.9.2 集中展开。
+> MoE 在系统侧的 all-to-all 通信、expert parallelism（EP）、expert tensor parallelism（ETP）、expert data parallelism（EDP）的拓扑选择与 overlap 调度是 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md) 的主线内容；DeepSeek-V3 的 64-way EP（跨 8 节点）+ DualPipe 双向流水线 overlap 等真实训练配置见 [第 7 章 §7.11 代表性大规模训练配置](../chapter7/chapter7_分布式训练.md)。MoE 算法侧与系统侧的耦合主要在 EP 拓扑选择，通信形状、调度细节与 overlap 实现在 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md) 集中展开。
     - 这种自适应并行可以减少负载不均与显存浪费，但具体收益依赖硬件拓扑和通信库实现。
     - 在通信方面，DeepSpeed-MoE 通过 tensor slicing、分层 all-to-all 和显式 layout 转换降低跨节点延迟与稀疏重排开销。
 
@@ -1043,7 +1043,7 @@ v3 则强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 
 
 DeepSeek-V3 论文在 MoE 之外同时披露了两项与 MoE 并列的核心架构创新和一项重要的后训练经验，本节统一吸收：
 
-- **Multi-Head Latent Attention（MLA）**：把 K/V 压缩到低秩潜空间后再做注意力，相比 MHA 大幅压缩 KV cache（DeepSeek-V3 每 token 每层 MHA 需缓存 $2 h d_k = 2 \times 128 \times 128 = 32768$ 个元素，MLA 只缓存 $d_c + d_k^R = 512 + 64 = 576$ 个；细节见 [第 9 章 §9.3.2](../chapter9/chapter9_推理系统.md)）。MLA 与本节 MoE 路线在 DeepSeek-V3 中同时启用，是 V3 在长上下文与高吞吐推理两个方向都能维持竞争力的关键。
+- **Multi-Head Latent Attention（MLA）**：把 K/V 压缩到低秩潜空间后再做注意力，相比 MHA 大幅压缩 KV cache（DeepSeek-V3 每 token 每层 MHA 需缓存 $2 h d_k = 2 \times 128 \times 128 = 32768$ 个元素，MLA 只缓存 $d_c + d_k^R = 512 + 64 = 576$ 个；细节见 [第 9 章 §9.3.2 MLA：存压缩 latent，再按需展开](../chapter9/chapter9_推理系统.md)）。MLA 与本节 MoE 路线在 DeepSeek-V3 中同时启用，是 V3 在长上下文与高吞吐推理两个方向都能维持竞争力的关键。
 - **Multi-Token Prediction（MTP）**：训练目标中允许模型一次预测未来多个 token，可以作为辅助训练信号提升数据效率，也能在 decoding 时作为 speculative decoding 的草稿使用。MTP 在大多数主流开源模型里尚未普及，目前主要在 DeepSeek 系列内部规模化使用。
 - **MoE fine-tuning 易过拟合**：MoE 专家数量大时 fine-tune 全部专家常常引发严重 overfitting；常见做法是只 fine-tune attention 层或 dense FFN 层，把 routed experts 冻结。这一经验在 V3 / V4-Pro 等大规模 MoE 后训练阶段尤其需要复现。
 
