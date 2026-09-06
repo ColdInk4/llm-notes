@@ -23,6 +23,8 @@
 
 本章先定义 collective 和最小 `torch.distributed` 代码，再把这些原语组合成 ZeRO/FSDP、TP/PP/SP/EP/CP 和混合并行策略。代码示例使用第 2 章的设备 helper：`cuda_if_available(rank)` 表示有 CUDA 时使用第 `rank` 张 GPU，否则回退到 CPU。
 
+认识链从单卡资源约束开始：给定参数、activation、batch 和拓扑，先写出每个 rank 持有的状态与必须交换的张量，再由 collective 语义推导通信量、同步点和可重叠区间。每种并行策略都应在相同模型与 global batch 下记录显存、step time、链路带宽和数值一致性；这些测量决定“放得下”与“跑得快”是否同时成立，也限定策略能迁移到哪种拓扑。
+
 ## 7.0 并行策略的统一视角：沿维度切分
 
 当单卡放不下或跑不快时，分布式训练就是沿不同维度切分同一个训练步骤。先用一张表建立地图，后面再逐个展开：
