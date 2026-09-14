@@ -875,9 +875,9 @@ $$
 F_{\text{step}} = F_{\text{forward}} + F_{\text{backward}} = \underbrace{2 B N_{\text{param}}}_{\text{forward}} + \underbrace{4 B N_{\text{param}}}_{\text{backward}} = 6 B N_{\text{param}} .
 $$
 
-其中反向是前向的 2 倍——这是 LM 训练 FLOPs 估算的标准结论，写成每 token $6 N_{\text{param}}$ FLOPs。沿 step 数 $S$ 求和得整段训练的总 FLOPs $\approx 6 N_{\text{param}} \cdot N_{\text{token}}$，与 §2.1.1 的 $F_{\text{total}} \approx 6 N_{\text{param}} N_{\text{token}}$ 一致。
+其中反向是前向的 2 倍，写成每 token $6 N_{\text{param}}$ FLOPs。这一 per-token 公式与 Kaplan 2020 / Chinchilla 2022 等论文给出的 LM 训练 FLOPs 估算一致（详见章节末来源记录）；沿 step 数 $S$ 求和得整段训练的总 FLOPs $\approx 6 N_{\text{param}} \cdot N_{\text{token}}$，与 §2.1.1 的 $F_{\text{total}} \approx 6 N_{\text{param}} N_{\text{token}}$ 一致。
 
-通用多层网络（每层都既算 activation grad 又算 weight grad）的反向 FLOPs 都满足「前向的 2 倍」，回到这一标准 $6 B N_{\text{param}}$ / step。本例反向少一项 $2 B D D$（即 $dL / d x = G_{h_1} W_1^{\mathrm{T}}$），因为 `x` 是叶子（`requires_grad=False`）没有更下层需要继续传 activation grad——`requires_grad=True` 的非叶子张量都会算自己的 `.grad`，activation grad 沿反向链一直传到最浅的非叶子为止。
+通用多层网络（每层都既算 activation grad 又算 weight grad）回到这一 $6 B N_{\text{param}}$ / step 形式：每层反向都是前向的 2 倍。本例反向少一项 $2 B D D$（即 $dL / d x = G_{h_1} W_1^{\mathrm{T}}$），因为 `x` 是叶子（`requires_grad=False`）没有更下层需要继续传 activation grad——`requires_grad=True` 的非叶子张量都会算自己的 `.grad`，activation grad 沿反向链一直传到最浅的非叶子为止。
 
 ## 2.5 模型构建与训练基础
 
