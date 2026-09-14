@@ -277,6 +277,7 @@ prompt 要求 sub-agent 只报 `refuted + tentative`、**不再报 `confirmed`**
 - **图片 SHA256 不一致不一定是不同图**：SHA 不同但视觉内容相同的图（如课件截图 vs 论文原图、同一 PDF 不同页面截图）都是「同一份视觉信息的不同版本」，应判为重复；删图判定用视觉内容，不只用 SHA。
 - 课件 PDF 在 agent 上下文里读会触发图片上限（一次 Read 可能塞入几十张 page-image），先用 `pdftotext -layout` 抽成纯文本到 `sources/_extracted_pdfs/lecture_NN.txt` 供 agent 线性读取；该目录作为维护副产物，不纳入 git（已在 `.gitignore` 或不入库）。
 - Workflow 脚本读取运行参数时，harness 把数组 args 包成 `{item: [...]}`，pick-args 函数要同时处理 string、数组、`{item}` 和 `{cluster}` 四种 shape，否则会出现"9 个 agent 都退化成对同一文件 audit"的浪费。
+- **arXiv 论文 WebFetch 优先 `/html/{id}`，不要 `/abs/` 或 `/pdf/`**。sandbox 对 `arxiv.org` 域名的 `abs` 路径返回 "Unable to verify if domain arxiv.org is safe to fetch"；对 `/pdf/{id}` 返回 binary "FlateDecode streams"（压缩对象流）而非可读文本；只有 `/html/{id}` 能返回标题、作者、abstract、§ 章节标题与原文句子。所有求证一手 arXiv 内容（标题、作者、提交日期、§ 编号归属、原文引用句）都先 `WebFetch https://arxiv.org/html/{id}`；html 解析失败或需要 Figure/Table 数值时再退回 `/pdf/{id}` 配合本地 `pdftotext` 抽文。WebSearch 在 sandbox 拒 arXiv 域时仍能返回关键句摘录，但只能用来定位 URL / 确认存在性 / 拿关键词，不能替代 `WebFetch /html/{id}` 作为一手引用。
 
 ## 资料位置
 
@@ -304,6 +305,7 @@ prompt 要求 sub-agent 只报 `refuted + tentative`、**不再报 `confirmed`**
 
 ## 提交约定
 
+- 默认直接在 main 上 commit + push，不开分支，包括大批量改动与长期 feature；单次改动、跨章改动、流程规范更新都直接落到 main。
 - 提交标题采用 conventional commits：`docs:` / `chore:` / `fix:` / `refactor:` 等小写前缀 + 冒号空格 + 祈使句动作（如 `docs: refine inference systems chapter`）。
 - 正文（commit body）可选；非平凡改动应简要列修改重点或风险提示。
 - **不**附加 `Co-Authored-By: Claude Code ...` / `Generated with ...` / `🤖 Generated with ...` 之类 trailer；本仓库以维护者本人为唯一署名。
