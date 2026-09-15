@@ -208,6 +208,9 @@ x = torch.empty(4, 8)  # 未初始化的4x8矩阵
 nn.init.trunc_normal_(x, mean=0, std=1, a=-2, b=2)  # 截断正态分布初始化，分布均值为0，标准差为1，截断范围，只保留[-2, 2]区间内的值，超出此范围的值会被重新采样
 ```
 
+> [!NOTE]
+> `nn.init.trunc_normal_` 的 `a` 与 `b` 是**绝对**截断区间，不是 $\sigma$ 的倍数（[PyTorch `nn.init` 文档](https://docs.pytorch.org/docs/stable/nn.init.html)）。本例 `std=1`，所以 `a=-2, b=2` 在数值上恰好等于 $\pm 2\sigma$；一旦 `std ≠ 1`，要按 $\pm k\sigma$ 截断就要把 `std` 乘进 `a`/`b`（写法见 §2.5.1）。
+
 ### 2.2.2 张量的操作
 
 大多数张量都是通过对其他张量执行操作来创建的，每个操作都会占用一定的内存和计算资源。
@@ -928,7 +931,7 @@ w = nn.Parameter(nn.init.trunc_normal_(torch.empty(input_dim, output_dim),
                                       a=-3, b=3))
 ```
 
-`nn.init.trunc_normal_` 的 `a` 与 `b` 是**绝对**截断值，不是 $\sigma$ 的倍数（[PyTorch `nn.init` 文档](https://docs.pytorch.org/docs/stable/nn.init.html)）。要真正截在 $\pm 3\sigma$，`a`/`b` 需要随 `std` 一起缩放，写成 `a=-3*std, b=3*std`；本节 §2.2.1 那段 `std=1, a=-2, b=2` 因为 `std` 恰好是 1，才等价于 $\pm 2\sigma$。
+`nn.init.trunc_normal_` 的 `a` 与 `b` 是**绝对**截断值，不是 $\sigma$ 的倍数（[PyTorch `nn.init` 文档](https://docs.pytorch.org/docs/stable/nn.init.html)）。要真正截在 $\pm 3\sigma$，`a`/`b` 需要随 `std` 一起缩放，写成 `a=-3*std, b=3*std`。
 
 ### 2.5.2 使用 pytorch 自定义模型
 
