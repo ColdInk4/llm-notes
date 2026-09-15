@@ -2,7 +2,11 @@
 
 ## 本章主线
 
-从 2017 年原始 Transformer 走到现代 decoder-only LLM，哪些设计已经收敛为默认骨架，哪些仍然是为特定目标做的取舍？这一章沿同一条问题主线推进：现代默认骨架里每一项选择都在解决哪个具体瓶颈，它和原始 Transformer 的差异来自何处，又在什么场景下保留可调余地。本章把内容分成两层，第一层回顾位置编码、多头注意力、FFN、残差和归一化等基础模块（§3.1），第二层把这些模块换成 Pre-norm + RMSNorm + no bias + SwiGLU + RoPE 等现代默认并解释各自解决的问题（§3.2），随后把注意力变体按 KV cache、稀疏读取、线性时间三条线展开（§3.2.5），再用 §3.3 的超参数经验区间和 §3.4 的稳定性技巧，把这些默认骨架组合成可以读懂和复用的工程配置。
+从 2017 年原始 Transformer 走到现代 decoder-only LLM，哪些设计已经收敛为默认骨架，哪些仍然是为特定目标做的取舍？
+
+这一章沿同一条问题主线推进：现代默认骨架里每一项选择都在解决哪个具体瓶颈；它和原始 Transformer 的差异来自何处；在什么场景下保留可调余地。
+
+本章按五块组织内容：§3.1 回顾位置编码、多头注意力、FFN、残差和归一化等基础模块；§3.2 把这些模块换成 Pre-norm + RMSNorm + no bias + SwiGLU + RoPE 等现代默认并解释各自解决的问题，其中 §3.2.5 把注意力变体按 KV cache、稀疏读取、线性时间三条线展开；§3.3 给出超参数经验区间；§3.4 介绍稳定性技巧。
 
 ## 本章学习目标
 
@@ -40,7 +44,11 @@ Transformer 模型的起源可以追溯到 2017 年，当时由 Google 研究团
 
 *图 3.1-1 现代 decoder-only block 的整体结构，标注 Causal Multi-Head Self-Attention、Absolute Position Embeddings、Add & Dropout、Position-Wise Feed-Forward 等组件；这套 attention + FFN + residual + norm 骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，但差异是单 stack 而非 encoder-decoder 双 stack*
 
-图 3.1-1 给出现代 decoder-only block 的标准骨架：左侧是输入到输出的纵向流（Token Embedding + Absolute Position Embeddings 相加 → Add & Dropout → N 个 Transformer Block → Norm → Linear → Softmax），右侧把单个 block 展开为 Causal Multi-Head Self-Attention、Add、Dropout、Position-Wise Feed-Forward、Norm 五个组件的串联加两条 residual。这套”attention + FFN + residual + norm”骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，但差异有三：(1) 注意力改为 Causal Multi-Head Self-Attention（mask 掉未来位置），不再保留原始 encoder-decoder 之间的 cross-attention；(2) block 内 norm 位置从 Post-LN (Vaswani et al., 2017 §5.4) 改为 Pre-LN，成为后续 decoder-only LLM 的默认；(3) 位置编码方案与具体激活函数与原始 Transformer 不同，这些差异在 §3.2 集中讨论。
+图 3.1-1 给出现代 decoder-only block 的标准骨架：左侧是输入到输出的纵向流（Token Embedding + Absolute Position Embeddings 相加 → Add & Dropout → N 个 Transformer Block → Norm → Linear → Softmax），右侧把单个 block 展开为 Causal Multi-Head Self-Attention、Add、Dropout、Position-Wise Feed-Forward、Norm 五个组件的串联加两条 residual。
+
+这套”attention + FFN + residual + norm”骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，差异有三：(1) 注意力改为 Causal Multi-Head Self-Attention（mask 掉未来位置），不再保留原始 encoder-decoder 之间的 cross-attention；(2) block 内 norm 位置从 Post-LN (Vaswani et al., 2017 §5.4) 改为 Pre-LN，成为后续 decoder-only LLM 的默认；(3) 位置编码方案与具体激活函数与原始 Transformer 不同。
+
+第 (1)(2) 点差异进入 §3.2 集中讨论的 norm 位置与注意力形式；第 (3) 点中位置编码进入 §3.2.4，激活函数进入 §3.2.3。
 
 ### 3.1.1 位置编码（positional encoding）：正余弦位置编码
 
@@ -461,7 +469,11 @@ RMSNorm 运行时的收益已经能在论文中观察到；更重要的可迁移
 
 **Post-norm 的训练稳定性问题**
 
-直观解释是残差连接使得网络从**底层到顶层**始终保留一条与原始输入等价的直通路径（residual stream），而反向传播时梯度可经这条路径**从顶层到底层**直接回传。这对训练极深网络时的**梯度传播**非常有利：LSTM 这类循环网络需要沿时间步反复乘以同一组权重，梯度在长序列上容易衰减或爆炸；残差连接提供的恒等通路直接绕开了这个问题。在中间插入 LayerNorm 会把 LayerNorm 的可学习缩放叠加进 residual stream，因此 Pre-norm 把 LayerNorm 移到子层输入前，让 residual stream 保持「纯」恒等。这一点正好与之前展示的梯度尖峰现象吻合。虽然 LayerNorm 效果良好，许多现代模型改用 RMSNorm——这一选择属于算术强度 / 数据移动公理下的工程推论（lecture_03 引用 Ivanov et al 2023「Matrix multiplies are the vast majority of FLOPs (and memory)」：归一化层 FLOPs 占比小但算术强度低，RMSNorm 通过去除均值中心化与 bias 减少参数和访存，能改善 wall-clock 表现），ablation 数据见 [arXiv:2102.11972](https://arxiv.org/abs/2102.11972) Table 1。
+直观解释是残差连接使得网络从**底层到顶层**始终保留一条与原始输入等价的直通路径（residual stream），而反向传播时梯度可经这条路径**从顶层到底层**直接回传。这对训练极深网络时的**梯度传播**非常有利：LSTM 这类循环网络需要沿时间步反复乘以同一组权重，梯度在长序列上容易衰减或爆炸；残差连接提供的恒等通路直接绕开了这个问题。
+
+在中间插入 LayerNorm 会把 LayerNorm 的可学习缩放叠加进 residual stream，因此 Pre-norm 把 LayerNorm 移到子层输入前，让 residual stream 保持「纯」恒等。这一点正好与之前展示的梯度尖峰现象吻合。
+
+虽然 LayerNorm 效果良好，许多现代模型改用 RMSNorm——这一选择属于算术强度 / 数据移动公理下的工程推论。lecture_03 引用 Ivanov et al 2023「Matrix multiplies are the vast majority of FLOPs (and memory)」：归一化层 FLOPs 占比小但算术强度低，RMSNorm 通过去除均值中心化与 bias 减少参数和访存，能改善 wall-clock 表现。ablation 数据见 [arXiv:2102.11972](https://arxiv.org/abs/2102.11972) Table 1。
 
 ### 3.2.2 前馈网络
 
@@ -867,7 +879,11 @@ CLA 的收益来自减少每层都独立保存 K/V 的开销。代价是相邻�
 
 稀疏 attention 的基本思路是为每个 query 限制可访问的历史位置：局部窗口保留邻近 token 的高分辨率信息，对角线或跨块模式负责把远处信息传回来。这样可以在表达能力和运行效率之间取得平衡。
 
-OpenAI 的 Sparse Transformer（Child et al., 2019, [arXiv:1904.10509](https://arxiv.org/abs/1904.10509)）用 strided / fixed pattern 形式的稀疏 attention 扩展注意力窗口；GPT-3 主体架构仍以密集注意力为主（[Brown et al., 2020, arXiv:2005.14165](https://arxiv.org/abs/2005.14165)），稀疏化是其配套实验而非主结构。滑动窗口注意力是该思想的另一个变体，在每个层级仅关注当前位置的邻近区域。这种方式能有效控制处理长文本所需的总资源量；理论上信息可逐层向外传播，最远距离的上界约为「局部窗口 × 堆叠层数」（实际感受野取决于内容是否被有效聚合）。虽然这些是较早的思路，但现代实现方式有了新的发展。
+OpenAI 的 Sparse Transformer（Child et al., 2019, [arXiv:1904.10509](https://arxiv.org/abs/1904.10509)）用 strided / fixed pattern 形式的稀疏 attention 扩展注意力窗口；GPT-3 主体架构仍以密集注意力为主（[Brown et al., 2020, arXiv:2005.14165](https://arxiv.org/abs/2005.14165)），稀疏化是其配套实验而非主结构。
+
+滑动窗口注意力是该思想的另一个变体，在每个层级仅关注当前位置的邻近区域。这种方式能有效控制处理长文本所需的总资源量；理论上信息可逐层向外传播，最远距离的上界约为「局部窗口 × 堆叠层数」（实际感受野取决于内容是否被有效聚合）。
+
+虽然这些是较早的思路，但现代实现方式有了新的发展。
 
 ![图 3.2-21 sliding-window attention](images/3-2-21-sliding-window-attention.png)
 
@@ -916,7 +932,7 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 *图 3.2-24 DeepSeek-V4 把资源占用和评测结果放在同一张快照里，便于观察注意力压缩是否换来可接受质量*
 
-图 3.2-24 把资源占用与评测结果放在同一张快照里。结合 [`DeepSeek-V4-Pro/config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 的字段（`index_topk` / `compress_ratios` / `index_n_heads` / `index_head_dim` / `sliding_window` 等具体字面值见 §3.2.5.7.3.1 / §3.2.5.7.3.2 与来源记录 (f) tentative 标记），可以按三条线理解这个结构：CSA/DSA/HCA 负责压缩与稀疏选择长历史；滑动窗口分支和局部 RoPE 负责保留近邻上下文与位置关系；单 KV 头、共享 KV 与 grouped output projection 则共同指向更小的 KV cache、更低的 HBM 带宽压力和更可控的长上下文推理成本。
+图 3.2-24 把资源占用与评测结果放在同一张快照里。结合 [`DeepSeek-V4-Pro/config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 的字段（`index_topk` / `compress_ratios` / `index_n_heads` / `index_head_dim` / `sliding_window` 等），可以按三条线理解这个结构：CSA/DSA/HCA 负责压缩与稀疏选择长历史；滑动窗口分支和局部 RoPE 负责保留近邻上下文与位置关系；单 KV 头、共享 KV 与 grouped output projection 则共同指向更小的 KV cache、更低的 HBM 带宽压力和更可控的长上下文推理成本。
 
 ![图 3.2-25 DeepSeek V4 attention](images/3-2-25-deepseek-v4-attention.png)
 
@@ -1238,7 +1254,11 @@ $$
 
 ## 3.5 总结与下章衔接
 
-到这里应能在「训练稳定性 / 表达能力 / 推理成本 / 长上下文能力」四类判断之间拆解任意 dense decoder 配置：默认骨架（Pre-norm + RMSNorm + no bias + SwiGLU + RoPE）解决稳定性与表达效率；KV cache 共享（MQA / GQA / MLA / CLA）解决推理成本；稀疏读取（SWA / DSA / CSA / HCA）与线性时间替代（linear attention / Mamba-2 / Gated DeltaNet）解决长上下文效率；超参数区间（§3.3）与稳定性技巧（§3.4）共同决定这套骨架在给定硬件和训练设置下能否稳定收敛。
+到这里应能在「训练稳定性 / 表达能力 / 推理成本 / 长上下文能力」四类判断之间拆解任意 dense decoder 配置。
+
+按四类判断对应到本章骨架：默认骨架（Pre-norm + RMSNorm + no bias + SwiGLU + RoPE）解决稳定性与表达效率；KV cache 共享（MQA / GQA / MLA / CLA）解决推理成本；稀疏读取（SWA / DSA / CSA / HCA）与线性时间替代（linear attention / Mamba-2 / Gated DeltaNet）解决长上下文效率。
+
+超参数区间（§3.3）与稳定性技巧（§3.4）共同决定这套骨架在给定硬件和训练设置下能否稳定收敛。
 
 把 dense FFN 换成 routed experts 后，同一组 FFN 参数被切成多份，由 router 在每个 token 上挑选 top-k；条件计算与负载均衡的系统视角见[第 4 章 §4.1 分析 MoE](../chapter4/chapter4_混合专家模型.md)。Attention alternatives 的工程实现（FlashAttention、sparse attention）的执行视角在[第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md)展开；PagedAttention 与 serving 调度见[第 9 章 §9.5.2 PagedAttention：把 KV cache 当分页内存管理](../chapter9/chapter9_推理系统.md)；Continuous Batching 的工程取舍见[第 9 章 §9.5.1 Continuous Batching 与 Selective Batching](../chapter9/chapter9_推理系统.md)。
 
@@ -1247,4 +1267,5 @@ $$
 - 课程映射：Lecture 3 提供现代 dense Transformer 默认骨架；Lecture 4 补充 attention alternatives 与 MoE 边界；Lecture 10 支撑 GQA、MLA、CLA 与 KV cache 的推理成本讨论。
 - 相关论文：Transformer、RMSNorm、SwiGLU/GLU、RoPE（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864)）、[GQA](https://arxiv.org/abs/2305.13245)、[MLA / DeepSeek-V2](https://arxiv.org/abs/2405.04434)、CLA（[Brandon et al., arXiv:2405.12981](https://arxiv.org/abs/2405.12981)）、[Sparse Transformer, arXiv:1904.10509](https://arxiv.org/abs/1904.10509)、[Gated DeltaNet](https://arxiv.org/abs/2412.06464)。
 - 架构消融与超参数：[Narang et al., EMNLP 2021](https://arxiv.org/abs/2102.11972)（Table 1 的 step/s 与 final loss）、[Kaplan et al., 2020](https://arxiv.org/abs/2001.08361)（Figure 5 的 FFN ratio / aspect ratio / head dim 扫描）、[PaLM](https://arxiv.org/abs/2204.02311) Table 1 与训练设置、[ST-MoE](https://arxiv.org/abs/2202.08906)（router z-loss 与 Mesh TensorFlow z-loss 的关系）、[OLMo 2](https://arxiv.org/abs/2501.00656) Table 3 的稳定性配方、[Methods of improving LLM training stability, arXiv:2410.16682](https://arxiv.org/abs/2410.16682) Table 4 的困惑度对比、[Bhojanapalli et al., ICML 2020](https://arxiv.org/abs/2002.07028)（Low-Rank Bottleneck in Multi-head Attention Models）。
-- 官方配置：[`mistralai/Mistral-7B-v0.1`](https://huggingface.co/mistralai/Mistral-7B-v0.1)、[`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m)、[`Qwen/Qwen2-7B`](https://huggingface.co/Qwen/Qwen2-7B)、`Gemma2Config` 与 `Gemma4TextConfig`（Hugging Face Transformers main 分支）、[`deepseek-ai/DeepSeek-V2-Chat`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)、[Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/model_doc/deepseek_v4)与 [DeepSeek-V4-Pro 配置](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)。查阅日期：2026-09-06。
+- 官方配置：[`mistralai/Mistral-7B-v0.1`](https://huggingface.co/mistralai/Mistral-7B-v0.1)、[`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m)、[`Qwen/Qwen2-7B`](https://huggingface.co/Qwen/Qwen2-7B)、`Gemma2Config` 与 `Gemma4TextConfig`（Hugging Face Transformers main 分支）、[`deepseek-ai/DeepSeek-V2-Chat`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)、[Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/model_doc/deepseek_v4)与 [DeepSeek-V4-Pro 配置](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)。查阅日期：2026-09-15。
+- DeepSeek-V4-Flash 配置：[`deepseek-ai/DeepSeek-V4-Flash`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/config.json)（`index_topk=512`、`num_hidden_layers=43`、`hidden_size=4096`、`n_routed_experts=256`、`routed_scaling_factor=1.5`、`sliding_window=128`；与 Pro 共用 `index_n_heads=64` / `index_head_dim=128` / `num_experts_per_tok=6`；`compress_ratios` 模式为开头 `0, 0` + 中间 `(4, 128)` 反复 + 末 `0`）。查阅日期：2026-09-15。
