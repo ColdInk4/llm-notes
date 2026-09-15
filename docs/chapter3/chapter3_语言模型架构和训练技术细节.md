@@ -38,7 +38,7 @@ Transformer 模型的起源可以追溯到 2017 年，当时由 Google 研究团
 
 ![图 3.1-1 Transformer 架构](images/3-1-1-transformer.png)
 
-*图 3.1-1 现代 decoder-only block 的整体结构与单 block 内部 attention、FFN、residual、norm 组合，与原始 Transformer (Vaswani et al., 2017) 共享同一族 attention + FFN + residual + norm 骨架*
+*图 3.1-1 现代 decoder-only block 的整体结构，标注 Causal Multi-Head Self-Attention、Absolute Position Embeddings、Add & Dropout、Position-Wise Feed-Forward 等组件；这套 attention + FFN + residual + norm 骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，但差异是单 stack 而非 encoder-decoder 双 stack*
 
 图 3.1-1 给出现代 decoder-only block 的标准骨架：左侧是输入到输出的纵向流（Token Embedding + Absolute Position Embeddings 相加 → Add & Dropout → N 个 Transformer Block → Norm → Linear → Softmax），右侧把单个 block 展开为 Causal Multi-Head Self-Attention、Add、Dropout、Position-Wise Feed-Forward、Norm 五个组件的串联加两条 residual。这套”attention + FFN + residual + norm”骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，但差异有三：(1) 注意力改为 Causal Multi-Head Self-Attention（mask 掉未来位置），不再保留原始 encoder-decoder 之间的 cross-attention；(2) block 内 norm 位置从 Post-LN (Vaswani et al., 2017 §5.4) 改为 Pre-LN，成为后续 decoder-only LLM 的默认；(3) 位置编码方案与具体激活函数与原始 Transformer 不同，这些差异在 §3.2 集中讨论。
 
@@ -451,7 +451,7 @@ RMSNorm 的 systems intuition 是：归一化层 FLOPs 占比很小，但 arithm
 > [!NOTE]
 > **Pre-norm 的例外**：在现代 dense Transformer 中，pre-norm 几乎是默认选择，OPT-350M（[arXiv:2205.01068](https://arxiv.org/abs/2205.01068)）是仍保留 post-layer-norm 的代表案例。HF [`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m) 的 config 里 `do_layer_norm_before: false` 直接对应这一点，同一份 config 还写着 `activation_function: "relu"`、`hidden_size: 1024` 与 `word_embed_proj_dim: 512`——同一代模型内部的 norm 顺序、激活和 embedding 投影都可能不统一，读配置时按每个 checkpoint 的字段确认。
 
-Narang 等人（EMNLP 2021，[arXiv:2102.11972](https://arxiv.org/abs/2102.11972)）的消融在 Table 1 给出具体数字：同为 223M 参数、11.1T ops 的设置下，Vanilla Transformer（pre-norm + LayerNorm + shared biases + relative attention）每秒 3.50 步、final loss 1.838；将 LayerNorm 替换为 RMSNorm 后每秒 3.68 步、final loss 1.821。两组对照除归一化方式外保持一致，因此 RMSNorm 的收益主要来自实现层的算术强度和数据移动改善，而不是表达能力本身。
+Narang 等人（EMNLP 2021，[arXiv:2102.11972](https://arxiv.org/abs/2102.11972)）的消融在 Table 1 给出具体数字：同为 223M 参数、11.1T ops 的设置下，Vanilla Transformer（pre-norm + LayerNorm + shared biases + relative attention——这里的 Vanilla 指 Narang 复现的 T5-style 基线，并非 Vaswani 2017 原始论文中的配置）每秒 3.50 步、final loss 1.838；将 LayerNorm 替换为 RMSNorm 后每秒 3.68 步、final loss 1.821。两组对照除归一化方式外保持一致，因此 RMSNorm 的收益主要来自实现层的算术强度和数据移动改善，而不是表达能力本身。
 
 ![图 3.2-6 RMSNorm 实验](images/3-2-6-rmsnorm-experiment.png)
 
@@ -563,7 +563,7 @@ $$
 
 其中 $\text{Swish}(x) = x \cdot \sigma(\beta x)$ ，其形状与高斯误差单元相似，通常 $\beta=1$ ， $\sigma(x) = \frac{1}{1 + e^{-x}}$ 。
 
-SwiGLU 使用 Swish 作为门控非线性，是 LLaMA、PaLM、OLMo 等许多现代 decoder-only 模型中的常见选择。它通常比普通 GeLU FFN 更强，但因为有两条上投影分支，也会带来额外计算和参数预算。
+SwiGLU 使用 Swish（HF 配置里写为 `hidden_act: "silu"`，SiLU 与 Swish 在 $\beta=1$ 时等价）作为门控非线性，是 LLaMA、PaLM、Mistral、OLMo 等许多现代 decoder-only 模型中的常见选择。它通常比普通 GeLU FFN 更强，但因为有两条上投影分支，也会带来额外计算和参数预算；Mistral-7B v0.1 的 `config.json` 在字段上只暴露 `hidden_act: "silu"`，门控结构由 `MistralForCausalLM` 实现硬编码为 `down_proj(act(gate_proj(x)) * up_proj(x))`。
 
 **门控 FFN 的实验信号**
 
@@ -733,7 +733,7 @@ $$
 \theta_i = 10000^{-2i/d}
 $$
 
-其中， $i$ 是维度索引（从 0 开始）， $d$ 是嵌入向量的总维度。这一形式继承自 Vaswani 2017 的 long-term decay 表达（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864) §3.3）；RoFormer 论文 §3.2.2 在形式定义上同时使用 one-indexed 写法 $10000^{-2(i-1)/d}$，两种 indexing 对 $d/2$ 个频率值给出的角频率集合完全一致，仅 $i$ 起点差 1。
+其中， $i$ 是维度索引（从 0 开始）， $d$ 是嵌入向量的总维度。这一形式继承自 Vaswani 2017 的 long-term decay 表达（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864) §3.3）；RoFormer §3.3 文本写作 one-indexed 形式 $\theta_i = 10000^{-2i/d}$（$i \in [1, d/2]$），同节旋转矩阵公式取 $10000^{-2(i-1)/d}$（同范围），正文采用 zero-indexed 形式 $10000^{-2i/d}$（$i \in [0, d/2-1]$），与 §3.3 矩阵版本等价，仅 $i$ 起点差 1。
 
 这种高维嵌入方法的关键是：每两个维度组成一对二维子空间，并按对应频率旋转。不同维度对拥有不同旋转速度，因此可以同时编码高频近距离信息和低频远距离信息。
 
@@ -831,7 +831,7 @@ $$
 
 MLA 在 attention 路径中增加了投影或重构计算。KV cache 和 HBM bandwidth 已成为瓶颈时，这些额外计算可以换取更低的显存占用和读取量。
 
-RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_k^R$ ，其中 $d_c$ 是 shared KV latent 的维度、$d_k^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_k^R = d_k / 2$ 即每个 head dim 的一半用于位置编码）。
+RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_k^R$ ，其中 $d_c$ 是 shared KV latent 的维度、$d_k^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_k^R = 64$，约为 $d_k / 3$——$d_k = qk\_nope\_head\_dim + qk\_rope\_head\_dim = 128 + 64 = 192$，其中 $64/192$ 用于位置编码；具体字段见 [`deepseek-ai/DeepSeek-V2-Chat` 的 `config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)）。
 
 ![图 3.2-19 MLA 实验](images/3-2-19-mla-experiment.png)
 
@@ -847,7 +847,7 @@ MLA 和 MHA 在困难基准上的比较显示，DeepSeek-V2 在显著减少 KV c
 
 ### 3.2.5.6 CLA 跨层共享 KV
 
-CLA（Cross-Layer Attention）的思路可以类比 GQA：GQA 在注意力头之间共享 K/V，CLA 则在层之间共享一部分 K/V。这样做的直接目标仍然是减少 KV cache，改善推理 latency/throughput 的帕累托边界。它不改变“根据 Q 读取历史 K/V”的基本形式，但改变了缓存的组织方式。
+CLA（Cross-Layer Attention）的思路可以类比 GQA：GQA 在注意力头之间共享 K/V，CLA 则在层之间共享一部分 K/V。这样做的直接目标仍然是减少 KV cache，改善推理 latency/throughput 的帕累托边界。它不改变"根据 Q 读取历史 K/V"的基本形式，但改变了缓存的组织方式。Brandon 等人（*Reducing Transformer Key-Value Cache Size with Cross-Layer Attention*, [arXiv:2405.12981](https://arxiv.org/abs/2405.12981), 2024-05；MIT CSAIL & MIT-IBM Watson AI Lab）的报告显示 CLA 在 LLaMA2-7B / 70B 上分别取得约 2× / 2.4× 的 KV cache 压缩，并保持困惑度不退化。
 
 ![图 3.2-21 CLA 结构示意](images/3-2-21-cla-diagram.png)
 
@@ -867,7 +867,7 @@ CLA 的收益来自减少每层都独立保存 K/V 的开销。代价是相邻�
 
 稀疏 attention 的基本思路是为每个 query 限制可访问的历史位置：局部窗口保留邻近 token 的高分辨率信息，对角线或跨块模式负责把远处信息传回来。这样可以在表达能力和运行效率之间取得平衡。
 
-GPT-3 最初发布时就采用了这类技巧来实现更大的注意力窗口。滑动窗口注意力是该思想的另一个变体，在每个层级仅关注当前位置的邻近区域。这种方式能有效控制处理长文本所需的总资源量；理论上信息可逐层向外传播，最远距离的上界约为「局部窗口 × 堆叠层数」（实际感受野取决于内容是否被有效聚合）。虽然这些是较早的思路，但现代实现方式有了新的发展。
+OpenAI 的 Sparse Transformer（Child et al., 2019, [arXiv:1904.10509](https://arxiv.org/abs/1904.10509)）用 strided / fixed pattern 形式的稀疏 attention 扩展注意力窗口；GPT-3 主体架构仍以密集注意力为主（[Brown et al., 2020, arXiv:2005.14165](https://arxiv.org/abs/2005.14165)），稀疏化是其配套实验而非主结构。滑动窗口注意力是该思想的另一个变体，在每个层级仅关注当前位置的邻近区域。这种方式能有效控制处理长文本所需的总资源量；理论上信息可逐层向外传播，最远距离的上界约为「局部窗口 × 堆叠层数」（实际感受野取决于内容是否被有效聚合）。虽然这些是较早的思路，但现代实现方式有了新的发展。
 
 ![图 3.2-16 sliding-window attention](images/3-2-16-sliding-window-attention.png)
 
@@ -942,7 +942,7 @@ CSA 使用可学习的加权压缩机制：模型会为每个 token 计算压缩
 
 压缩后，如果对所有块做密集注意力，复杂度依然是平方级的。CSA 接着用稀疏注意力只挑选最相关的块。
 
-先使用**闪电索引器**快速计算当前查询 token 与所有压缩后 KV 块的相关性分数。根据索引分数，只为当前查询 token 保留分数最高的 $k$ 个压缩 KV 块。若序列长度记为 $S$ ，核心注意力的计算量从 $O(S)$ 降为 $O(k)$ ，与序列长度解耦。在 V4 中，Flash 的 **k=512**，Pro 的 **k=1024**；Pro 的这个数字就写在 `DeepSeek-V4-Pro/config.json` 的 `index_topk: 1024` 里，配套的闪电索引器规格是 `index_n_heads: 64`、`index_head_dim: 128`。它和 MoE routing 的 top-k 是两个独立旋钮：同一份 config 中 MoE 侧写的是 `num_experts_per_tok: 6`、`n_routed_experts: 384`，`index_topk` 控制稀疏注意力挑多少个压缩 KV 块，`num_experts_per_tok` 控制每个 token 激活多少个专家。
+先使用**闪电索引器**快速计算当前查询 token 与所有压缩后 KV 块的相关性分数。根据索引分数，只为当前查询 token 保留分数最高的 $k$ 个压缩 KV 块。若原序列长度记为 $S$ 、压缩比记为 $m$（每 $m$ 个 token 合成一个压缩块），块级密集注意力的复杂度为 $O((S/m)^2)$；稀疏选择 top-$k$ 块后进一步降为 $O(k)$，与原始序列长度 $S$ 解耦，但实际 wall-clock 还需计入闪电索引器自身的开销。在 V4 中，Flash 的 **k=512**，Pro 的 **k=1024**；Pro 的这个数字就写在 `DeepSeek-V4-Pro/config.json` 的 `index_topk: 1024` 里，配套的闪电索引器规格是 `index_n_heads: 64`、`index_head_dim: 128`。它和 MoE routing 的 top-k 是两个独立旋钮：同一份 config 中 MoE 侧写的是 `num_experts_per_tok: 6`、`n_routed_experts: 384`，`index_topk` 控制稀疏注意力挑多少个压缩 KV 块，`num_experts_per_tok` 控制每个 token 激活多少个专家。
 
 
 CSA 层执行流程可以概括为：先对 KV cache 做可学习的加权压缩，再利用闪电索引器低成本选出最相关的 top-k 块，最终核心 attention 只在稀疏选择的块上进行计算。
@@ -981,7 +981,7 @@ $$
 S_t = \gamma_t S_{t-1} + k_t v_t^\top,\quad y_t = q_t^\top S_t + v_t^\top D
 $$
 
-其中 $\gamma_t=f(x_t)$ 控制旧状态保留程度。这样做的目标是保留线性时间推理的优势，同时通过 gating 提升表达能力。
+其中 $\gamma_t=f(x_t)$ 控制旧状态保留程度。这样做的目标是保留线性时间推理的优势，同时通过 gating 提升表达能力。此处沿 fla 库 / chip code 写法取 $S_t \in \mathbb{R}^{d_k \times d_v}$，于是 $k_t v_t^\top$ 形状为 $d_k \times d_v$，与 $S_t$ 同形；论文 §2 与 Algorithm 1 取转置约定 $S_t \in \mathbb{R}^{d_v \times d_k}$，写成 $S_t = \gamma_t S_{t-1} + v_t k_t^\top,\ y_t = S_t q_t + D \odot x$。两种写法互为转置，逐元素含义一致。
 
 实践中的落地形态是 hybrid attention：一部分层使用线性/状态空间类模块，一部分层保留 full attention，以折中长上下文效率和复杂推理质量。MiniMax-01（[arXiv:2501.08313](https://arxiv.org/abs/2501.08313)）用 lightning attention + softmax attention + MoE 的 7:1 组合（线性注意力层数: softmax attention 层数 = 7:1）；Nemotron-H（[arXiv:2504.03624](https://arxiv.org/abs/2504.03624)）把 self-attention 层压到总层数的约 8%（8B 版 52 层里 4 层 attention，56B 版 118 层里 10 层），其余层由 Mamba-2 与 FFN 各占一半交替排布；Qwen3-Next（[Qwen3-Next blog](https://qwen.ai/blog?id=qwen3-next)）用 Gated DeltaNet + full attention 的 3:1 组合。
 
@@ -1031,7 +1031,7 @@ $$
 d_{\text{ff}} = \frac{2}{3} \cdot 4 d_{\text{model}} = \frac{8}{3} d_{\text{model}} \approx 2.66 d_{\text{model}}
 $$
 
-观察现有模型会发现，许多都遵循这个经验法则，**$8/3 \approx 2.66$**。下一张图（图 3.3-1）会展开 $d_{\text{ff}}$ 与 $d_{\text{model}}$ 的实际分布。
+观察现有模型会发现，许多都遵循这个经验法则，**$8/3 \approx 2.66$**。图 3.3-1 在横轴上把不同模型族并排，纵轴给出 $d_{\text{ff}}/d_{\text{model}}$ 的实测值，标注 GLU 经验值 $8/3$ 与非 GLU 经验值 $4$ 的位置。
 
 ![图 3.3-1 d_ff&d_model](images/3-3-1-ffn-model-dim-ratio.png)
 
@@ -1063,7 +1063,7 @@ $$
 \frac{\text{NumHeads} \cdot \text{HeadDim}}{\text{ModelDim}} \approx 1
 $$
 
-T5 和 LaMDA 是明显例外，T5 把这个比例推到 16。PaLM 540B 也不在 1 附近：论文 Table 1 给出 118 层、48 个头、$d_{\text{model}}=18432$，并注明 attention head size 恒为 256，因此 $48 \times 256 / 18432 \approx 0.67$。除这类特殊设计外，1:1 仍是更常见的起点。
+T5 和 LaMDA 是明显例外，T5 把这个比例推到 16。PaLM 540B 也不在 1 附近：论文 Table 1 给出 118 层、48 个头、$d_{\text{model}}=18432$，并注明 attention head size 恒为 256，因此 $48 \times 256 / 18432 \approx 0.67$。这里 $48 \times 256 = 12288 < d_{\text{model}}=18432$，PaLM 把 $d_{\text{model}}$ 用作比 $h \times d_k$ 更宽的 residual stream，head 输出按并行多头相加而非 concat 聚合。除这类特殊设计外，1:1 仍是更常见的起点。
 
 ![图 3.3-3 attention head ratio](images/3-3-3-head-dim-ratio.png)
 
@@ -1241,6 +1241,7 @@ $$
 ## 来源与更新记录
 
 - 课程映射：Lecture 3 提供现代 dense Transformer 默认骨架；Lecture 4 补充 attention alternatives 与 MoE 边界；Lecture 10 支撑 GQA、MLA、CLA 与 KV cache 的推理成本讨论。
-- 相关论文：Transformer、RMSNorm、SwiGLU/GLU、RoPE（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864)）、[GQA](https://arxiv.org/abs/2305.13245)、[MLA / DeepSeek-V2](https://arxiv.org/abs/2405.04434)、CLA、[Gated DeltaNet](https://arxiv.org/abs/2412.06464)。
+- 相关论文：Transformer、RMSNorm、SwiGLU/GLU、RoPE（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864)）、[GQA](https://arxiv.org/abs/2305.13245)、[MLA / DeepSeek-V2](https://arxiv.org/abs/2405.04434)、CLA（[Brandon et al., arXiv:2405.12981](https://arxiv.org/abs/2405.12981)）、[Sparse Transformer, arXiv:1904.10509](https://arxiv.org/abs/1904.10509)、[Gated DeltaNet](https://arxiv.org/abs/2412.06464)。
 - 架构消融与超参数：[Narang et al., EMNLP 2021](https://arxiv.org/abs/2102.11972)（Table 1 的 step/s 与 final loss）、[Kaplan et al., 2020](https://arxiv.org/abs/2001.08361)（Figure 5 的 FFN ratio / aspect ratio / head dim 扫描）、[PaLM](https://arxiv.org/abs/2204.02311) Table 1 与训练设置、[ST-MoE](https://arxiv.org/abs/2202.08906)（router z-loss 与 Mesh TensorFlow z-loss 的关系）、[OLMo 2](https://arxiv.org/abs/2501.00656) Table 3 的稳定性配方、[Methods of improving LLM training stability, arXiv:2410.16682](https://arxiv.org/abs/2410.16682) Table 4 的困惑度对比、[Bhojanapalli et al., ICML 2020](https://arxiv.org/abs/2002.07028)（Low-Rank Bottleneck in Multi-head Attention Models）。
-- 官方配置：[`mistralai/Mistral-7B-v0.1`](https://huggingface.co/mistralai/Mistral-7B-v0.1)、[`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m)、[`Qwen/Qwen2-7B`](https://huggingface.co/Qwen/Qwen2-7B)、`Gemma2Config` 与 `Gemma4TextConfig`（Hugging Face Transformers main 分支）、[Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/model_doc/deepseek_v4)与 [DeepSeek-V4-Pro 配置](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)。查阅日期：2026-09-06。
+- 官方配置：[`mistralai/Mistral-7B-v0.1`](https://huggingface.co/mistralai/Mistral-7B-v0.1)、[`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m)、[`Qwen/Qwen2-7B`](https://huggingface.co/Qwen/Qwen2-7B)、`Gemma2Config` 与 `Gemma4TextConfig`（Hugging Face Transformers main 分支）、[`deepseek-ai/DeepSeek-V2-Chat`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)、[Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/model_doc/deepseek_v4)与 [DeepSeek-V4-Pro 配置](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)。查阅日期：2026-09-06。
+- 不确定项：(a) DeepSeek-LLM-67B-base（`hidden_size=8192`、`intermediate_size=22016`）与 Yi-34B（`hidden_size=7168`、`intermediate_size=20480`）的 `hidden_size` 实际不同，并非「共享同一组维度」——两条都在 2.66–2.86 区间但具体值不同，读配置时按各 checkpoint 字段确认（已按 commit 74b1c15 修正）；(b) PaLM 540B `48 × 256 = 12288 < d_model=18432` 的解释已在 §3.3.2 内文展开（head 输出按并行相加而非 concat 聚合），未在 Table 1 caption 里显式写出；(c) Mistral-7B v0.1 的 `config.json` 字段名为 `hidden_act: "silu"`，门控结构由 `MistralForCausalLM` 实现硬编码，`activation_function` 字段在该 config 中不存在；(d) Narang 2021 Table 1 的 "Vanilla Transformer" 指其复现的 pre-norm + LayerNorm + shared biases + relative attention 基线，并非 Vaswani 2017 原始论文配置——口径差异已在 §3.2.1 内文加注。
