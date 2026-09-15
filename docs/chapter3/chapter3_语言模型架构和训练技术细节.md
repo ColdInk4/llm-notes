@@ -577,7 +577,7 @@ Shazeer 的 GLU 变体实验（*GLU Variants Improve Transformer*, [arXiv:2002.0
 
 *图 3.2-10 Narang 等人的消融提供了门控激活收益的另一组证据，也显示效果需要结合模型和训练设置理解*
 
-门控 FFN 也不是唯一可行的选择。GPT-3 使用 GeLU，Nemotron 340B 使用 squared ReLU，Falcon 系列（含 180B）沿用 GeLU：[Falcon 技术报告](https://arxiv.org/abs/2311.16867) §4.3.3 明确写了不采用 SwiGLU，理由是门控会让中间激活翻倍，`FalconConfig` 的 `activation` 默认值也仍是 `"gelu"`。更稳妥的结论是：SwiGLU/GeGLU 是当前很强的默认选择，但最终仍要由模型规模、训练设置、硬件 kernel 和消融实验共同决定。
+非门控路径仍有代表：GPT-3 使用 GeLU，Nemotron 340B 使用 squared ReLU，Falcon 系列（含 180B）沿用 GeLU。[Falcon 技术报告](https://arxiv.org/abs/2311.16867) §4.3.3 明确写了不采用 SwiGLU，理由是门控会让中间激活翻倍，`FalconConfig` 的 `activation` 默认值也仍是 `"gelu"`。结合上一段的实验结果可以给出更稳妥的判断：SwiGLU/GeGLU 是当前很强的默认选择，但最终仍要由模型规模、训练设置、硬件 kernel 和消融实验共同决定。
 
 使用 SwiGLU/GeGLU 时还要重新核算 FFN 的隐藏维度。门控 FFN 通常有两条上投影分支，如果仍然沿用原始 Transformer 中 `4d` 的扩展比例，参数量和 FLOPs 会明显增加；许多实现会把中间维度调低，让门控结构带来的表达收益和计算预算重新平衡。
 
@@ -779,7 +779,7 @@ MQA 把压缩推到极限，代价是所有 query head 只能读同一份 K/V �
 
 ### 3.2.5.4 GQA 分组查询注意力
 
-GQA（grouped-query attention）在 MHA 和 MQA 之间折中：多个 query heads 共享一组 K/V heads。K/V groups 的数量决定 generation 阶段的 cache 体积和 HBM 读取量；groups 更多时，表示自由度也更接近 MHA。
+GQA（grouped-query attention）在 MHA 和 MQA 之间折中：多个 query heads 共享一组 K/V heads。K/V groups 的数量决定 generation 阶段的 cache 体积和 HBM 读取量；groups 更多时，表示自由度也更接近 MHA。压缩谱系的两端是固定的：K/V groups = 1 退化到 MQA（cache 最省但所有 query head 共享同一份 K/V 表示），K/V groups = num_attention_heads 退化到 MHA（表达自由度最高但 cache 体积不变）。两个端点之间的中间区域，正是 GQA 在不同模型中扫描的位置。
 
 图 3.2-14 把这个 tradeoff 放到推理系统里：K/V groups 越少，cache 越省；groups 过少时，质量或表达能力可能受到影响。
 
@@ -916,7 +916,7 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 *图 3.2-24 DeepSeek-V4 把资源占用和评测结果放在同一张快照里，便于观察注意力压缩是否换来可接受质量*
 
-图 3.2-24 把资源占用与评测结果放在同一张快照里。结合公开配置和 DeepSeek V4 attention 结构，可以按三条线理解这个结构：CSA/DSA/HCA 负责压缩与稀疏选择长历史；滑动窗口分支和局部 RoPE 负责保留近邻上下文与位置关系；单 KV 头、共享 KV 与 grouped output projection 则共同指向更小的 KV cache、更低的 HBM 带宽压力和更可控的长上下文推理成本。
+图 3.2-24 把资源占用与评测结果放在同一张快照里。结合 [`DeepSeek-V4-Pro/config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 的字段（`index_topk` / `compress_ratios` / `index_n_heads` / `index_head_dim` / `sliding_window` 等具体字面值见 §3.2.5.7.3.1 / §3.2.5.7.3.2 与来源记录 (f) tentative 标记），可以按三条线理解这个结构：CSA/DSA/HCA 负责压缩与稀疏选择长历史；滑动窗口分支和局部 RoPE 负责保留近邻上下文与位置关系；单 KV 头、共享 KV 与 grouped output projection 则共同指向更小的 KV cache、更低的 HBM 带宽压力和更可控的长上下文推理成本。
 
 ![图 3.2-25 DeepSeek V4 attention](images/3-2-25-deepseek-v4-attention.png)
 
