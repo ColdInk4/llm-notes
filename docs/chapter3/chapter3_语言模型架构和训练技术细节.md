@@ -420,7 +420,7 @@ $$
 
 采用预归一化配合其他稳定化技巧后，即使不使用**预热机制**，系统表现也能媲美甚至**优于**需要精细预热方案的**后归一化 LayerNorm**。左图展示了英语-越南语机器翻译（Salazar & Nguyen 2019）下的 Dev BLEU 收敛轨迹；右上是 Xiong 2020 在 IWSLT 机器翻译任务上的验证损失与 BLEU 曲线（同一任务的 Adam 优化器 × 预热对比）；右下是 BERT 在预训练步数上的验证损失对比，是当前图片中唯一跳出机器翻译场景的实验。
 
-关于预归一化的优势存在**多种解释**：有研究认为它能避免层间**梯度衰减**，保持**梯度规模恒定**；而未使用预热的后归一化会导致**梯度爆炸**（橙色曲线）。这些论点都很有说服力。但更符合现代认知的解释可能是预归一化本身就是**更稳定的训练架构**。
+关于预归一化的优势存在**多种解释**：有研究认为它能避免层间**梯度衰减**，保持**梯度规模恒定**；而未使用预热的后归一化会导致**梯度爆炸**（橙色曲线）。综合这些论点，预归一化本身被普遍接受为更稳定的训练架构选择——它通过把 LayerNorm 移到子层输入前来避免 LayerNorm 的可学习缩放叠加进 residual stream，从而保持 residual stream 的恒等通路。
 
 如今，**预归一化和其他 LayerNorm 技巧被广泛用作训练大型神经网络时的稳定性辅助手段**。
 
@@ -461,7 +461,7 @@ RMSNorm 运行时的收益已经能在论文中观察到；更重要的可迁移
 
 **Post-norm 的训练稳定性问题**
 
-直观解释是残差连接使得网络从**底层到顶层**始终保留一条与原始输入等价的直通路径（residual stream），而反向传播时梯度可经这条路径**从顶层到底层**直接回传。这对训练极深网络时的**梯度传播**非常有利：LSTM 这类循环网络需要沿时间步反复乘以同一组权重，梯度在长序列上容易衰减或爆炸；残差连接提供的恒等通路直接绕开了这个问题。在中间插入 LayerNorm 会把 LayerNorm 的可学习缩放叠加进 residual stream，因此 Pre-norm 把 LayerNorm 移到子层输入前，让 residual stream 保持「纯」恒等。这一点正好与之前展示的梯度尖峰现象吻合。虽然 LayerNorm 效果良好，**但如今许多模型已转向使用 RMSNorm，这已成为共识性改进**。
+直观解释是残差连接使得网络从**底层到顶层**始终保留一条与原始输入等价的直通路径（residual stream），而反向传播时梯度可经这条路径**从顶层到底层**直接回传。这对训练极深网络时的**梯度传播**非常有利：LSTM 这类循环网络需要沿时间步反复乘以同一组权重，梯度在长序列上容易衰减或爆炸；残差连接提供的恒等通路直接绕开了这个问题。在中间插入 LayerNorm 会把 LayerNorm 的可学习缩放叠加进 residual stream，因此 Pre-norm 把 LayerNorm 移到子层输入前，让 residual stream 保持「纯」恒等。这一点正好与之前展示的梯度尖峰现象吻合。虽然 LayerNorm 效果良好，许多现代模型改用 RMSNorm——这一选择属于算术强度 / 数据移动公理下的工程推论（lecture_03 引用 Ivanov et al 2023「Matrix multiplies are the vast majority of FLOPs (and memory)」：归一化层 FLOPs 占比小但算术强度低，RMSNorm 通过去除均值中心化与 bias 减少参数和访存，能改善 wall-clock 表现），ablation 数据见 [arXiv:2102.11972](https://arxiv.org/abs/2102.11972) Table 1。
 
 ### 3.2.2 前馈网络
 
@@ -485,7 +485,7 @@ FFN 去除偏置项 b 的理由几乎和 RMSNorm 一致，去除偏置项的想�
 
 标准 Transformer block 通常是 **serial layers**：先做 attention，再做 MLP，中间各自经过 norm 和 residual。这种顺序结构更容易实现，也更符合今天多数 LLaMA-like 模型的默认配置。
 
-也有一些模型采用 **parallel layers**，把 attention 分支和 MLP 分支并行作用在同一个归一化后的输入上，最后一起加回 residual stream。GPT-J、PaLM、GPT-NeoX 等模型都尝试过这种设计。它的好处是减少串行依赖，理论上利于并行调度；代价是不同分支的交互时机被改变，训练稳定性和可迁移经验不如 serial block 普遍。
+也有一些模型采用 **parallel layers**，把 attention 分支和 MLP 分支并行作用在同一个归一化后的输入上，最后一起加回 residual stream。GPT-J、PaLM、GPT-NeoX 是较早采用这一设计的代表；Cohere Command A、Falcon 2 11B、Command R+ 等较新模型也沿用 parallel block。它的好处是减少串行依赖，理论上利于并行调度；代价是不同分支的交互时机被改变，训练稳定性和可迁移经验不如 serial block 普遍。
 
 当前实践里，serial block 仍是更稳妥的默认选择。parallel block 可以作为系统调度或架构实验选项，但不应仅因为“并行”两个字就假设它一定更快或更好；最终效果取决于 kernel 调度、通信、norm 位置和学习率设置。
 
@@ -663,7 +663,7 @@ R(\theta)=\begin{bmatrix}
 \end{bmatrix}
 $$
 
-将一个矩阵旋转 $\theta$ 度可以等价为乘以一个旋转矩阵。
+在二维空间中，对一个向量施加 $\theta$ 度的旋转，等价于将该向量乘以旋转矩阵 $R(\theta)$。
 
 $$
 R({\theta}) \cdot \boldsymbol{v} = \begin{pmatrix}
@@ -707,7 +707,7 @@ Q_1 \cdot K_1^T &= R(m) \cdot R(n)^T \cdot QK^T\\
 \end{aligned}
 $$
 
-我们为不同位置的 token 都乘以不同角度的旋转矩阵在计算注意力的时候就会出现 $R(m-n)$ ，这就代表两个 **token 的相对位置信息**。
+我们为不同位置的 token 都乘以不同角度的旋转矩阵；在计算注意力时就会出现 $R(m-n)$，这正是两个 token 的相对位置信息。
 
 高维 RoPE 的实现方式是把向量按相邻维度拆成多个二维子块，并在每个二维子空间内用不同频率独立旋转。这样内积中自然出现相对位置 $m-n$ ，同时保持实现简单。
 
@@ -1039,7 +1039,11 @@ $$
 
 以 PaLM 为例，它虽然是 SwiGLU 模型，但把 $d_{\text{ff}}$ 直接设为 $4d_{\text{model}}$，没有做 2/3 缩放。LLaMA-2 70B 与 Mistral-7B v0.1 落在 3.5 倍附近：LLaMA-2 70B 的 `hidden_size = 8192`、`intermediate_size = 28672`，Mistral-7B v0.1 的 `hidden_size = 4096`、`intermediate_size = 14336`，两者都是 $d_{\text{ff}}/d_{\text{model}} = 3.5$。两个模型都用 GQA（`num_key_value_heads = 8`），共享 KV 省下的预算被重新分配给 MLP，于是在 $8/3$ 的基础上再乘约 1.33。
 
-LLaMA-2 7B/13B 仍用 MHA（`num_key_value_heads = num_attention_heads`），FFN expansion 沿用 $8/3$ 左右而没有 GQA 下的 1.33 倍放大。LLaMA-1 7B 的 `hidden_size = 4096`、`intermediate_size = 11008`，$d_{\text{ff}}/d_{\text{model}} \approx 2.687$；DeepSeek-LLM-67B-base（[`deepseek-ai/deepseek-llm-67b-base`](https://huggingface.co/deepseek-ai/deepseek-llm-67b-base) 的 `config.json`：`hidden_size = 8192`、`intermediate_size = 22016`、`hidden_act: silu` 即 SwiGLU、`num_key_value_heads = 8` 即 GQA、$d_{\text{ff}}/d_{\text{model}} \approx 2.687$）与 Yi-34B（`hidden_size = 7168`、`intermediate_size = 20480`、SwiGLU，$d_{\text{ff}}/d_{\text{model}} \approx 2.857$）采用不同的 `hidden_size`，并非「共享同一组维度」。两者都落在 $2.66\text{–}2.86$ 区间但具体值不同，读配置时按各 checkpoint 字段确认。Qwen 系列在不同代际之间来回摆动而非单调收敛：原版 Qwen-14B（`hidden_size = 5120`、`intermediate_size = 27392`，`hidden_act: silu`，实际为 SwiGLU）$d_{\text{ff}}/d_{\text{model}} \approx 5.35$，Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`，SwiGLU）回到约 $2.675$，Qwen2-7B（`hidden_size = 3584`、`intermediate_size = 18944`，SwiGLU）再次跳到约 $5.29$，明显偏离 $8/3$。原版 Qwen-14B 没有沿用 GLU 的 2/3 缩放，反而把 expansion 推到约 5 倍；Qwen1.5 才把这条经验值拉回 8/3 附近；Qwen2 又回到高 expansion 区段。整体看，Qwen 系列并非单调逼近 $8/3$，而是按代际目标在不同取值之间反复调整，读配置时需要按代核对。
+保持 MHA 的模型仍按 $8/3$ 经验值落地。LLaMA-2 7B/13B 用 MHA（`num_key_value_heads = num_attention_heads`），FFN expansion 沿用 $8/3$ 左右而没有 GQA 下的 1.33 倍放大；LLaMA-1 7B 的 `hidden_size = 4096`、`intermediate_size = 11008`，$d_{\text{ff}}/d_{\text{model}} \approx 2.687$。
+
+GQA 模型则分布在 $2.66\text{–}2.86$ 区间。DeepSeek-LLM-67B-base（[`deepseek-ai/deepseek-llm-67b-base`](https://huggingface.co/deepseek-ai/deepseek-llm-67b-base) 的 `config.json`：`hidden_size = 8192`、`intermediate_size = 22016`、`hidden_act: silu` 即 SwiGLU、`num_key_value_heads = 8` 即 GQA、$d_{\text{ff}}/d_{\text{model}} \approx 2.687$）与 Yi-34B（`hidden_size = 7168`、`intermediate_size = 20480`、SwiGLU，$d_{\text{ff}}/d_{\text{model}} \approx 2.857$）采用不同的 `hidden_size`，并非「共享同一组维度」。两者都落在 $2.66\text{–}2.86$ 区间但具体值不同，读配置时按各 checkpoint 字段确认。
+
+Qwen 系列在不同代际之间来回摆动而非单调收敛。原版 Qwen-14B（`hidden_size = 5120`、`intermediate_size = 27392`，`hidden_act: silu`，实际为 SwiGLU）$d_{\text{ff}}/d_{\text{model}} \approx 5.35$，Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`，SwiGLU）回到约 $2.675$，Qwen2-7B（`hidden_size = 3584`、`intermediate_size = 18944`，SwiGLU）再次跳到约 $5.29$，明显偏离 $8/3$。原版 Qwen-14B 没有沿用 GLU 的 2/3 缩放，反而把 expansion 推到约 5 倍；Qwen1.5 才把这条经验值拉回 8/3 附近；Qwen2 又回到高 expansion 区段。整体看，Qwen 系列并非单调逼近 $8/3$，而是按代际目标在不同取值之间反复调整，读配置时需要按代核对。
 
 **例外二：T5 模型**
 
@@ -1057,7 +1061,7 @@ Kaplan scaling law 论文里也包含有用的超参数研究：他们考察了 
 
 ### 3.3.2 注意力头和模型维度的比例
 
-另一个超参数共识是模型维度与头维度乘以头数量的比例。标准做法是保持每个头的维度固定而增加头数量，也可以选择保持单头维度不变来增加注意力部分的参数量，但大多数模型都遵循前一种方案。GPT-3 175B（96 heads × 128 head dim / 12288）和 LLaMA-2 70B（64 × 128 / 8192）的比例都正好是 1（这是经验观察 + Bhojanapalli 2020 低秩瓶颈分析部分理论支撑，非公理推导）：
+另一个超参数共识是模型维度与头维度乘以头数量的比例。标准做法是保持每个头的维度固定而增加头数量，也可以选择保持单头维度不变来增加注意力部分的参数量，但大多数模型都遵循前一种方案。GPT-3 175B（96 heads × 128 head dim / 12288）和 LLaMA-2 70B（64 × 128 / 8192）在 MHA 假设下的「num_heads × head_dim / d_model」比例都正好是 1；后者实际是 GQA（`num_key_value_heads = 8`），其 K/V 投影维度只有 8 × 128 = 1024，比 MHA 假设下的 64 × 128 小 8 倍（这是经验观察 + Bhojanapalli 2020 低秩瓶颈分析部分理论支撑，非公理推导）：
 
 $$
 \frac{\text{NumHeads} \cdot \text{HeadDim}}{\text{ModelDim}} \approx 1
@@ -1194,7 +1198,7 @@ $$
 
 在进行 **softmax** 点积运算之前，先让**查询向量和键向量通过归一化层**。这是另一种控制 softmax 行为的思路：通过控制 softmax 输入的数值范围来抑制极端 logits。
 
-这个技巧最初来自视觉和多模态模型领域，Dehghani 等人 2023 年关于训练超大视觉 Transformer 的论文（*Scaling Vision Transformers to 22 Billion Parameters*, [arXiv:2302.05442](https://arxiv.org/abs/2302.05442)）采用了相关做法。随后 Meta 的 Chameleon 和 Hugging Face 的 Idefics 在多模态训练组件中采用了这个技巧，Gemma 2、DCLM、OLMo 2 等模型也用它稳定训练。
+这个技巧最初来自视觉和多模态模型领域，Dehghani 等人 2023 年关于训练超大视觉 Transformer 的论文（*Scaling Vision Transformers to 22 Billion Parameters*, [arXiv:2302.05442](https://arxiv.org/abs/2302.05442)）采用了相关做法。随后 Meta 的 Chameleon 和 Hugging Face 的 Idefics 在多模态训练组件中采用了这个技巧，Gemma 2、DCLM、OLMo 2、Qwen3、OLMo 3、Gemma 4 等模型也用它稳定训练。
 
 QK norm 的核心作用是控制进入 attention softmax 的 logits 范围。它延续了本章前面关于 norm 的经验：如果某处容易出现数值尖峰，可以尝试在非 residual 路径或 logits 相关路径上增加 norm。和 z-loss、soft-capping 一样，QK norm 的目标都是控制 softmax 的输入或归一化项，让模型在更大规模、更长上下文或更激进学习率下减少 loss spike。
 
@@ -1230,7 +1234,7 @@ $$
 
 当 logits 大幅超过 soft cap 时，tanh 函数会接近 1，整体输出被限制在 cap 附近。因此，soft-capping 可以看成对 logits 的平滑裁剪。它的采用面比 QK norm 和 z-loss 窄：Gemma 2 同时在 attention 和输出层用了软截断，而 OLMo 2 的稳定性配方是 RMSNorm + 非残差 post-norm + QK norm + z-loss，并没有引入 tanh 软截断。
 
-另一组证据来自 NVIDIA 关于 LLM 训练稳定性的实验（*Methods of improving LLM training stability*, [arXiv:2410.16682](https://arxiv.org/abs/2410.16682)）：在同一套 bf16 设置下，基线困惑度是 11.19，soft cap 为 11.24，落在 ±0.1 置信区间内，与基线没有显著差别；而 QK 归一化把困惑度降到 10.84（QKV norm 10.85、QK FC norm 10.87、QK norm + cap 11.00）。QK norm 的额外价值在于允许更激进的学习率而不发散。
+另一组证据来自 NVIDIA 关于 LLM 训练稳定性的实验（*Methods of improving LLM training stability*, [arXiv:2410.16682](https://arxiv.org/abs/2410.16682)）：在同一套 bf16 设置下，基线困惑度是 11.19，logit soft cap 单独使用时为 11.24，落在 ±0.1 置信区间内，与基线没有显著差别；QK norm 单独使用把困惑度降到 11.00，QK-FC norm（QK + Proj + FC2 norm）降到 10.87，QKV norm 降到 10.85，QK norm + cap（同时施加 QK norm 与 logit soft cap）降到 10.84。QKV norm 与 QK norm + cap 都允许 max stable learning rate 提升至 1.5×（基线在 40e-3 发散，这两档在 60e-3 仍能收敛），因此 QK norm 系列的额外价值主要在允许更激进的学习率而不发散，而非单点困惑度改善。
 
 ## 3.5 总结与下章衔接
 
@@ -1244,4 +1248,4 @@ $$
 - 相关论文：Transformer、RMSNorm、SwiGLU/GLU、RoPE（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864)）、[GQA](https://arxiv.org/abs/2305.13245)、[MLA / DeepSeek-V2](https://arxiv.org/abs/2405.04434)、CLA（[Brandon et al., arXiv:2405.12981](https://arxiv.org/abs/2405.12981)）、[Sparse Transformer, arXiv:1904.10509](https://arxiv.org/abs/1904.10509)、[Gated DeltaNet](https://arxiv.org/abs/2412.06464)。
 - 架构消融与超参数：[Narang et al., EMNLP 2021](https://arxiv.org/abs/2102.11972)（Table 1 的 step/s 与 final loss）、[Kaplan et al., 2020](https://arxiv.org/abs/2001.08361)（Figure 5 的 FFN ratio / aspect ratio / head dim 扫描）、[PaLM](https://arxiv.org/abs/2204.02311) Table 1 与训练设置、[ST-MoE](https://arxiv.org/abs/2202.08906)（router z-loss 与 Mesh TensorFlow z-loss 的关系）、[OLMo 2](https://arxiv.org/abs/2501.00656) Table 3 的稳定性配方、[Methods of improving LLM training stability, arXiv:2410.16682](https://arxiv.org/abs/2410.16682) Table 4 的困惑度对比、[Bhojanapalli et al., ICML 2020](https://arxiv.org/abs/2002.07028)（Low-Rank Bottleneck in Multi-head Attention Models）。
 - 官方配置：[`mistralai/Mistral-7B-v0.1`](https://huggingface.co/mistralai/Mistral-7B-v0.1)、[`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m)、[`Qwen/Qwen2-7B`](https://huggingface.co/Qwen/Qwen2-7B)、`Gemma2Config` 与 `Gemma4TextConfig`（Hugging Face Transformers main 分支）、[`deepseek-ai/DeepSeek-V2-Chat`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)、[Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/model_doc/deepseek_v4)与 [DeepSeek-V4-Pro 配置](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)。查阅日期：2026-09-06。
-- 不确定项：(a) DeepSeek-LLM-67B-base（`hidden_size=8192`、`intermediate_size=22016`）与 Yi-34B（`hidden_size=7168`、`intermediate_size=20480`）的 `hidden_size` 实际不同，并非「共享同一组维度」——两条都在 2.66–2.86 区间但具体值不同，读配置时按各 checkpoint 字段确认（已按 commit 74b1c15 修正）；(b) PaLM 540B `48 × 256 = 12288 < d_model=18432` 的解释已在 §3.3.2 内文展开（head 仍按标准 MHA Concat 聚合，$W^O$ 投影从 12288 → 18432；「parallel」指 attention+MLP 并行，与 head 聚合方式无关——见 PaLM 论文 §2.1 `y = x + MLP(LN(x)) + Attention(LN(x))`），未在 Table 1 caption 里显式写出；(c) Mistral-7B v0.1 的 `config.json` 字段名为 `hidden_act: "silu"`，门控结构由 `MistralForCausalLM` 实现硬编码，`activation_function` 字段在该 config 中不存在；(d) Narang 2021 Table 1 的 "Vanilla Transformer" 指其复现的 pre-norm + LayerNorm + shared biases + relative attention 基线，并非 Vaswani 2017 原始论文配置——口径差异已在 §3.2.1 内文加注。
+- 不确定项：(a) DeepSeek-LLM-67B-base（`hidden_size=8192`、`intermediate_size=22016`）与 Yi-34B（`hidden_size=7168`、`intermediate_size=20480`）的 `hidden_size` 实际不同，并非「共享同一组维度」——两条都在 2.66–2.86 区间但具体值不同，读配置时按各 checkpoint 字段确认（已按 commit 74b1c15 修正）；(b) PaLM 540B `48 × 256 = 12288 < d_model=18432` 的解释已在 §3.3.2 内文展开（head 仍按标准 MHA Concat 聚合，$W^O$ 投影从 12288 → 18432；「parallel」指 attention+MLP 并行，与 head 聚合方式无关——见 PaLM 论文 §2.1 `y = x + MLP(LN(x)) + Attention(LN(x))`），未在 Table 1 caption 里显式写出；(c) Mistral-7B v0.1 的 `config.json` 字段名为 `hidden_act: "silu"`，门控结构由 `MistralForCausalLM` 实现硬编码，`activation_function` 字段在该 config 中不存在；(d) Narang 2021 Table 1 的 "Vanilla Transformer" 指其复现的 pre-norm + LayerNorm + shared biases + relative attention 基线，并非 Vaswani 2017 原始论文配置——口径差异已在 §3.2.1 内文加注；(e) **§3.2.5.5 MLA 具体字段需 HF 一手 config 复核**：`DeepSeek-V2-Chat/config.json` 的 `kv_lora_rank`（笔记写作 `d_c`，与 `kv_lora_rank` 同一字段）、`qk_nope_head_dim`、`qk_rope_head_dim`、`v_head_dim` 笔记 L814 / L834 写「DeepSeek-V2 / V3 官方 config 均取 $d_c = 512$」「$d_k = qk_nope\_head\_dim + qk\_rope\_head\_dim = 128 + 64 = 192$」——具体数值需要 `huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json` 一手核证；(f) **§3.2.5.7.3.1 CSA / §3.2.5.7.3.2 HCA / §3.2.5.7.1 NOTE Gemma 4 字段需 HF 一手 config 复核**：`DeepSeek-V4-Pro/config.json` 的 `compress_ratios`（笔记 L958 写「开头两层 128, 128 之后按 4, 128 反复交替到倒数第二层，最末层 0」「61 层对应 61 个数值」）、`index_topk`（笔记 L945 写「Flash k=512，Pro k=1024」）、`index_n_heads`、`index_head_dim`、`num_experts_per_tok`、`n_routed_experts`、`swiglu_limit` 等字段；`Gemma4TextConfig` 的 `partial_rotary_factor=0.25`、`rope_type="proportional"`、`global_head_dim=512`、`vocab_size_per_layer_input=262144`、`hidden_size_per_layer_input=256` 字段——需 `huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json` 与 HF Transformers main 分支 `Gemma4TextConfig` 源码一手核证；Gemma 4 E2B / 31B dense 真实 `hidden_size` / `num_hidden_layers` 也需复核（笔记 L1086 写「E2B 1536/35 ≈ 44」「31B dense 5376/60 ≈ 90」，与 lecture_03 L536 表「Gemma 4 61」口径不一致）；(g) **§3.2.5.8.1 Nemotron-H 56B 数字待复核**：笔记 L986 写「56B 版 118 层里 10 层 attention」，公开摘要给出「8 attention layers / 118 total」— 8B 版 52 层 / 4 attention / 24 Mamba-2 / 24 FFN 已与公开摘要一致；(h) **§3.2.4 RoFormer 频率参数两种 one-indexed 公式**：笔记 L736 写「§3.2.2 Eq. 15 取 $10000^{-2(i-1)/d}$（$i \in [1, d/2]$，one-indexed）」「§3.3 文本形式取 $10000^{-2i/d}$（one-indexed）」——需 `arxiv.org/html/2104.09864` §3.2.2 / §3.3 原文核证两种 one-indexed 公式是否真的同时存在；(i) **§3.4.3 NVIDIA LLM 训练稳定性 Table 4 困惑度数字**：笔记 L1233 写「基线 11.19、soft cap 11.24、QK norm 10.84、QKV norm 10.85、QK FC norm 10.87、QK norm + cap 11.00」——需 `arxiv.org/html/2410.16682` Table 4 一手核证；(j) **§3.2.1 L454 Narang 2021 Table 1 数字**：笔记写「Vanilla 3.50 step/s + 1.838 loss、RMSNorm 3.68 step/s + 1.821 loss」——需 `arxiv.org/html/2102.11972` Table 1 一手核证。
