@@ -1234,7 +1234,7 @@ $$
 
 当 logits 大幅超过 soft cap 时，tanh 函数会接近 1，整体输出被限制在 cap 附近。因此，soft-capping 可以看成对 logits 的平滑裁剪。它的采用面比 QK norm 和 z-loss 窄：Gemma 2 同时在 attention 和输出层用了软截断，而 OLMo 2 的稳定性配方是 RMSNorm + 非残差 post-norm + QK norm + z-loss，并没有引入 tanh 软截断。
 
-另一组证据来自 NVIDIA 关于 LLM 训练稳定性的实验（*Methods of improving LLM training stability*, [arXiv:2410.16682](https://arxiv.org/abs/2410.16682)）：在同一套 bf16 设置下，基线困惑度是 11.19，logit soft cap 单独使用时为 11.24，落在 ±0.1 置信区间内，与基线没有显著差别；QK norm 单独使用把困惑度降到 11.00，QK-FC norm（QK + Proj + FC2 norm）降到 10.87，QKV norm 降到 10.85，QK norm + cap（同时施加 QK norm 与 logit soft cap）降到 10.84。QKV norm 与 QK norm + cap 都允许 max stable learning rate 提升至 1.5×（基线在 40e-3 发散，这两档在 60e-3 仍能收敛），因此 QK norm 系列的额外价值主要在允许更激进的学习率而不发散，而非单点困惑度改善。
+另一组证据来自 NVIDIA 关于 LLM 训练稳定性的实验（*Methods of improving LLM training stability*, [arXiv:2410.16682](https://arxiv.org/abs/2410.16682)）：在同一套 bf16 设置下，基线困惑度是 11.19，logit soft cap 单独使用时为 11.24，落在 ±0.1 置信区间内，与基线没有显著差别；QK norm 单独使用把困惑度降到 10.84（表 4 最低），QK-FC norm（QK + Proj + FC2 norm）降到 10.87，QKV norm 降到 10.85，QK norm + cap（同时施加 QK norm 与 logit soft cap）降到 11.00。QKV norm 与 QK norm + cap 都允许 max stable learning rate 提升至 1.5×（基线在 40e-3 发散，这两档在 60e-3 仍能收敛），因此 QK norm + cap 的额外价值主要在允许更激进的学习率而不发散，而非单点困惑度改善；QK norm 单独使用虽然 perplexity 最佳（10.84），但 max stable LR 与 baseline 相同（≤40e-3）。
 
 ## 3.5 总结与下章衔接
 
