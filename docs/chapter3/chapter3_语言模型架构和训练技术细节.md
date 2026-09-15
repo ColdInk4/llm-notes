@@ -791,17 +791,17 @@ GQA（grouped-query attention）在 MHA 和 MQA 之间折中：多个 query head
 
 MLA（Multi-head Latent Attention，多头潜在注意力）是 DeepSeek 引入的创新注意力架构，通过**低秩联合压缩技术**显著降低推理时的 KV cache 需求，在保持性能的同时大幅提升效率。
 
-![图 3.2-17 MLA](images/3-2-17-mla-kv-compression.png)
+![图 3.2-15 MLA](images/3-2-15-mla-kv-compression.png)
 
-*图 3.2-17 MLA 通过低维 latent 表示缓存 K/V 信息，目标是在保持质量的同时减少 generation 阶段的 cache 体积*
+*图 3.2-15 MLA 通过低维 latent 表示缓存 K/V 信息，目标是在保持质量的同时减少 generation 阶段的 cache 体积*
 
 DeepSeek-V2 报告中，MLA 通过显著减少生成所需的 KV cache 来提升推理效率。这里的关键变量是历史 K/V 在 cache 中保存为什么形态，以及额外投影计算能否被系统接受。
 
 传统 Transformer 模型通常采用多头注意力机制（MHA），但在 generation 中，庞大的 KV cache 会成为推理效率的瓶颈。MQA 以一组 K/V heads 服务全部 query heads，在固定训练设置下可能出现质量下降。GQA 使用中间数量的 K/V heads；原始 GQA 报告经过 uptraining 后得到接近 MHA 的质量。具体差异仍取决于 KV head 比例、训练设置、模型规模和目标任务。
 
-![图 3.2-18 attention 结构对比](images/3-2-18-attention-comparison.png)
+![图 3.2-16 attention 结构对比](images/3-2-16-attention-comparison.png)
 
-*图 3.2-18 MHA、GQA、MQA 与 MLA 的差异集中在 K/V head 数量和缓存表示方式上*
+*图 3.2-16 MHA、GQA、MQA 与 MLA 的差异集中在 K/V head 数量和缓存表示方式上*
 
 传统 Transformer 采用多头注意力（MHA），每个注意力头需独立缓存 Key 和 Value 向量。对一条上下文长度为 $S$ 的请求，层数为 $L$ 、attention heads 数为 $h$ 、每个 head 维度为 $d_k$ 时，KV cache 的元素数量为 $O(S \cdot L \cdot h \cdot d_k)$ ，成为长序列推理的主要瓶颈。
 
@@ -821,7 +821,7 @@ $$
 
 推理缓存只保存 $c_t^{\mathrm{KV}}$ 这一个共享 latent。对每层每个 token，基础缓存从 MHA 的 $2 h d_k$ 个元素缩小到约 $d_c$ 个元素；这里 $h$ 是 attention heads 数， $d_k$ 是每个 head 的维度。
 
-图 3.2-18 中的 MLA 把需要缓存的 K/V 信息压到较低维 latent 表示中，再在 attention 路径上吸收或合并相关上投影。它重新定义了模型的缓存表示，训练和推理都需使用同一套结构。
+图 3.2-16 中的 MLA 把需要缓存的 K/V 信息压到较低维 latent 表示中，再在 attention 路径上吸收或合并相关上投影。它重新定义了模型的缓存表示，训练和推理都需使用同一套结构。
 
 **MLA 主要步骤如下**：
 
@@ -833,15 +833,15 @@ MLA 在 attention 路径中增加了投影或重构计算。KV cache 和 HBM ban
 
 RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_k^R$ ，其中 $d_c$ 是 shared KV latent 的维度、$d_k^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_k^R = 64$，约为 $d_k / 3$——$d_k = qk\_nope\_head\_dim + qk\_rope\_head\_dim = 128 + 64 = 192$，其中 $64/192$ 用于位置编码；具体字段见 [`deepseek-ai/DeepSeek-V2-Chat` 的 `config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)）。
 
-![图 3.2-19 MLA 实验](images/3-2-19-mla-experiment.png)
+![图 3.2-17 MLA 实验](images/3-2-17-mla-experiment.png)
 
-*图 3.2-19 MLA 在报告中的基准结果展示了 cache 压缩和质量保持之间的目标折中*
+*图 3.2-17 MLA 在报告中的基准结果展示了 cache 压缩和质量保持之间的目标折中*
 
 MLA 和 MHA 在困难基准上的比较显示，DeepSeek-V2 在显著减少 KV cache 的同时保持了较强性能。需要注意的是，MLA 的收益与具体模型、训练设置、kernel 实现和推理负载有关，不能只按缓存压缩比例线性外推端到端速度。
 
-![图 3.2-20 MLA 结构示意](images/3-2-20-mla-schema.png)
+![图 3.2-18 MLA 结构示意](images/3-2-18-mla-schema.png)
 
-*图 3.2-20 MLA 结构示意，compressed latent cache、上投影和 RoPE 专用路径共同决定缓存体积与额外计算*
+*图 3.2-18 MLA 结构示意，compressed latent cache、上投影和 RoPE 专用路径共同决定缓存体积与额外计算*
 
 这张结构图把 MLA 的工程边界画清楚：cache 里保存的是压缩 latent，attention 计算时需要物化或合并相关投影；RoPE 相关维度单独处理，是为了避免位置旋转直接作用在共享 latent 上破坏相对位置信号。
 
@@ -849,9 +849,9 @@ MLA 和 MHA 在困难基准上的比较显示，DeepSeek-V2 在显著减少 KV c
 
 CLA（Cross-Layer Attention）的思路可以类比 GQA：GQA 在注意力头之间共享 K/V，CLA 则在层之间共享一部分 K/V。这样做的直接目标仍然是减少 KV cache，改善推理 latency/throughput 的帕累托边界。它不改变"根据 Q 读取历史 K/V"的基本形式，但改变了缓存的组织方式。Brandon 等人（*Reducing Transformer Key-Value Cache Size with Cross-Layer Attention*, [arXiv:2405.12981](https://arxiv.org/abs/2405.12981), 2024-05；MIT CSAIL & MIT-IBM Watson AI Lab）的报告显示 CLA 在 LLaMA2-7B / 70B 上分别取得约 2× / 2.4× 的 KV cache 压缩，并保持困惑度不退化。
 
-![图 3.2-21 CLA 结构示意](images/3-2-21-cla-diagram.png)
+![图 3.2-19 CLA 结构示意](images/3-2-19-cla-diagram.png)
 
-*图 3.2-21 CLA 结构示意，通过跨层复用 K/V 把 cache 压缩从 head 维度扩展到 layer 维度*
+*图 3.2-19 CLA 结构示意，通过跨层复用 K/V 把 cache 压缩从 head 维度扩展到 layer 维度*
 
 CLA 的收益来自减少每层都独立保存 K/V 的开销。代价是相邻层对历史信息的表示会被绑定在一起，因此它更像 cache 组织方式的改变，对 attention 语义的影响需要单独评估。
 
@@ -861,17 +861,17 @@ CLA 的收益来自减少每层都独立保存 K/V 的开销。代价是相邻�
 
 **3.2.5.7.1 SWA 滑动窗口注意力**
 
-![图 3.2-15 稀疏与结构化 attention](images/3-2-15-sparse-structured-attention.png)
+![图 3.2-20 稀疏与结构化 attention](images/3-2-20-sparse-structured-attention.png)
 
-*图 3.2-15 稀疏 attention 用局部窗口、跨块连接和结构化模式减少长序列中的 attention 计算*
+*图 3.2-20 稀疏 attention 用局部窗口、跨块连接和结构化模式减少长序列中的 attention 计算*
 
 稀疏 attention 的基本思路是为每个 query 限制可访问的历史位置：局部窗口保留邻近 token 的高分辨率信息，对角线或跨块模式负责把远处信息传回来。这样可以在表达能力和运行效率之间取得平衡。
 
 OpenAI 的 Sparse Transformer（Child et al., 2019, [arXiv:1904.10509](https://arxiv.org/abs/1904.10509)）用 strided / fixed pattern 形式的稀疏 attention 扩展注意力窗口；GPT-3 主体架构仍以密集注意力为主（[Brown et al., 2020, arXiv:2005.14165](https://arxiv.org/abs/2005.14165)），稀疏化是其配套实验而非主结构。滑动窗口注意力是该思想的另一个变体，在每个层级仅关注当前位置的邻近区域。这种方式能有效控制处理长文本所需的总资源量；理论上信息可逐层向外传播，最远距离的上界约为「局部窗口 × 堆叠层数」（实际感受野取决于内容是否被有效聚合）。虽然这些是较早的思路，但现代实现方式有了新的发展。
 
-![图 3.2-16 sliding-window attention](images/3-2-16-sliding-window-attention.png)
+![图 3.2-21 sliding-window attention](images/3-2-21-sliding-window-attention.png)
 
-*图 3.2-16 sliding-window attention 只读取当前位置附近的窗口，堆叠多层后信息可以逐层向更远位置传播*
+*图 3.2-21 sliding-window attention 只读取当前位置附近的窗口，堆叠多层后信息可以逐层向更远位置传播*
 
 最近 LLaMA 4、Gemma 3、Gemma 4、OLMo 3 和 Cohere Command A 等模型采用了局部与全局混合的思路：大多数层使用带 RoPE 的 sliding-window attention，只处理局部上下文；间隔若干层再放入 full attention 层，用于跨窗口信息交换。
 
@@ -888,9 +888,9 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 标准 full attention 让每个 query token 与所有历史 token 计算注意力。长上下文下，这个全连接范式成本很高，而许多任务真正需要高分辨率读取的历史位置只占一部分。DSA 因此采用“先筛选、后计算”的结构：先用轻量模块扫描历史 token，估计重要性分数；再让得分较高的位置进入精细注意力计算。核心组件是 indexer 和 top-k selector。
 
-![图 3.2-23 DSA](images/3-2-23-dsa-indexer.png)
+![图 3.2-22 DSA](images/3-2-22-dsa-indexer.png)
 
-*图 3.2-23 DSA 先用轻量 indexer 估计历史 token 重要性，再把 top-k 位置交给精细 attention*
+*图 3.2-22 DSA 先用轻量 indexer 估计历史 token 重要性，再把 top-k 位置交给精细 attention*
 
 1. **Lightning Indexer**（闪电索引器）:
 
@@ -902,9 +902,9 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 这类方法可以作为长上下文适配路线，但是否能后训练接入已有模型，取决于目标模型的注意力分布、稀疏模块训练预算和服务端 kernel 支持。
 
-![图 3.2-22 DSA 实验](images/3-2-22-dsa-experiment.png)
+![图 3.2-23 DSA 实验](images/3-2-23-dsa-experiment.png)
 
-*图 3.2-22 DSA 实验同时报告质量和速度，用于判断稀疏读取是否真的带来端到端收益*
+*图 3.2-23 DSA 实验同时报告质量和速度，用于判断稀疏读取是否真的带来端到端收益*
 
 相关实验通常会同时报告质量与速度：稀疏注意力若能维持接近 full attention 的任务表现，同时在长序列的 decode、forward 和 backward 阶段减少计算，就具备工程吸引力。理论复杂度只是第一步，indexer 成本、top-k 选择开销和 kernel 实现同样会决定最终收益。
 
