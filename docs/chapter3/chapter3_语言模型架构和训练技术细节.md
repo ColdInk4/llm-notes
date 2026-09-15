@@ -1236,7 +1236,7 @@ $$
 
 到这里应能在「训练稳定性 / 表达能力 / 推理成本 / 长上下文能力」四类判断之间拆解任意 dense decoder 配置：默认骨架（Pre-norm + RMSNorm + no bias + SwiGLU + RoPE）解决稳定性与表达效率；KV cache 共享（MQA / GQA / MLA / CLA）解决推理成本；稀疏读取（SWA / DSA / CSA / HCA）与线性时间替代（linear attention / Mamba-2 / Gated DeltaNet）解决长上下文效率；超参数区间（§3.3）与稳定性技巧（§3.4）共同决定这套骨架在给定硬件和训练设置下能否稳定收敛。
 
-把 dense FFN 换成 routed experts 后，同一组 FFN 参数被切成多份，由 router 在每个 token 上挑选 top-k；条件计算与负载均衡的系统视角见[第 4 章 §4.1 分析 MoE](../chapter4/chapter4_混合专家模型.md)。Attention alternatives 的工程实现（FlashAttention、sparse attention）的执行视角在[第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md)展开；PagedAttention 与 serving 调度见[第 9 章 §9.5 Dynamic Serving：Continuous Batching 与 PagedAttention](../chapter9/chapter9_推理系统.md)。
+把 dense FFN 换成 routed experts 后，同一组 FFN 参数被切成多份，由 router 在每个 token 上挑选 top-k；条件计算与负载均衡的系统视角见[第 4 章 §4.1 分析 MoE](../chapter4/chapter4_混合专家模型.md)。Attention alternatives 的工程实现（FlashAttention、sparse attention）的执行视角在[第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md)展开；PagedAttention 与 serving 调度见[第 9 章 §9.5.2 PagedAttention：把 KV cache 当分页内存管理](../chapter9/chapter9_推理系统.md)；Continuous Batching 的工程取舍见[第 9 章 §9.5.1 Continuous Batching 与 Selective Batching](../chapter9/chapter9_推理系统.md)。
 
 ## 来源与更新记录
 
