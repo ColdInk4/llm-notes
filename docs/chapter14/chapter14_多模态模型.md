@@ -244,7 +244,7 @@ Qwen-VL 系列展示了 VLM 向更通用多模态模型演进的几个方向：�
 
 *图 14.5-2 Qwen2-VL MRoPE*
 
-MRoPE 把位置信息扩展到多维输入。文本只有一维顺序；图像有高度和宽度；视频还多了时间轴。多模态 rotary position embedding 让模型在同一个 Transformer 中同时理解这些轴，保留视觉 tokens 中的空间和时间结构。RoPE 的基础定义与频率调度见 [第 3 章 §3.2.4 位置编码与 RoPE](../chapter3/chapter3_语言模型架构和训练技术细节.md)；MRoPE 把同一套 $Q/K$ 旋转思路推广到多维输入，与现代 dense decoder 默认骨架共用 GQA，见 [第 3 章 §3.2.5 注意力机制的变体](../chapter3/chapter3_语言模型架构和训练技术细节.md)。
+MRoPE 把位置信息扩展到多维输入。文本只有一维顺序；图像有高度和宽度；视频还多了时间轴。多模态 rotary position embedding 让模型在同一个 Transformer 中同时理解这些轴，保留视觉 tokens 中的空间和时间结构。RoPE 的基础定义与频率调度见 [第 3 章 §3.2.4 位置编码](../chapter3/chapter3_语言模型架构和训练技术细节.md)；MRoPE 把同一套 $Q/K$ 旋转思路推广到多维输入，与现代 dense decoder 默认骨架共用 GQA，见 [第 3 章 §3.2.5 注意力机制的变体](../chapter3/chapter3_语言模型架构和训练技术细节.md)。
 
 ### 14.5.3 Qwen3-VL
 
@@ -343,7 +343,7 @@ VQ-VAE 把连续图像压缩成离散 codebook indices。Encoder 产生连续 la
 
 多模态的主线是把视觉、文本乃至音频、视频统一到一组 token、一种训练阶段和一个推理账本下：CLIP / SigLIP 用对比学习把视觉信号拉入文本语义空间；LLaVA / Qwen-VL / Chameleon 用 projector 或离散 token 把视觉 token 接到 LLM 上；Qwen3-VL 在 MRoPE、动态分辨率与多阶段训练里继续打磨视觉-文本联合推理的稳定性与长上下文成本。
 
-把多模态放回主线，本章与 [第 3 章 §3.2.4 位置编码与 RoPE](../chapter3/chapter3_语言模型架构和训练技术细节.md) 与 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md) 的工程接口、[第 9 章 §9.3 模型与 KV cache 压缩：减少每步数据搬运](../chapter9/chapter9_推理系统.md) 的视觉 token KV cache / TTFT / batching 账本、以及 [第 10 章 §10.1.1 训练数据](../chapter10/chapter10_数据工程.md) 与 [第 10 章 §10.2.2 数据去重](../chapter10/chapter10_数据工程.md) 的图文配对与多模态去重都直接相关。推理行为、多模态系统评估、多模态 agent trace 与 RLVR 验证共同落在[推理行为与能力专题](../topics/reasoning_behavior.md)。
+把多模态放回主线，本章与 [第 3 章 §3.2.4 位置编码](../chapter3/chapter3_语言模型架构和训练技术细节.md) 与 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md) 的工程接口、[第 9 章 §9.3 模型与 KV cache 压缩：减少每步数据搬运](../chapter9/chapter9_推理系统.md) 的视觉 token KV cache / TTFT / batching 账本、以及 [第 10 章 §10.1.1 训练数据](../chapter10/chapter10_数据工程.md) 与 [第 10 章 §10.2.2 数据去重](../chapter10/chapter10_数据工程.md) 的图文配对与多模态去重都直接相关。推理行为、多模态系统评估、多模态 agent trace 与 RLVR 验证共同落在[推理行为与能力专题](../topics/reasoning_behavior.md)。
 
 ## 思考
 

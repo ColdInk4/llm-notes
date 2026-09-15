@@ -38,9 +38,9 @@ Transformer 模型的起源可以追溯到 2017 年，当时由 Google 研究团
 
 ![图 3.1-1 Transformer 架构](images/3-1-1-transformer.png)
 
-*图 3.1-1 原始 Transformer 的 encoder-decoder 结构和 block 内部的 attention、FFN、residual、norm 组合*
+*图 3.1-1 现代 decoder-only block 的整体结构与单 block 内部 attention、FFN、residual、norm 组合，与原始 Transformer (Vaswani et al., 2017) 共享同一族 attention + FFN + residual + norm 骨架*
 
-原始 Transformer 是后续设计的历史基线：它同时有 encoder 和 decoder，decoder 内部用 masked self-attention、encoder-decoder attention 和 FFN 叠成多层。现代 decoder-only LLM 会保留“attention + FFN + residual + norm”的骨架，但会调整 norm 位置、位置编码、FFN 激活和注意力缓存方式。
+图 3.1-1 给出现代 decoder-only block 的标准骨架：左侧是输入到输出的纵向流（Token Embedding + Absolute Position Embeddings 相加 → Add & Dropout → N 个 Transformer Block → Norm → Linear → Softmax），右侧把单个 block 展开为 Causal Multi-Head Self-Attention、Add、Dropout、Position-Wise Feed-Forward、Norm 五个组件的串联加两条 residual。这套”attention + FFN + residual + norm”骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，但差异有三：(1) 注意力改为 Causal Multi-Head Self-Attention（mask 掉未来位置），不再保留原始 encoder-decoder 之间的 cross-attention；(2) block 内 norm 位置从 Post-LN (Vaswani et al., 2017 §5.4) 改为 Pre-LN，成为后续 decoder-only LLM 的默认；(3) 位置编码方案与具体激活函数与原始 Transformer 不同，这些差异在 §3.2 集中讨论。
 
 ### 3.1.1 位置编码（positional encoding）：正余弦位置编码
 
@@ -193,15 +193,13 @@ $$
 
 **缩放因子 $\sqrt{d_k}$ 的作用**
 
-原始论文中推测 $d_k$ 较大时，点积的绝对值会变得很大，这会将 softmax 推入梯度很小的区域。为了抵消这种影响，需要对点积进行 $1/\sqrt{d_k}$ 的缩放。
-
-现代推测在点积的时候方差会被放大，点积 $Q \cdot K = \sum_{i=1}^{d_k} q_i k_i$ 。
-
-点积的**方差**为：
+原始论文 §3.2.1（Vaswani et al., 2017）正文说明：$d_k$ 较大时点积的绝对值会变得很大，将 softmax 推入梯度极小的区域，因此对点积做 $1/\sqrt{d_k}$ 的缩放。论文同节脚注 4 给出方差推导的完整形式：假设 $q, k$ 各分量独立且零均值、方差为 1，则点积 $Q \cdot K = \sum_{i=1}^{d_k} q_i k_i$ 满足
 
 $$
 \text{Var}(Q \cdot K) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = d_k \cdot \text{Var}(q_i k_i)
 $$
+
+要使点积方差保持为 1（从而 softmax 输入不进入饱和区），需要 $\text{Var}(q_i) \cdot \text{Var}(k_i) = 1/d_k$，这正是除以 $\sqrt{d_k}$ 的几何意义。
 
 除 $\sqrt{d_k}$ 后将分布重新变成标准化，作用就有：
 1. **保持方差稳定**：无论 $d_k$ 多大，输入 $\text{softmax}$ 的值都在合理范围。
@@ -237,7 +235,7 @@ $$
 \sigma = \sqrt{\frac{1}{d} \sum_{i=1}^{d} (v_i - \mu)^2 + \varepsilon}
 $$
 
-其中 $\varepsilon$ 是极小常数（ $10^{-6}$ ），防止除零错误。
+其中 $\varepsilon$ 是极小常数（原始论文未显式给出，常用实现取值在 $1 \times 10^{-5}$ ~ $1 \times 10^{-6}$ 之间，如 PyTorch `nn.LayerNorm` 默认 `eps=1e-5`），防止除零错误。
 
 3. **归一化**：
 
