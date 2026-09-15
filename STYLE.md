@@ -87,7 +87,7 @@
 
 1. **公理起点明确**：每段论证标注从哪个公理 / 公式 / 定理 / 物理约束推导过来（如「从 `loss(N,D)=E+A/N^α+B/D^β` 推导 Chinchilla 比例」、「从 policy gradient theorem + baseline invariance 推导 baseline 选取」、「从 roofline 算力 / 带宽约束推导 arithmetic intensity」、「从 `6ND` FLOPs 推导训练 FLOPs」、「从 attention / FFN / Norm 数学定义推导各自功能」）。不要直接抛概念名词而不交代公理来源。
 2. **推导链完整**：从公理起点到结论中间步骤不跳，不写「显然」「可以看到」「经验上」等省略语。读者沿论证链应能逐步看到从公理到结论的中间步骤。
-3. **经验 vs 推导清楚区分**：vibes / 行业惯例 / 类比的段落明确标注「这是经验 / 类比，不是公理推导」，不能伪装成推导。本仓库**当前**无清晰推导路径的论域（明确标注为 vibes / 经验 / 类比，不假装是推导）：数据 filter / dedup / mixing 阈值（lecture_13 L802 明说「data processing is... a lot just based on kind of vibes」）；GRPO 加的 length normalizer + std normalization（lecture_16 L164-167 明说「if you try to derive GRPO from first principles... you'll end up with something different」）；现代组件具体值选择（SwiGLU / RoPE / RMSNorm 是 scaling 拟合后的「幸存者」）。这类论域的处理方式：正文写「目前业界做法」+ 引用典型代表（如 FineWeb MinHash + LSH + 阈值 0.75）+ 标注「vibes / 经验 / 推导待补」，未推导部分下沉到章节末「不确定项」。
+3. **经验 vs 推导清楚区分**：vibes / 行业惯例 / 类比的段落明确标注「这是经验 / 类比，不是公理推导」，不能伪装成推导。本仓库**当前**无清晰推导路径的论域（明确标注为 vibes / 经验 / 类比，不假装是推导）：数据 filter / dedup / mixing 阈值（lecture_13 L802 明说「data processing is... a lot just based on kind of vibes」）；GRPO 加的 length normalizer + std normalization（lecture_16 L164-167 明说「if you try to derive GRPO from first principles... you'll end up with something different」）；现代组件具体值选择（SwiGLU / RoPE / RMSNorm 是 scaling 拟合后的「幸存者」）。这类论域的处理方式：正文写「目前业界做法」+ 引用典型代表（如 FineWeb MinHash + LSH + 阈值 0.75）+ 标注「vibes / 经验 / 推导待补」；未推导部分不写入笔记，由主 agent 在 chat 流程核验后再写。
 
 #### 整条认识链：从问题到结论
 
@@ -299,7 +299,7 @@ rg -n "chapter[0[0-9]]+|chapter ?one|chapter ?two" docs/
 - 每个大节可以用 1-3 句话自然收束，说明读到这里应理解什么、能做什么判断、下一节为什么需要继续推进；这种「学习检查」性质的收束优先写成普通段落，不是 alert。
 - 学习检查句可以适度出现，例如「到这里，读者应能区分 prefill 和 generation 的显存瓶颈」。这类句子要具体，不写空泛的「本节介绍了很多内容」。
 - IMPORTANT / WARNING / CAUTION 三档严格递进：先想清楚到底是「不满足就不成立」（IMPORTANT）、「不满足就误解」（WARNING），还是「继续做会有损失」（CAUTION），再选择 alert 类型；模糊时优先 WARNING，避免把 CAUTION 当 WARNING 用导致信息降级。
-- NOTE 不应承载任何作者声明、章节组织承诺或免责声明——这些全部用普通段落或下沉到章节末「来源与更新记录」。
+- NOTE 不应承载任何作者声明、章节组织承诺或免责声明——这些全部用普通段落表达，不在笔记保留。
 
 ## HTML
 
@@ -331,9 +331,8 @@ CS336 2026 的公开课件和课程视频可以作为课程材料来源。若某
 1. **官方来源**：arXiv abs / 论文 PDF、HF model card、官方仓库 README、技术报告 PDF。列出查阅日期 `YYYY-MM-DD` 与状态（`官方` / `论文` / `社区观察`）。
 2. **课程来源**：CS336 lecture 编号与映射，按 `sources/cs336-2026.md` 给出的对应关系引用，不写本地整理路径或字幕文件路径。
 3. **本节事实声明的来源指向**：正文里出现「按 …」「参见 …」的具体定位（论文 § 编号 + 段首句、模型卡具体字段名等）。
-4. **不确定项**：暂未核到一手源的条目按 `tentative` 标记处理，列在「不确定项」子段；不在正文写「待 X 披露后核对」「未能核」「缺口」等免责语，全部下沉到本节。
 
-正文不写「以 X 为准 / 未经 X 验证 / 待 Y 披露」类免责语——这些全部下沉到本节，由 audit agent 用 `rg` 自动扫，并在 commit 前清零。
+核验工作**不在「来源与更新记录」段保留「待核验 / 不确定 / 需复核 / tentative」子段**——这些元叙述外移到 chat / sub-agent transcript。sandbox 拦截一手 URL 时，主 agent 把链接发给用户、由用户在 IDE 浏览器或 curl 外部环境打开后复制内容回来核验；核验完成才写入笔记。commit 前用 `rg "待.*核|待核|不确定|需核|需复核|缺口|以.*为准|本节以|未能核"` 扫正文与来源记录段，命中后清零。
 
 当某个章节涉及多个官方源的最新口径时，在「来源与更新记录」单独列一条「来源对齐」小节，记录哪些字段以哪个官方源为准、哪些字段多源对齐、哪些字段存在版本分歧。这样读者在引用具体数字时不用回头翻章节正文。
 
@@ -347,7 +346,7 @@ CS336 2026 的公开课件和课程视频可以作为课程材料来源。若某
 - `以 Y 为准 / 未经 X 验证` / `本节以 X 为准 / 属讲师口误` —— 把作者认证意图搬上正文
 - `未能核` / `缺口` —— 显式标记审计未完成
 
-这些句式只在 `AGENTS.md` 维护审计流程用，**禁止**出现在 `docs/` 正文里，包括章节末「来源与更新记录」以外的来源记录小段。讲义正文要么按权威源直接给出事实（数字 + 出处），要么省略该数据点；不确定项按「章节末来源与更新记录」第 4 段「不确定项」子段处理，全部下沉到章节末，不在正文出现。
+这些句式只在 `AGENTS.md` 维护审计流程用，**禁止**出现在 `docs/` 任何位置——正文、章节末「来源与更新记录」、附注、表注、图注。讲义要么按权威源直接给出事实（数字 + 出处），要么省略该数据点；未核到的字段不写入笔记，由主 agent 在 chat 流程核验后再写入。
 
 引用 arXiv 时，正文应基于论文正文 Figure / Table 与公式，而不仅是 abstract；abstract 仅用于核对标题、作者与提交日期（与 `AGENTS.md`「必须读原论文，不能只读 abstract」同步）。
 
