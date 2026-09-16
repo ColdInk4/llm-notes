@@ -376,7 +376,7 @@ TPU 和 GPU 在高层结构上很像：都有轻量控制逻辑、矩阵乘法�
 
 TPU 的 MXU（Matrix Multiply Unit）通常是 $128 \times 128$ 的 systolic array，每个 cycle 完成一块 $128 \times 128$ 矩阵乘。配套的 Vector Unit 负责非矩阵乘法操作（LayerNorm、Softmax、embedding lookup、elementwise 算子）。"TPU TensorCore" 在很多材料里指包含 MXU + Vector Unit + 片上内存的处理器级单元；NVIDIA GPU 语境里的 Tensor Core 通常指 SM 内部的较小矩阵乘法单元（不同代际尺寸不同，例如 Hopper Tensor Core 支持 FP8）。
 
-实际计数方式也常被混淆。每颗 TPU v5p 芯片包含 **2 个 TensorCore**（TPU 语境下，"TensorCore" 指处理器级单元，约等于 GPU 的 SM），每个 TensorCore 内部含 **4 个 MXU**（$128 \times 128$ systolic array）、1 个 Vector Unit 和 1 个 Scalar Unit，合计**每个 TensorCore 共 6 个单元、每芯片 12 个单元**（[Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p)）。这与"一颗 H100 = 132 SM，每 SM 4 个 Tensor Core（矩阵乘法单元），合计 528 个 Tensor Core" 的多而小路线形成对照：TPU 走"少而大"，GPU 走"多而小"。看到"TFLOP/s"时需要先确认它是按 MXU 周期计算还是按 SM 整体平均计算，二者差几个数量级。
+实际计数方式也常被混淆。每颗 TPU v5p 芯片包含 **4 个 TensorCore**（TPU 语境下，"TensorCore" 指处理器级单元，约等于 GPU 的 SM），每个 TensorCore 内部含 **4 个 MXU**（$128 \times 128$ systolic array）、1 个 Vector Unit 和 1 个 Scalar Unit，合计**每个 TensorCore 共 6 个单元、每芯片 24 个单元（其中 16 个 MXU）**（[Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p)）。这与"一颗 H100 = 132 SM，每 SM 4 个 Tensor Core（矩阵乘法单元），合计 528 个 Tensor Core" 的多而小路线形成对照：TPU 走"少而大"，GPU 走"多而小"。看到"TFLOP/s"时需要先确认它是按 MXU 周期计算还是按 SM 整体平均计算，二者差几个数量级。
 
 Canonical batch floor 也由 MXU 形状决定。$128 \times 128$ 的 systolic array 要求输入张量至少有一维是 128 的倍数；不足时 MXU 会被 padding 填满，浪费算力。Google Cloud TPU 性能文档把"feature dim 128 整倍数"列为高效 MXU 利用的硬性 padding 要求；batch sweep 实验中实际可运行的下限约是 64，是 XLA 编译器在硬件约束下的实际下限（tpu tensor core refuses to accept anything smaller than a 64 dimensional input there），与 MXU 几何学上的 128 不属同一维度。GPU 一侧对应的是 warp size = 32（kernel launch 要求每个 block 的线程数是 32 的倍数）与 SM warp 驻留上限（典型 64 warp），它和 TPU 的 MXU batch floor 分别由 SIMT 调度模型与 systolic array 几何形状决定，不能直接换算。
 
@@ -496,10 +496,10 @@ GPU采用SIMT（单指令多线程）执行架构，**同一线程束（Warp）�
 | **BF16** | 16 位 | $3.8 \times 10^{38}$ | AI 训练首选 | **16×**（A100 Tensor Core 312 TFLOP/s vs A100 FP32 CUDA 19.5 TFLOP/s） |
 | **INT8** | 8 位 | 2⁸ ≈ 256 | 量化推理 | **32×**（A100 Tensor Core 624 TOPS vs A100 FP32 CUDA 19.5 TFLOP/s） |
 | **INT4** | 4 位 | 2⁴ = 16 | 极致推理 | **64×**（A100 Tensor Core 1,248 TOPS vs A100 FP32 CUDA 19.5 TFLOP/s） |
-| **FP8** | 8 位 | 动态范围 | Hopper/Blackwell | **约 39×**（H100 Tensor Core FP8 dense 约 1,979 TFLOP/s vs H100 SXM5 FP32 CUDA Core 51 TFLOP/s，H100 自身对照口径） |
+| **FP8** | 8 位 | 动态范围 | Hopper/Blackwell | **约 30×**（H100 Tensor Core FP8 dense 1,979 TFLOP/s vs H100 SXM FP32 67 TFLOP/s；H100 自身对照口径，FP32 走 CUDA Core 路径；51 TFLOP/s 是 H100 PCIe 版 FP32 峰值，SXM5 实际 = 67 TFLOP/s，见 [NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)） |
 
 > [!WARNING]
-> 表中 TF32 / FP16 / BF16 / INT8 / INT4 行均按 A100 上 Tensor Core dense 峰值 ÷ A100 FP32 CUDA Core 19.5 TFLOP/s 得出；FP8 行单独按 H100 自身 Tensor Core FP8 dense ÷ H100 SXM5 FP32 CUDA Core（vector）51 TFLOP/s 得出，二者分母不同、口径不同（FP8 在 A100 上不可用，且 H100 的 67 TFLOP/s FP32 指 Tensor Core 而非 CUDA Core，二者不能互换）。上述「加速倍数」均为理论比值；实际训练可达加速取决于 kernel 实现、是否启用 FP32 master weight、累加器精度和数值稳定性。混合精度（FP32 master copy + FP16/BF16 计算）端到端常见 2-3× 加速，与峰值比 16× 之间留有显著差距。
+> 表中 TF32 / FP16 / BF16 / INT8 / INT4 行均按 A100 上 Tensor Core dense 峰值 ÷ A100 FP32 CUDA Core 19.5 TFLOP/s 得出；FP8 行单独按 H100 SXM Tensor Core FP8 dense 1,979 TFLOP/s ÷ H100 SXM FP32 67 TFLOP/s 得出，二者分子分母都来自 H100 SXM 同款 GPU 的不同执行单元（FP32 走 CUDA Core、FP8 走 Tensor Core），口径与前六行（A100 vs A100）不同。FP8 在 A100 上不可用。51 TFLOP/s 是 H100 PCIe 版 FP32 峰值，H100 SXM/SXM5 实际为 67 TFLOP/s（来源 [NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)）。上述「加速倍数」均为理论比值；实际训练可达加速取决于 kernel 实现、是否启用 FP32 master weight、累加器精度和数值稳定性。混合精度（FP32 master copy + FP16/BF16 计算）端到端常见 2-3× 加速，与峰值比 16× 之间留有显著差距。
 
 ---
 
@@ -993,7 +993,7 @@ FlashAttention V3 是算法与硬件协同设计的案例：异步 WGMMA 流水�
 
 本节做连线，不展开推理系统本身。本节回答一个前置问题：KV cache 作为「HBM 上的一笔账」如何与本章的主线（数据移动）合流。具体要看清 KV cache 的字节公式、与单卡 HBM 容量的硬上限、与 FlashAttention 在 IO 层面的分工。完整 PagedAttention、prefix sharing、RadixAttention 等调度与分页细节放在 [第 9 章 §9.5.2 PagedAttention](../chapter9/chapter9_推理系统.md)。读完后读者应能把 KV cache 的容量估算放回 roofline 与内存账本里。
 
-KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量、带宽强耦合，是 inference 这条主线必须带过的资源账本。完整机制放在 [第 9 章 §9.1 推理 workload](../chapter9/chapter9_推理系统.md) 与 [第 9 章 §9.5.2 PagedAttention](../chapter9/chapter9_推理系统.md)，本节只列三个判断点：
+KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量、带宽强耦合，是 inference 这条主线必须带过的资源账本。完整机制放在 [第 9 章 §9.1.1 训练看全序列，推理逐 token 生成](../chapter9/chapter9_推理系统.md) 与 [第 9 章 §9.5.2 PagedAttention：把 KV cache 当分页内存管理](../chapter9/chapter9_推理系统.md)，本节只列三个判断点：
 
 - **字节账本**：KV cache 在 prefill 阶段被一次性写入 HBM，总量按 `batch × seq_len × n_layers × 2 × n_kv_heads × head_dim × dtype_bytes` 计算（`2 ×` 表示 K 与 V 各一份；MQA/GQA/MLA/CLA 改变的是 `n_kv_heads`，字节数随该路径变少）。
 - **瓶颈来源**：单卡 HBM（80 GB / 141 GB / 192 GB 等）很快成为硬上限；剩余路径是切到多卡并行（TP/PP/CP）、压缩（量化、稀疏、GQA、MQA、MLA、CLA）或换 KV cache 调度（PagedAttention、prefix sharing、RadixAttention）。
@@ -1015,4 +1015,4 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 ## 来源与更新记录
 
 
-- 本节硬件数字（B200 L2 ≈ 63 MB/GB100 die、GB200 superchip package 126 MB、HGX B200 HBM3e 软件可见 180 GB / 物理 192 GB raw、OCP MXFP8 / MXFP4 每 32 元素共享一个 E8M0 scale factor、NVIDIA Blackwell NVFP4 每 16 元素共享一个 E4M3 microexponent scale、TPU v5p 每芯片 2 个 TensorCore × 4 个 MXU、MXU 128×128 systolic array、batch 64 / feature 128 padding）以 NVIDIA Blackwell tuning guide、NVIDIA H100 datasheet、NVIDIA A100 whitepaper（INT4 Tensor Core 1248/2496 TOPS、FP32 CUDA core 总数 6912、SM 108、die 826 mm²、7nm N7）、OCP Microscaling Formats specification 与 Google Cloud TPU v5p 文档为一手出处。MXFP4 与 NVFP4 在元素块大小上不同：OCP MX 规范定义 MXFP4 为 32 元素块 + E8M0 缩放；NVIDIA Blackwell 实际部署的 4-bit 路径是 NVFP4 变体（16 元素块 + E4M3 microexponent + 每张量额外 FP32 全局缩放）。笔记中"MXFP4 / 1 per 16"指 NVIDIA Blackwell NVFP4 部署口径，不是 OCP MXFP4 规范的块大小。H100 SXM5 的 FP32 (vector) CUDA Core 整卡峰值 = 51 TFLOP/s、FP32 Tensor Core 整卡峰值 = 67 TFLOP/s，两者来自不同执行单元、不能互换；§5.6.2 表中 FP8 行的「约 39×」按 FP32 CUDA Core 51 TFLOP/s 修正（此前错误按 FP32 Tensor Core 67 TFLOP/s 算成「约 30×」）。FlashAttention V3 FP8 attention 的 matmul 累加器为 FP32、中间 softmax 统计量（ $m_i, l_i$ ）保留在 FP32（参考 [FlashAttention-3 论文 §3.1-3.2](https://arxiv.org/abs/2407.08608)）；本章已据此修正 5.7.3 与 5.7.4 中的累加器精度描述。查阅日期：2026-09-06。
+- 本节硬件数字（B200 L2 ≈ 63 MB/GB100 die、GB200 superchip package 126 MB、HGX B200 HBM3e 软件可见 180 GB / 物理 192 GB raw、OCP MXFP8 / MXFP4 每 32 元素共享一个 E8M0 scale factor、NVIDIA Blackwell NVFP4 每 16 元素共享一个 E4M3 microexponent scale、TPU v5p 每芯片 4 个 TensorCore × 4 个 MXU = 16 MXU、MXU 128×128 systolic array、batch 64 / feature 128 padding）以 NVIDIA Blackwell tuning guide、NVIDIA H100 datasheet、NVIDIA A100 whitepaper（INT4 Tensor Core 1248/2496 TOPS、FP32 CUDA core 总数 6912、SM 108、die 826 mm²、7nm N7）、OCP Microscaling Formats specification 与 Google Cloud TPU v5p 文档为一手出处。MXFP4 与 NVFP4 在元素块大小上不同：OCP MX 规范定义 MXFP4 为 32 元素块 + E8M0 缩放；NVIDIA Blackwell 实际部署的 4-bit 路径是 NVFP4 变体（16 元素块 + E4M3 microexponent + 每张量额外 FP32 全局缩放）。笔记中"MXFP4 / 1 per 16"指 NVIDIA Blackwell NVFP4 部署口径，不是 OCP MXFP4 规范的块大小。H100 SXM 的 FP32 (vector) CUDA Core 整卡峰值 = 67 TFLOP/s（H100 PCIe 版 = 51 TFLOP/s，差异来自 TDP 与 boost clock），§5.6.2 表中 FP8 行的「约 30×」按 H100 SXM 自身 Tensor Core FP8 dense 1,979 TFLOP/s ÷ H100 SXM FP32 CUDA Core 67 TFLOP/s 算出。FlashAttention V3 FP8 attention 的 matmul 累加器为 FP32、中间 softmax 统计量（ $m_i, l_i$ ）保留在 FP32（参考 [FlashAttention-3 论文 §3.1-3.2](https://arxiv.org/abs/2407.08608)）；本章已据此修正 5.7.3 与 5.7.4 中的累加器精度描述。查阅日期：2026-09-16。
