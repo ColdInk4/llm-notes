@@ -55,9 +55,9 @@ Transformer 的核心抽象是 token 序列，因此每种非文本模态都要�
 
 *图 14.2-1 CLIP 图文对齐框架*
 
-图 14.2-1 展示 CLIP 的训练形态。一个 batch 里有多对图像和文本，image encoder 产生 image embeddings，text encoder 产生 text embeddings。训练目标让匹配的图文对相似度更高，让不匹配的组合相似度更低。
+图 14.2-1 同时展示训练与零样本分类两个阶段。训练阶段（左）：一个 batch 里有 $N$ 对图文，image encoder 产生 image embeddings，text encoder 产生 text embeddings；目标让对角线（匹配对）相似度最大、非对角线（不匹配）更小。零样本分类（右）：把类别名写成 prompt，再算与图像 embedding 的相似度即可分类。
 
-这种目标把视觉分类问题改写成图文匹配问题。模型不需要固定类别表，而是学会把图像语义放到文本描述附近。下游做 zero-shot classification 时，可以把类别名写成文本 prompt，再比较图像 embedding 和这些文本 embedding 的相似度。
+这种目标把视觉分类问题改写成图文匹配问题：模型不需要固定类别表，而是学会把图像语义放到文本描述附近。下游做 zero-shot 分类时无需重新训练，只需把候选类别名写成 prompt 让 text encoder 编码，再与图像 embedding 做点积。
 
 > [!NOTE]
 > **CLIP 训练规模**：CLIP 最大的 Vision Transformer 是 ViT-L/14：基模型用约 4 亿 image-text pairs 在 224px 分辨率训练 12 天 / 256 张 V100 GPU（[arXiv:2103.00020](https://arxiv.org/abs/2103.00020) §2.5 Training），再在 336px 分辨率 fine-tune 一个 epoch 得到 ViT-L/14@336px（论文报告的 best variant）。文本编码器是 GPT-2 风格的 12 层 Transformer（约 63M，512 宽、8 头）；ViT-L/14 在 ImageNet zero-shot 上达到与在 1.28M ImageNet 图像上训练的 ResNet-50 可比 / 略高的精度（论文原文 "matches the performance of the original ResNet-50 despite using none of the 1.28 million crowd-labeled training examples"）。
@@ -117,7 +117,7 @@ CLIP 和 SigLIP 学到的是视觉表示。语言模型使用这些表示时，�
 图 14.3-1 展示 LLaVA 的基本结构：CLIP 负责图像编码，线性 projection 把视觉特征映射到语言模型 embedding space，语言模型负责生成回答。这个模板的工程好处是清楚：vision encoder、projector 和 LLM 可以分阶段训练，也可以分别冻结或解冻。
 
 > [!NOTE]
-> **LLaVA 关键细节**：text decoder 是 **Vicuna**（基于 LLaMA-1 在 ShareGPT 上微调），而非原生 LLaMA-1；指令数据规模约 **158K examples**，来自 MS COCO 的 bounding boxes + MTurk captions + GPT-4 合成；视觉 encoder 是 CLIP ViT-L/14。这三个细节决定 LLaVA 后续所有版本（OneVision、Video 等）都把 text decoder 替换为更强的 LM，并保留或扩展这一数据规模。LLaVA OneVision 的视觉 encoder 改为 SigLIP 并取其最后 Transformer layer 前后两套 grid features 作为视觉 token，text decoder 升级为 Qwen-2（提供 0.5B / 7B / 72B 三档），projector 升级为 2-layer MLP（[LLaVA OneVision, arXiv:2408.03326](https://arxiv.org/abs/2408.03326)）。
+> **LLaVA 关键细节**：text decoder 是 **Vicuna**（基于 LLaMA-1 在 ShareGPT 上微调），而非原生 LLaMA-1；指令数据是 LLaVA-Instruct-158K（58K 对话 + 23K 详细描述 + 77K 复杂推理 = 158K），由 GPT-4/ChatGPT 以 MS COCO 图像的 captions（MTurk 标注）+ bounding boxes 这两个符号化表示为输入生成；视觉 encoder 是 CLIP ViT-L/14。这三个细节决定 LLaVA 后续所有版本（OneVision、Video 等）都把 text decoder 替换为更强的 LM，并保留或扩展这一数据规模。LLaVA OneVision 的视觉 encoder 改为 SigLIP 并取其最后 Transformer layer 前后两套 grid features 作为视觉 token，text decoder 升级为 Qwen-2（提供 0.5B / 7B / 72B 三档），projector 升级为 2-layer MLP（[LLaVA OneVision, arXiv:2408.03326](https://arxiv.org/abs/2408.03326)）。
 >
 > **视觉 / 语言侧规模差**：现代 VLM 的视觉 encoder 普遍 < 1B 参数（SigLIP B/16 ~400M、OpenCLIP ViT-bigG ~2.54B 是少数例外；Qwen-VL Table 1 报 ViT 部分 ~1.9B 是 OpenCLIP 公开 checkpoint 去掉 head 后的非 embedding 部分，与 OpenCLIP 自身公布的整体 ~2.54B 一致），而语言侧 LLM 已普遍到数十亿到数百亿参数。这一规模差决定了多模态训练中视觉 encoder 通常被冻结或低学习率微调，projector / adaptor + LLM 才是主要学习对象；也决定了 visual token 在 prefill / KV cache 中占比相对可控。
 
@@ -234,7 +234,7 @@ Qwen-VL 系列展示了 VLM 向更通用多模态模型演进的几个方向：�
 - 视觉编码器：更大 ViT（约 675M 参数）；支持 **dynamic resolution**。
 - 224×224 图像切成 14×14 patches，经 ViT/14 编码后产生 16×16 = 256 个 token；再做 2×2 空间压缩，最终约 66 tokens。
 - 视频采样 2 帧/秒，单视频 token 上限 16384。
-- 引入 **Multimodal Rotary Position Embedding（MRoPE）**——把时间、高度、宽度作为三个独立 rotary 轴，与 Qwen2-VL M-RoPE 表 `[t t t t h h h h w w w w]` 分块对应。
+- 引入 **Multimodal Rotary Position Embedding（MRoPE）**——把 Q/K 的 embedding 拆成三段，分别对时间、高度、宽度施加 rotary：文本三段共享同一位置 ID（退化为 1D RoPE），图像三段中时间 ID 常置而 h/w 按网格递增，视频在时间 ID 上逐帧递增。Qwen2-VL 把三段分别分配到 embedding 维度的连续块，对应 [t t t t h h h h w w w w] 的频段切分。
 - LM 初始化自 Qwen2；视觉编码器初始化自 DFN。
 - 引用：[arXiv 2409.12191](https://arxiv.org/abs/2409.12191)。
 
@@ -248,11 +248,11 @@ MRoPE 把位置信息扩展到多维输入。文本只有一维顺序；图像�
 
 ### 14.5.3 Qwen3-VL
 
-这一节聚焦 Qwen3-VL 在 MRoPE、视频时间建模与视觉融合三件事上的继续打磨，回答「256K 上下文与多模态推理同时存在时，位置编码和视觉特征注入如何调整」。下面按组件逐项拆开，分别说明它解决的具体问题、机制差异与对应工程后果。
+Qwen3-VL 的公理起点是 Qwen2-VL 留下的两个瓶颈：(1) MRoPE 在 embedding 维度把 t / h / w 切成连续块，导致低频段与高频段被某一轴独占，长视频频谱分配偏置；(2) 视觉特征仅在 adapter 输出层注入 LLM 一次，浅层信息在深层被稀释。Qwen3-VL 的各项改进对应到这两个瓶颈的工程解。下面按组件逐项拆开，分别说明它解决的具体问题、机制差异与对应工程后果。
 
 - **视觉编码器**：**SigLIP-2**（与 SigLIP 同架构）。Qwen3-VL 论文默认采用 **SigLIP2-SO-400M** 变体，对 2B / 4B 等小尺寸 LM 则改用参数量更低的 **SigLIP2-Large (300M)**；把视觉侧换成 SigLIP-2，是为了继续利用 sigmoid 配对损失在小 batch 训练下的稳定性，让 vision encoder 的预训练与后续 VLM 联合训练在损失耦合上更可控。
 
-- **Interleaved MRoPE**：把 t / h / w 三个分量在 embedding 维度上交错分配（pattern `[t h w t h w t h w ...]`），让每个轴都同时覆盖低频段与高频段；Qwen2-VL 的 MRoPE 是按 `[t t t t h h h h w w w w]` 把三个轴分成三个连续块，低频和高频被某一轴独占，长视频上频谱不均衡。Qwen3-VL 的交错方式避免这种偏置，长视频位置建模更稳定。
+- **Interleaved MRoPE**：把 t / h / w 三个分量在 embedding 维度上交错分配（pattern `[t h w t h w t h w ...]`），让每个轴都同时覆盖低频段与高频段；Qwen2-VL 的 MRoPE 是按 `[t t t t h h h h w w w w]` 把三个轴分成三个连续块，低频和高频被某一轴独占。Qwen3-VL 论文报告这一改动在长视频位置检索任务上取得提升。「频谱更均衡 → 长视频建模更稳定」属于经验拟合而非第一性原理推导。
 
 - **视频帧附带显式文本时间戳**：与 Qwen2-VL MRoPE 仅把时间信息隐式放在 rotary 频段中不同，Qwen3-VL 把帧的时间写成可读文本字段（如 `[t = 12.5s]`）放进 prompt，让模型直接读到时间而不是仅从 rotary 频段中推断。文本时间戳与 Interleaved MRoPE 互补，前者负责可读语义、后者负责位置编码一致性。
 
@@ -313,7 +313,7 @@ VQ-VAE 把连续图像压缩成离散 codebook indices。Encoder 产生连续 la
 
 多模态训练会把不同信息密度的数据放进同一个优化目标。文本 token 通常语义密度高、熵较低；图像或视频 tokens 数量多、冗余也多。若直接混合，长视频或高分辨率图像可能在 loss 中占过大权重，导致训练不稳定或挤压文本能力。
 
-这一节把前面的结构选择收束成训练检查表。多模态系统的风险通常来自 token 预算、loss 权重、位置编码、数据阶段和生成目标同时变化；统一自回归路线（§14.6）下文本与图像 token 熵不一致带来的 norm growth 与 logit drift，及其对应的 QK norm 与 z-loss 处理，已在 §14.6 NOTE 给出，这里不再重复。
+这一节把前面的结构选择收束成训练检查表。公理起点是「同一 loss 函数 + 同一优化器」对不同 token 类型施加一致梯度；若各 token 类型的熵、信息密度、序列长度差异显著，简单混合会让其中一类主导训练。多模态系统的风险通常来自 token 预算、loss 权重、位置编码、数据阶段和生成目标同时变化；统一自回归路线（§14.6）下文本与图像 token 熵不一致带来的 norm growth 与 logit drift，及其对应的 QK norm 与 z-loss 处理，已在 §14.6 NOTE 给出，这里不再重复。
 
 几个工程判断需要一起检查：
 
