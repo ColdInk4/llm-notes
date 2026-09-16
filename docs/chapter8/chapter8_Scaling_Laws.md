@@ -1344,7 +1344,7 @@ Muon 在大模型上的稳定性补丁是 MuonClip，由 Kimi K2 引入：在 at
 公开材料还不足以证明 Muon 在同等训练设置下稳定优于 AdamW。当前更稳的工程判断是：Muon 值得关注，但比较时仍要把 optimizer、LR / batch、weight decay 和稳定性补丁放进同一张账本。
 
 > [!NOTE]
-> 公开大规模训练中，Kimi K2（[arXiv:2507.20534](https://arxiv.org/abs/2507.20534)）是 Muon 的代表案例；Kimi K2.5 在 hybrid attention 上沿用 lightning + softmax 路线，公开训练披露覆盖范围不同，K2 主要用于 sparsity scaling 等公开对比，K2.5 主要承袭 K2 的 Muon 与 scaling 设计；公开训练网格的复用价值因版本而异。
+> 公开大规模训练中，Kimi K2（[arXiv:2507.20534](https://arxiv.org/abs/2507.20534) §2.1）是 MuonClip 与 Muon 在 1T total / 32B activated MoE 上 15.5T token 稳定预训练的代表案例；同一团队后续公开的 Kimi Linear（[arXiv:2510.26692](https://arxiv.org/abs/2510.26692)，2025-10-30，Kimi Team）把 KDA（Kimi Delta Attention，linear attention 变体）与 MLA 按 layerwise 混合，3B activated / 48B total。同团队的更晚版本披露不构成本节引用对象，公开训练网格的复用价值需逐版本核对。
 
 ### 8.6.5 Cerebras-GPT：muP 的公开验证案例
 
