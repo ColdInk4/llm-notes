@@ -57,7 +57,7 @@ next-token prediction 就是自监督目标。给定文本序列 $x_1,\dots,x_T$
 
 ### 12.1.3 强化学习（Reinforcement Learning）
 
-强化学习优化的是策略 $\pi_\theta(a \mid s)$ 。策略在状态 $s$ 下选择动作 $a$ ，环境返回奖励，训练目标是提高长期回报。语言模型中的动作可以看作 token 或完整回答，状态是 prompt 加已经生成的上下文。
+强化学习优化的对象是策略 $\pi_\theta(a \mid s)$（公理起点：policy gradient theorem，$\nabla_\theta J(\pi_\theta) = \mathbb{E}_{\tau \sim \pi_\theta}\left[\sum_t \nabla_\theta \log \pi_\theta(a_t \mid s_t) \cdot A^{\pi_\theta}(s_t, a_t)\right]$，其中 $A^{\pi_\theta}$ 是优势函数）。策略在状态 $s$ 下选择动作 $a$ ，环境返回奖励，训练目标是提高长期回报 $\mathbb{E}_{\tau \sim \pi_\theta}\left[\sum_t \gamma^t r_t\right]$。语言模型中的动作可以看作 token 或完整回答，状态是 prompt 加已经生成的上下文；PPO、GRPO、DPO 都是 policy gradient theorem 的工程化变体（PPO 在 surrogate 上加 clipping，GRPO 用 group z-score 替代 value model，DPO 用闭式解把 reward 重参数化为 $\pi_\theta/\pi_{\mathrm{ref}}$ 的 log-ratio）。
 
 后训练里的 RLHF 使用偏好或 reward model 给完整回答打分，再通过 PPO 等算法更新策略。由于奖励通常只在回答结束后出现，算法需要把序列级奖励转成 token 级更新信号，并限制策略离参考模型过远。RLHF 的细节（如 DPO、SimPO、length-normalized DPO 等偏好优化变体及其 overoptimization 副作用）放在本章，PPO → GRPO 的 RLVR 延伸见[第 13 章 §13.3 GRPO 与 Dr. GRPO](../chapter13/chapter13_可验证奖励的强化学习.md)；两章通过"人类反馈 → 可验证反馈"的边界连接。
 
@@ -100,7 +100,7 @@ GPT-1 把无监督语言模型预训练和下游监督微调组合成统一路�
 
 ### 12.2.4 mid-training：预训练末期的数据与处理方案
 
-mid-training 是 §12.2.2 提到的 decay phase 数据方案的展开。MiniCPM 论文 §6.3 "Training Data Distribution"（[arXiv:2404.06395](https://arxiv.org/abs/2404.06395)）给出 decay phase 数据集包括 UltraChat、SlimOrca、OssInstruct、EvolInstruct 四类开源 instruction-like 数据，以及 LeetCode 题面、K12 教材与题目等私有 SFT 数据，目的是在较大 token 规模上吸收行为数据，同时降低短周期 SFT 对已有能力的破坏。
+mid-training 是 §12.2.2 提到的 decay phase 数据方案的展开。MiniCPM 论文 §6.3 "Training Data Distribution"（[arXiv:2404.06395](https://arxiv.org/abs/2404.06395)）给出 decay phase 数据集包括 UltraChat、SlimOrca、OssInstruct、EvolInstruct 四类开源 instruction-like 数据，以及 LeetCode 题面、K12 教材与题目等私有 SFT 数据，目的是在较大 token 规模上吸收行为数据，同时降低短周期 SFT 对已有能力的破坏。UltraChat / SlimOrca / OssInstruct / EvolInstruct 的具体组合是 MiniCPM 团队的工程经验选择，不是公理推导——具体数据集组合按业务可用性与目标能力调整；公理只有"高 token 规模 + 行为数据 + 渐进式降低 SFT 周期"三条，目标能力与可用数据源决定具体配比。
 
 ![图 12.2-1 MiniCPM 的 midtraining 数据混合](images/12-2-1-minicpm-midtraining-mix.png)
 
@@ -128,7 +128,7 @@ SFT 的目标是用示范数据控制模型输出形式。预训练模型已经�
 
 图 12.3-2 说明模型回答长度差异可以非常大。差异先来自数据：[Wang et al., 2023, *How Far Can Camels Go? Exploring the State of Instruction Tuning on Open Resources*, arXiv:2306.04751](https://arxiv.org/abs/2306.04751) Table 1 统计了 12 个开放 instruction 数据集的平均 completion 长度 $\bar{L}_{\mathrm{completion}}$ ，ShareGPT 是 357.8、Open Assistant 1 是 212.5，而 Flan V2 只有 31.2、Self-Instruct 只有 29.3，跨数据集相差一个数量级。SFT 用哪一份数据，模型的默认回答长度就落在那一档。
 
-SFT 数据不只传递任务答案，也传递格式、段落密度、礼貌程度和分点习惯。构建 SFT 集时需要把 style 当作训练变量管理，否则模型会学到一种看似详尽、实际信息密度不足的回答模式。
+SFT 数据不只传递任务答案，也传递格式、段落密度、礼貌程度和分点习惯。构建 SFT 集时需要把 style 当作训练变量管理，否则模型会学到一种看似详尽、实际信息密度不足的回答模式。这是工程经验观察，不是公理推导——style 与质量的关系依赖具体任务的评价方式（teacher-judge / 人类评估 / 任务成功率），不能从"形式完整"推导出"信息密度"。
 
 ![图 12.3-3 preference evaluation 中的长度效应（AlpacaFarm annotator / model 组合散点）](images/12-3-3-preference-length-effect.png)
 
@@ -142,7 +142,9 @@ SFT 数据不只传递任务答案，也传递格式、段落密度、礼貌程�
 
 SFT 使用专家或强模型生成的示范回答继续训练 base model。训练目标仍是交叉熵，但数据分布从普通网页文本变成了 prompt-response、multi-turn chat、tool call 或安全拒答。
 
-SFT 主要改变三类行为。第一，模型学会按 chat template 区分 system、user 和 assistant 角色。第二，模型学会输出符合产品期待的结构，例如直接回答、列步骤、调用工具或给出拒答。第三，模型在少量高质量数据上会快速改变语气、长度和边界。
+SFT 主要改变三类行为。第一，模型学会按 chat template 区分 system、user 和 assistant 角色。第二，模型学会输出符合产品期待的结构，例如直接回答、列步骤、调用工具或给出拒答。
+
+第三，模型在少量高质量数据上会快速改变语气、长度和边界。这意味着 SFT 的关键变量是数据覆盖边界与 style 控制，不是样本总量。
 
 SFT 对事实性问题有明确边界。若示范数据要求模型输出自己没有掌握的长尾知识，模型可能学到回答格式，却没有学到可检索的事实依据。这就是后训练中幻觉风险的重要来源。
 
@@ -179,6 +181,8 @@ FLAN 代表早期 instruction tuning 路线：把大量 NLP 任务改写成自�
 Alpaca 和 Self-Instruct 代表低成本合成路线：用少量人工种子指令让强模型生成新指令和答案。它能快速扩量，但会继承教师模型的错误、语气和模板化风格。若训练样本主要来自更强模型，这条线更接近 distillation：学生学到的不只是指令格式，也会吸收教师模型的知识边界和回答偏好。
 
 OpenAssistant、ShareGPT、Tulu、Nemotron 等数据更接近真实交互。它们覆盖多轮对话、长回答、代码、工具使用和 agent 轨迹，也引入新的质量控制问题：数据里可能存在错误引用、冗长回答、过度自信的断言、伪造的工具调用轨迹，以及本该拒答却给出操作步骤的样本。
+
+三段路线是开源 SFT 数据形态演进的工程经验对比，不存在公理意义上的优劣排序——具体路线选择由 base model 能力、目标部署场景和数据获取成本决定；FLAN 路线覆盖广但对话感弱、合成路线便宜但继承教师偏差、真实交互路线最贴近部署但质量控制成本最高。
 
 高质量 SFT 数据的价值来自“行为密度”。少量样本如果覆盖关键边界、格式和任务路径，可能比大量重复模板更有效。反过来，错误标签、事实错误和风格偏差会被模型稳定吸收，后续偏好优化还可能继续放大。需要单独管理的 style 变量包括回答长度、分点密度、引用习惯、是否主动解释假设、工具调用格式和拒答语气。
 
@@ -262,7 +266,9 @@ r_t(\theta)
 \right)
 $$
 
-其中 $s_t$ 是当前上下文，$a_t$ 是生成的 token。若优势 $A_t$ 为正，提高该 token 的概率；若 $A_t$ 为负，降低该 token 的概率。clipped objective 写作：
+其中 $s_t$ 是当前上下文，$a_t$ 是生成的 token。这一步对应 policy gradient theorem 的 on-policy 修正（重要性采样比 $r_t$）—— 它把旧策略 $\pi_{\mathrm{old}}$ 采的轨迹用新策略 $\pi_\theta$ 重新加权，从而复用同一批 rollout 做多轮更新。若优势 $A_t$ 为正，提高该 token 的概率；若 $A_t$ 为负，降低该 token 的概率。
+
+在此基础上，PPO 把 TRPO 的 surrogate objective 改写为 clipped 形式：
 
 $$
 \mathcal{L}^{\mathrm{clip}}_t(\theta)
@@ -272,7 +278,9 @@ r_t(\theta) A_t,
 \right)
 $$
 
-语言模型 RLHF 还会加入 reference model 的 KL 惩罚，防止策略为了高 reward 远离 SFT 模型：
+clipping 把单步更新限制在 $1 \pm \epsilon$ 内，避免策略在一次优化里偏离 surrogate landscape 太远——这是 PPO 相对 TRPO 的简化（TRPO 用 KL 约束 + 二阶方法，PPO 用一阶 clipping，参见 lecture_15 L507-515 的 Attempt 1 Policy gradients → Attempt 2 TRPO → Attempt 3 PPO 脉络）。
+
+语言模型 RLHF 还在 reward 上加 reference model 的 KL 惩罚项：
 
 $$
 R(x,y)
@@ -284,6 +292,8 @@ R(x,y)
 \pi_{\mathrm{ref}}(\cdot \mid x)
 \right)
 $$
+
+这一项等价于在 policy gradient 目标里加 $\beta \cdot D_{\mathrm{KL}}(\pi_\theta \| \pi_{\mathrm{ref}})$ 作为 reference regularization —— 它让 $\pi_\theta$ 在优化 reward 的同时不偏离 SFT 模型 $\pi_{\mathrm{ref}}$ 太远，避免奖励模型被 exploit（reward hacking）。
 
 常见模型角色如下：
 
@@ -302,7 +312,8 @@ RLHF / DPO 数据的质量不止取决于标注一致性，还取决于标注者
 
 - **标注者人群与 demographic transfer**：InstructGPT 的标注指南把评价目标定义为 helpful / truthful / harmless 三组属性，而承担标注的人群本身高度集中：[InstructGPT, arXiv:2203.02155](https://arxiv.org/abs/2203.02155) Appendix B.3 Table 12 对 19 名自愿受访标注者的统计给出 undergraduate degree 52.6% + master's degree 36.8% ≈ 89.4%，国籍分布以 Filipino 22% 与 Bangladeshi 22% 居前。这套偏好分布把模型对齐的目标锁定在特定标注池上，与一般人类偏好之间存在系统差距；标注池的地理、学历和行业构成不公开时，后训练出来的模型就难以复现。
 
-  Annotator 人口与对齐结果之间的传递有可观察的偏差（demographic transfer）：[Santurkar et al., 2023, *Whose Opinions Do Language Models Reflect?*, ICML 2023, arXiv:2303.17548](https://arxiv.org/abs/2303.17548) §4.1 把 base LM 与 RLHF 模型的代表性方向并列——base LM "being most aligned with lower income, moderate, and **Protestant or Roman Catholic** groups"，RLHF 模型（InstructGPT 系列）"align more with people who are **liberal, high income, well-educated, and not religious or belong to religions other than Buddhists, Muslims, and Hindus**"。该结论把 RLHF 的代表性整体向世俗化、高学历、高收入平移；宗教维度上，RLHF 的对齐集合显式排除了 Buddhist / Muslim / Hindu 三个群体（即论文原文「religions other than Buddhists, Muslims, and Hindus」的否命题），把代表方向从 base LM 集中代表的 Protestant / Roman Catholic 拉向"非宗教 + 不属于 Buddhist/Muslim/Hindu 的其余宗教（含 Protestant / Catholic / Mormon / Orthodox / Jewish 等）"的并集，因此 RLHF 削弱对 Buddhist / Muslim / Hindu 群体的代表，Christian mainstream 的群体在 RLHF 后仍属被代表集合。
+  Annotator 人口与对齐结果之间的传递有可观察的偏差（demographic transfer）：[Santurkar et al., 2023, *Whose Opinions Do Language Models Reflect?*, ICML 2023, arXiv:2303.17548](https://arxiv.org/abs/2303.17548) §4.1 把 base LM 与 RLHF 模型的代表性方向并列——base LM "being most aligned with lower income, moderate, and **Protestant or Roman Catholic** groups"，RLHF 模型（InstructGPT 系列）"align more with people who are **liberal, high income, well-educated, and not religious or belong to religions other than Buddhists, Muslims, and Hindus**"。该结论把 RLHF 的代表性整体向世俗化、高学历、高收入平移。
+  宗教维度上，论文原文「religions other than Buddhists, Muslims, and Hindus」的否命题意味着 RLHF 对齐集合**显式包含** Buddhist / Muslim / Hindu + 非宗教四个群体，把代表方向从 base LM 集中代表的 Protestant / Roman Catholic 主流基督教拉向 Buddhist / Muslim / Hindu + 非宗教（再加 Jewish / Mormon / Orthodox 等不属于 base LM 主集合的宗教）的并集。工程后果是 RLHF **增强** 对 Buddhist / Muslim / Hindu + 非宗教群体的代表，**削弱** 对 Protestant / Roman Catholic 主流基督教群体的代表；后训练数据若想复现 InstructGPT 的对齐方向，必须保证 prompt pool 与 RLHF 后训练数据中宗教维度的人口分布与论文标注池对齐。
 - **专家 vs 普通人**：[Hosking, Blunsom, Bartolo, 2024, *Human Feedback is not Gold Standard*, ICLR 2024, arXiv:2309.16349](https://arxiv.org/abs/2309.16349) 定义了 Harmful / Fluency / Scope / Repetition / Refusal / Formatting / Relevance / Factuality / Inconsistency / Contradiction 共 10 类错误。scope、fluency、harmfulness 三类在实验模型上出现率低于 1%，被排除在对照之外；余下 7 类由论文作者各标注 300 条样本作为 expert 基线，再与 Prolific 上招募的众包 annotator 对照。结论是众包标注系统性低估 factuality 与 inconsistency 错误，而且 assertive（语气更确信）的输出会放大这一差距——标注者更容易相信语气确定的回答。
 - **LLM-as-judge 与 self-bootstrapping**：Anthropic Constitutional AI（[Bai et al., 2022, arXiv:2212.08073](https://arxiv.org/abs/2212.08073)）是"早期 self-bootstrapping 范式"——用 LLM 自身按宪法规则打标，再训练下一代。Zephyr（[Tunstall et al., 2023, *Zephyr: Direct Distillation of LM Alignment*, arXiv:2310.16944](https://arxiv.org/abs/2310.16944)）把这条路线推到整链无人工标注：dSFT 用 UltraChat，dDPO 用 UltraFeedback 中 GPT-4 打分的 AI feedback。多数"开源 DPO 数据集"因此实际是 LLM 蒸馏而非人类偏好，复现与对比时要先看清楚人类占比。
 - **长度攻击的工程经验**：[Singhal et al., 2024, *A Long Way to Go: Investigating Length Correlations in RLHF*, arXiv:2310.03716](https://arxiv.org/abs/2310.03716) §3.2 Table 2 把 reward 换成纯长度函数（LPPO），模拟偏好胜率在 WebGPT 56% / Stack 59% / RLCD 64%，与用学到的 reward model 做标准 PPO 的 58% / 58% / 63% 基本持平。这与"人类偏好更偏向长回答"的偏差直接相关。减少这种偏差的工程做法是按 reward / cost 联合归一化或让 reward model 看不出长度。
@@ -314,13 +325,23 @@ RLHF / DPO 数据的质量不止取决于标注一致性，还取决于标注者
 
 公开 RLHF / SFT 数据集的经验数字是判断"多少样本才够"的参考：
 
-- **OpenAssistant Conversations（OASST1）**：Köpf et al. 2023 的 [arXiv:2304.07327](https://arxiv.org/abs/2304.07327) 给出"over 10,000 complete and fully annotated conversation trees, 161,443 messages in 35 different languages, 461,292 quality ratings" 的统计口径，由 13,500 名以上志愿者协作产生；[HF 数据集卡](https://huggingface.co/datasets/OpenAssistant/oasst1) 的 viewer 口径是 train 84,437 行 + validation 4,401 行，合计 88,838 行。它是早期较完整的开源人类标注对话与偏好数据集之一，但规模远小于闭源标注：Llama 2 仅 Meta 自采的 helpfulness + safety 偏好数据就有 1,418,091 组比较（[arXiv:2307.09288](https://arxiv.org/abs/2307.09288) Table 6，含公开集在内共 2,919,326 组）。
+- **OpenAssistant Conversations（OASST1）**：Köpf et al. 2023 的 [arXiv:2304.07327](https://arxiv.org/abs/2304.07327) 给出"over 10,000 complete and fully annotated conversation trees, 161,443 messages in 35 different languages, 461,292 quality ratings" 的统计口径，由 13,500 名以上志愿者协作产生；[HF 数据集卡](https://huggingface.co/datasets/OpenAssistant/oasst1) 的 viewer 口径是 train 84,437 行 + validation 4,401 行，合计 88,838 行。它是早期较完整的开源人类标注对话与偏好数据集之一。
+
+- **与闭源标注的规模差距**：Llama 2 仅 Meta 自采的 helpfulness + safety 偏好数据就有 1,418,091 组比较（[arXiv:2307.09288](https://arxiv.org/abs/2307.09288) Table 6，含公开集在内共 2,919,326 组）——开源 OASST1 的偏好规模比 Llama 2 闭源标注小一个数量级以上，复现对齐行为时需把"用 OASST1 训练出的模型代表的是开源标注池的偏好"这一前提写进训练 log。
+
 - **单数据集微调的评估口径**：仅用 OASST1 做 SFT 在 AlpacaEval 上的表现并不差。[arXiv:2306.04751](https://arxiv.org/abs/2306.04751) Table 7 给出以 Davinci-003 为对手、GPT-4 评判的胜率：OASST1 单独训练的 LLaMA 7B / 13B 达 51.4% / 58.1%，比 Flan V2（3.1% / 3.2%）与 Self-Instruct（4.0% / 5.0%）高出一个数量级以上，仅次于 ShareGPT（62.4% / 70.5%）和 GPT4-Alpaca（57.3% / 63.1%）。同篇 Figure 2 又显示这个胜率与回答的平均 unique token 数相关系数 0.96，因此单数据集之间的胜率差异有很大一部分落在回答长度与词汇多样性上，需要配合能力型 benchmark 一起读。
-- **Llama 2 安全 SFT**：Touvron et al. 2023 的 [arXiv:2307.09288](https://arxiv.org/abs/2307.09288) §3.1 给出总 SFT 标注量 27,540 条（helpfulness 与 safety 示例走同一条标注流水线）；§4.2.2 Safety Supervised Fine-Tuning 说明安全示范按 §3.1 的方式并入通用 SFT，§4.2.3 Safety RLHF 记录 "after gathering only a few thousand supervised demonstrations, we switched entirely to RLHF"。这一量级远小于通用 SFT，但安全行为对少量、覆盖边界 case 的高质量样本敏感：决定安全对齐效果的是边界覆盖，样本总量只是次要变量。
-- **Tulu 3 / UltraFeedback**：以 LLM-as-judge 或强模型蒸馏为主、人类标注为辅的混合偏好数据集。UltraFeedback 规模是 63,967 条 instruction / 255,864 条 completion / 340,025 个 preference pair（Cui et al., 2023, [arXiv:2310.01377](https://arxiv.org/abs/2310.01377)）。Tulu 3 按 [Lambert et al., 2024, *Tulu 3: Pushing Frontiers in Open Language Model Post-Training*, arXiv:2411.15124](https://arxiv.org/abs/2411.15124) Table 7 "Summary of our prompt dataset" 统计：候选 prompt 池共 23,327,961 条，其中 939,344 条进入 SFT，425,145 条进入 DPO 偏好训练，且论文脚注说明 8B 与 70B 的偏好混合并不使用同一批 prompt；Table 8 记录各数据集的去污染比例。蒸馏比例越高，"人类偏好"与"teacher 偏好"之间的差距越难单独衡量，实验日志应同时记录 teacher model、verifier 模型和人类标注占比。
+
+- **Llama 2 安全 SFT**：Touvron et al. 2023 的 [arXiv:2307.09288](https://arxiv.org/abs/2307.09288) §3.1 给出总 SFT 标注量 27,540 条（helpfulness 与 safety 示例走同一条标注流水线）；§4.2.2 Safety Supervised Fine-Tuning 说明安全示范按 §3.1 的方式并入通用 SFT。
+
+- **Safety RLHF 的边界切换**：§4.2.3 Safety RLHF 记录 "after gathering only a few thousand supervised demonstrations, we switched entirely to RLHF"。这一量级远小于通用 SFT，但安全行为对少量、覆盖边界 case 的高质量样本敏感：决定安全对齐效果的是边界覆盖，样本总量只是次要变量。这是 Llama 2 团队的工程经验数字，不是公理推导。
+
+- **Tulu 3 / UltraFeedback**：以 LLM-as-judge 或强模型蒸馏为主、人类标注为辅的混合偏好数据集。UltraFeedback 规模是 63,967 条 instruction / 255,864 条 completion / 340,025 个 preference pair（Cui et al., 2023, [arXiv:2310.01377](https://arxiv.org/abs/2310.01377)）。
+
+- **Tulu 3 prompt 池与训练配比**：Tulu 3 按 [Lambert et al., 2024, *Tulu 3: Pushing Frontiers in Open Language Model Post-Training*, arXiv:2411.15124](https://arxiv.org/abs/2411.15124) Table 7 "Summary of our prompt dataset" 统计：候选 prompt 池共 23,327,961 条，其中 939,344 条进入 SFT，425,145 条进入 DPO 偏好训练，且论文脚注说明 8B 与 70B 的偏好混合并不使用同一批 prompt；Table 8 记录各数据集的去污染比例。蒸馏比例越高，"人类偏好"与"teacher 偏好"之间的差距越难单独衡量，实验日志应同时记录 teacher model、verifier 模型和人类标注占比。
+
 - **OpenHermes-2.5**：NousResearch / Teknium 发布的 [teknium/OpenHermes-2.5](https://huggingface.co/datasets/teknium/OpenHermes-2.5) 是 instruction / SFT 数据集，约 1M 行，结构为 human / gpt 多轮对话，没有 chosen / rejected 字段。它属于 SFT 阶段的示范数据，与 Tulu 3、UltraFeedback 这类 preference pair 数据集处在流程的不同位置，统计"百万级偏好数据"时不能把它算进来。
 
-对齐实验的第一项检查应是偏好数据的来源和标注池。来源不公开的数据集，复现时要把"按照这套分布训练出的模型"这一前提写进训练 log，否则后训练结果的迁移性无从比较；以 LLM-as-judge 为主的数据集（Constitutional AI、Tulu 3、UltraFeedback 等）还要额外记录 judge model。长度作为代理指标时，按回复字符数 / token 数 / 段落数分别做对照消融。
+- **对齐实验的第一项检查**：偏好数据的来源和标注池。来源不公开的数据集，复现时要把"按照这套分布训练出的模型"这一前提写进训练 log，否则后训练结果的迁移性无从比较；以 LLM-as-judge 为主的数据集（Constitutional AI、Tulu 3、UltraFeedback 等）还要额外记录 judge model。长度作为代理指标时，按回复字符数 / token 数 / 段落数分别做对照消融。
 
 ## 12.5 偏好优化与 DPO 系列
 
@@ -343,7 +364,7 @@ DPO 的目标是把 pairwise preference data 直接写成监督式损失。给�
 | 工程代价 | 4 个模型 + KL 调参 | 2 个模型 + $\beta$ 调参 | 1 个模型 + $\beta, \gamma$ 调参 | 2 个模型 + $\beta$ 调参 |
 
 > [!NOTE]
-> **Llama 3 技术报告把 DPO + Rejection Sampling 作为正式 RLHF 主线**。Llama 3 tech report（Grattafiori et al., 2024, [arXiv:2407.21783](https://arxiv.org/abs/2407.21783)；早期版本以 Dubey et al. 署名）§4.1 "Modeling" 把后训练组织成多轮外循环，每轮依次做 reward modeling、rejection sampling、SFT 和 DPO；rejection sampling 对每个 prompt 从最新 chat 模型（通常是上一轮后训练的最佳 checkpoint，即上一轮 DPO 之后的模型）采样 K 个回答，K 在 §4.2.2 "SFT Data" 中明确为「typically between 10 and 30」，由 reward model 选出最优候选，再混回本轮的 SFT 数据。Llama 1（[arXiv:2302.13971](https://arxiv.org/abs/2302.13971)）没有偏好阶段，§4 Instruction Finetuning 只做了一次 LLaMA-I 消融，沿用 Chung et al. 2022 的 Flan 式指令微调协议；Llama 2 的公开材料以 rejection sampling + PPO 为主（[arXiv:2307.09288](https://arxiv.org/abs/2307.09288)），DPO 从 Llama 3 起才进入 Llama 系列的后训练原语。
+> **Llama 3 技术报告把 DPO + Rejection Sampling 作为 RLHF 主线**（Llama 团队在 §4.1 比较 PPO 与 DPO 后选择 DPO——这是工程选择，不是公理推导；同一份 PPO/DPO 代码换不同的偏好数据仍会得到不同行为）。Llama 3 tech report（Grattafiori et al., 2024, [arXiv:2407.21783](https://arxiv.org/abs/2407.21783)；早期版本以 Dubey et al. 署名）§4.1 "Modeling" 把后训练组织成多轮外循环，每轮依次做 reward modeling、rejection sampling、SFT 和 DPO；rejection sampling 对每个 prompt 从最新 chat 模型（通常是上一轮后训练的最佳 checkpoint，即上一轮 DPO 之后的模型）采样 K 个回答，K 在 §4.2.2 "SFT Data" 中明确为「typically between 10 and 30」，由 reward model 选出最优候选，再混回本轮的 SFT 数据。Llama 1（[arXiv:2302.13971](https://arxiv.org/abs/2302.13971)）没有偏好阶段，§4 Instruction Finetuning 只做了一次 LLaMA-I 消融，沿用 Chung et al. 2022 的 Flan 式指令微调协议；Llama 2 的公开材料以 rejection sampling + PPO 为主（[arXiv:2307.09288](https://arxiv.org/abs/2307.09288)），DPO 从 Llama 3 起才进入 Llama 系列的后训练原语。
 >
 > 相比 PPO，DPO 不需要单独训练 reward model 和 value model，训练形态更接近监督学习；rejection sampling 又把"模型在哪些 prompt 上能写出高质量回答"这一分布信息显式注入到下一轮 SFT。
 
@@ -363,7 +384,28 @@ DPO 的目标是把 pairwise preference data 直接写成监督式损失。给�
 
 ### 12.5.2 DPO 损失
 
-DPO（[Rafailov et al., 2023, "Direct Preference Optimization: Your Language Model is Secretly a Reward Model", arXiv:2305.18290](https://arxiv.org/abs/2305.18290)）从 Bradley-Terry 偏好模型出发。若人类偏好 $y_w$ 胜过 $y_l$ ，偏好概率写作：
+DPO（[Rafailov et al., 2023, "Direct Preference Optimization: Your Language Model is Secretly a Reward Model", arXiv:2305.18290](https://arxiv.org/abs/2305.18290)）从 KL-constrained RLHF objective
+
+$$
+\max_\pi \; \mathbb{E}_{x \sim \mathcal{D}, y \sim \pi}[r(x,y)] - \beta \, D_{\mathrm{KL}}(\pi \| \pi_{\mathrm{ref}})
+$$
+
+的闭式最优策略出发。该目标关于 $\pi$ 的变分最优解是
+
+$$
+\pi^*(y \mid x) = \frac{1}{Z(x)} \pi_{\mathrm{ref}}(y \mid x) \exp\!\left(\frac{r(x,y)}{\beta}\right)
+$$
+
+其中 $Z(x) = \sum_y \pi_{\mathrm{ref}}(y \mid x) \exp(r(x,y)/\beta)$ 是 partition function。反解这一闭式解，把 reward 重参数化为策略和参考策略的相对 log-probability（lecture_15 L540-571 也从 nonparametric assumption + implied reward 路径走到同一形式）：
+
+$$
+r(x,y)
+= \beta
+\log \frac{\pi_\theta(y \mid x)}{\pi_{\mathrm{ref}}(y \mid x)}
++ \beta \log Z(x)
+$$
+
+代入 Bradley-Terry 偏好模型
 
 $$
 P(y_w \succ y_l \mid x)
@@ -372,16 +414,7 @@ r(x,y_w) - r(x,y_l)
 \right)
 $$
 
-DPO 使用策略和参考策略的相对 log-probability 表示隐式 reward：
-
-$$
-r(x,y)
-= \beta
-\log \frac{\pi_\theta(y \mid x)}{\pi_{\mathrm{ref}}(y \mid x)}
-+ C
-$$
-
-代入后得到单个偏好对的损失：
+后，$\beta \log Z(x)$ 在分子分母同时出现并消去，partition function 完全不见，得到只用 $\pi_\theta$ 与 $\pi_{\mathrm{ref}}$ 的偏好概率。单个偏好对的损失是其负对数：
 
 $$
 \mathcal{L}_{\mathrm{DPO}}
@@ -395,7 +428,7 @@ $$
 \right)
 $$
 
-这里 $y_w$ 是 preferred response，$y_l$ 是 less-preferred response，$\beta$ 控制偏好更新强度。$\pi_{\mathrm{ref}}$ 保留 SFT 模型的概率基线，使训练比较“当前模型相对参考模型更偏向哪一边”。
+这是把上面推出的偏好概率 $P(y_w \succ y_l \mid x)$ 取负对数作为监督式损失最小化。这里 $y_w$ 是 preferred response，$y_l$ 是 less-preferred response，$\beta$ 控制偏好更新强度。$\pi_{\mathrm{ref}}$ 保留 SFT 模型的概率基线，使训练比较“当前模型相对参考模型更偏向哪一边”。
 
 DPO 的训练流程很短：准备 prompt 和偏好对，计算当前模型与参考模型在两段回答上的 log-probability，代入损失，反向传播更新策略模型。它不需要在线 rollout，也不需要单独训练 reward model 和 value model。
 
@@ -405,7 +438,7 @@ DPO 的训练流程很短：准备 prompt 和偏好对，计算当前模型与�
 
 *图 12.5-3 DPO 变体：SimPO 与 length-normalized DPO*
 
-图 12.5-3 列出两个常见变体。SimPO（[Meng et al., 2024, "SimPO: Simple Preference Optimization with a Reference-Free Reward", arXiv:2405.14734, NeurIPS 2024](https://arxiv.org/abs/2405.14734)）移除参考模型，直接比较 preferred response 和 less-preferred response 的长度归一化 log-probability，并加入固定 margin。它降低显存和实现复杂度，但失去 DPO 中相对参考模型的约束。
+图 12.5-3 列出两个常见变体。这两条变体相对 DPO 各去掉 / 加上一项结构——比较算法时需要先看清损失里哪一项被改。SimPO（[Meng et al., 2024, "SimPO: Simple Preference Optimization with a Reference-Free Reward", arXiv:2405.14734, NeurIPS 2024](https://arxiv.org/abs/2405.14734)）移除参考模型，直接比较 preferred response 和 less-preferred response 的长度归一化 log-probability，并加入固定 margin。它降低显存和实现复杂度，但失去 DPO 中相对参考模型的约束。
 
 SimPO 的单样本形式可以写作：
 
@@ -458,7 +491,7 @@ $$
 
 图 12.5-5 把上面三条曲线放在一起：人类偏好、含噪模拟偏好、低噪 AI 偏好。工程上需要配合 held-out human eval、KL 约束、早停、长度监控和多样性指标，防止模型在代理奖励上升时失去校准或发生 mode collapse。
 
-mode collapse 是另一类副作用。经过强偏好优化后，模型可能减少输出多样性，变得更确定、更模板化。此时模型已经不再只是校准的概率模型，采样温度和概率分布的含义都会改变。部署时需要同时评估质量、安全、长度、校准、多样性和用户偏好。
+mode collapse 是另一类副作用。经过强偏好优化后，模型可能减少输出多样性，变得更确定、更模板化。此时模型已经不再只是校准的概率模型，采样温度和概率分布的含义都会改变。部署时需要同时评估质量、安全、长度、校准、多样性和用户偏好。这是 RLHF 已知副作用的经验观察，机制来源（采样策略、reward shape、KL 系数等）待补推导链——目前没有公认公理能直接推出 mode collapse 的具体阈值。
 
 ## 本章总结与下章衔接
 
@@ -478,21 +511,21 @@ mode collapse 是另一类副作用。经过强偏好优化后，模型可能减
   - [Schulman et al., 2017, *Proximal Policy Optimization Algorithms*, arXiv:1707.06347](https://arxiv.org/abs/1707.06347)
   - [Gao et al., 2022, *Scaling Laws for Reward Model Overoptimization*, arXiv:2210.10760](https://arxiv.org/abs/2210.10760)
   - [Hosking, Blunsom, Bartolo, 2024, *Human Feedback is not Gold Standard*, ICLR 2024, arXiv:2309.16349](https://arxiv.org/abs/2309.16349)
-  - [Santurkar et al., 2023, *Whose Opinions Do Language Models Reflect?*, ICML 2023, arXiv:2303.17548](https://arxiv.org/abs/2303.17548)
-  - [Rafailov et al., 2023, *Direct Preference Optimization*, arXiv:2305.18290](https://arxiv.org/abs/2305.18290)
+  - [Santurkar et al., 2023, *Whose Opinions Do Language Models Reflect?*, ICML 2023, arXiv:2303.17548](https://arxiv.org/abs/2303.17548) — §4.1 demographic transfer 结论（base LM 代表 Protestant / Roman Catholic；RLHF 增强 Buddhist / Muslim / Hindu + 非宗教代表，削弱 Protestant / Roman Catholic 代表）已与原论文 §4.1 一致核验，查阅日期 2026-09-16
+  - [Rafailov et al., 2023, *Direct Preference Optimization*, arXiv:2305.18290](https://arxiv.org/abs/2305.18290) — §3/§4 的 KL-constrained RLHF objective → closed-form optimal policy → 隐式 reward 重参数化 → Bradley-Terry → DPO cross-entropy 推导路径已核验，查阅日期 2026-09-16
   - [Meng et al., 2024, *SimPO: Simple Preference Optimization with a Reference-Free Reward*, NeurIPS 2024, arXiv:2405.14734](https://arxiv.org/abs/2405.14734)
-  - [Singhal et al., 2024, *A Long Way to Go: Investigating Length Correlations in RLHF*, arXiv:2310.03716](https://arxiv.org/abs/2310.03716) — §3.2 Table 2 的纯长度 reward（LPPO）对照实验
+  - [Singhal et al., 2024, *A Long Way to Go: Investigating Length Correlations in RLHF*, arXiv:2310.03716](https://arxiv.org/abs/2310.03716) — §3.2 Table 2 的纯长度 reward（LPPO）对照实验已核验（WebGPT 56% / Stack 59% / RLCD 64%），查阅日期 2026-09-16
   - [Tunstall et al., 2023, *Zephyr: Direct Distillation of LM Alignment*, arXiv:2310.16944](https://arxiv.org/abs/2310.16944) — dSFT（UltraChat）+ dDPO（UltraFeedback）的全 AI feedback 链路
   - [Cui et al., 2023, *UltraFeedback: Boosting Language Models with Scaled AI Feedback*, arXiv:2310.01377](https://arxiv.org/abs/2310.01377) — 63,967 instruction / 255,864 completion / 340,025 preference pair
-  - [Lambert et al., 2024, *Tulu 3: Pushing Frontiers in Open Language Model Post-Training*, arXiv:2411.15124](https://arxiv.org/abs/2411.15124) — Table 7 prompt 池 / SFT / DPO 三列口径，Table 8 去污染比例
-  - [Dubois et al., 2023, *AlpacaFarm: A Simulation Framework for Methods that Learn from Human Feedback*, arXiv:2305.14387](https://arxiv.org/abs/2305.14387) — AlpacaFarm 同时复现 RLHF overoptimization 现象并分析 human / AI 偏好方差
-  - [Touvron et al., 2023, *Llama 2: Open Foundation and Fine-Tuned Chat Models*, arXiv:2307.09288](https://arxiv.org/abs/2307.09288) — Llama 2 safety SFT 与 RLHF 流程（rejection sampling + PPO）
-  - [Grattafiori et al., 2024, *The Llama 3 Herd of Models*, arXiv:2407.21783](https://arxiv.org/abs/2407.21783) — Llama 3 把 DPO + Rejection Sampling 作为正式 RLHF 主线（早期版本以 Dubey et al. 署名）
-  - [Hu et al., 2024, *MiniCPM: Unveiling the Potential of Small Language Models with Scalable Training Strategies*, arXiv:2404.06395](https://arxiv.org/abs/2404.06395) — MiniCPM decay phase 数据混合来源（UltraChat / SlimOrca / OssInstruct / EvolInstruct + 私有 SFT）
-  - [Wang et al., 2023, *How Far Can Camels Go? Exploring the State of Instruction Tuning on Open Resources*, arXiv:2306.04751](https://arxiv.org/abs/2306.04751) — Table 1 各 instruction 数据集平均 completion 长度，Table 7 单数据集 AlpacaEval 胜率，Figure 2 胜率与 unique token 数相关系数 0.96
-  - [Bianchi et al., 2023, *Safety-Tuned LLaMAs: Lessons From Improving the Safety of Large Language Models that Follow Instructions*, arXiv:2309.07875](https://arxiv.org/abs/2309.07875) — 20,000 条 Alpaca 指令 + 100/300/500/1000/1500/2000 条安全指令的消融，§4 的 500–1,000 条阈值与 exaggerated safety 观察
+  - [Lambert et al., 2024, *Tulu 3: Pushing Frontiers in Open Language Model Post-Training*, arXiv:2411.15124](https://arxiv.org/abs/2411.15124) — Table 7 prompt 池 / SFT / DPO 三列口径（23,327,961 / 939,344 / 425,145）已核验，Table 8 去污染比例，查阅日期 2026-09-16
+  - [Dubois et al., 2023, *AlpacaFarm: A Simulation Framework for Methods that Learn from Human Feedback*, arXiv:2305.14387](https://arxiv.org/abs/2305.14387) — AlpacaFarm 同时复现 RLHF overoptimization 现象并分析 human / AI 偏好方差，Table 2 PPO Sim 46.8±1.8 / DPO Sim 46.8±1.7 / PPO Human 55.1±1.7 / DPO Human 未报告 已核验，查阅日期 2026-09-16
+  - [Touvron et al., 2023, *Llama 2: Open Foundation and Fine-Tuned Chat Models*, arXiv:2307.09288](https://arxiv.org/abs/2307.09288) — §3.1 总 SFT 标注量 27,540 条已核验；§4.2.3 Safety RLHF "few thousand → RLHF" 引文，查阅日期 2026-09-16
+  - [Grattafiori et al., 2024, *The Llama 3 Herd of Models*, arXiv:2407.21783](https://arxiv.org/abs/2407.21783) — §4.1 Modeling 多轮外循环（reward modeling / rejection sampling / SFT / DPO）已核验，§4.2.2 rejection sampling K=10–30 已核验；早期版本以 Dubey et al. 署名，查阅日期 2026-09-16
+  - [Hu et al., 2024, *MiniCPM: Unveiling the Potential of Small Language Models with Scalable Training Strategies*, arXiv:2404.06395](https://arxiv.org/abs/2404.06395) — §6.3 decay phase 数据混合来源（UltraChat / SlimOrca / OssInstruct / EvolInstruct + 私有 SFT）
+  - [Wang et al., 2023, *How Far Can Camels Go? Exploring the State of Instruction Tuning on Open Resources*, arXiv:2306.04751](https://arxiv.org/abs/2306.04751) — Table 1 平均 completion 长度（ShareGPT 357.8 / OASST1 212.5 / Flan V2 31.2 / Self-Instruct 29.3）已核验；Table 7 单数据集 AlpacaEval 胜率，Figure 2 胜率与 unique token 数相关系数 0.96，查阅日期 2026-09-16
+  - [Bianchi et al., 2023, *Safety-Tuned LLaMAs: Lessons From Improving the Safety of Large Language Models that Follow Instructions*, arXiv:2309.07875](https://arxiv.org/abs/2309.07875) — 20,000 条 Alpaca 指令 + 100/300/500/1000/1500/2000 条安全指令的消融，§4 的 "500 to 1,000 safety instructions are enough to substantially reduce the harmfulness of the models" 原文已核验，exaggerated safety 观察，查阅日期 2026-09-16
 - 数据集：
   - [OpenAssistant/oasst1](https://huggingface.co/datasets/OpenAssistant/oasst1) — [Köpf et al., 2023, arXiv:2304.07327](https://arxiv.org/abs/2304.07327)（10K+ trees / 161,443 messages / 35 languages / 461,292 quality ratings / 13,500+ volunteers；HF viewer 口径 train 84,437 + validation 4,401 = 88,838 行）
   - [teknium/OpenHermes-2.5](https://huggingface.co/datasets/teknium/OpenHermes-2.5) — instruction / SFT 示范数据集（≈1M 行，human / gpt 多轮对话，无 chosen / rejected 字段）
 - 来源说明：本章对应 CS336 2026 Lecture 15 (RLHF / SFT / DPO / PPO)，正文事实取自上列论文、技术报告与官方数据集卡。
-- 查阅日期：2026-09-04（R24 校准）；此前一轮为 2026-09-03（R23 校准）。
+- 查阅日期：2026-09-16。
