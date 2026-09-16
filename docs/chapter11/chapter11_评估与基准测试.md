@@ -14,7 +14,7 @@
 
 评估可以看成一个映射问题：把“好模型”这类抽象目标转化为可执行、可比较、可复核的具体指标。困难也正在这里：不同使用者关心的“好”并不相同，采购模型、改进训练、研究能力边界和评估社会风险，需要的评估设计往往不是同一套。
 
-本章的认识链从测量目标出发：先定义希望估计的能力或风险，再定义输入分布、调用协议、评分函数和不确定性，最后用独立样本检验分数是否稳定。每类 benchmark 都应说明它改变了哪个变量、保持了哪些规则，以及观测分数能否支持目标决策；榜单、人工偏好和 agent 轨迹属于不同测量协议，不能在未对齐规则时合并解释。
+本章的认识链从测量目标出发：先定义希望估计的能力或风险，再定义输入分布、调用协议、评分函数与置信度，最后用独立样本验证分数是否稳定。每类 benchmark 都应说明它改变了哪个变量、保持了哪些规则，以及观测分数能否支持目标决策；榜单、人工偏好和 agent 轨迹属于不同测量协议，规则未对齐时不能合并解释。
 
 因此，本章把评估拆成一条可复查的链路：先定义目标行为，再选择输入分布、调用方式、评分规则和解释边界，最后判断这个分数是否能代表真实使用场景。榜单截图和基准案例都服务于这条链路。
 
@@ -224,6 +224,8 @@ Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会�
 
 在深入具体的下游任务基准之前，我们必须理解一个基础且重要的度量标准：困惑度（Perplexity）。
 
+公理起点是「语言模型是一个 token 序列上的概率分布 $p_\theta$」。给定一个真实分布 $t$ 与模型分布 $p$，任意序列的交叉熵 $\mathrm{H}(t, p)$ 都给出「模型对真实序列平均要花多少 nats 来编码」的下界。perplexity 就是这条下界的指数化重标度。
+
 给定测试序列 $x_{1:T}$，平均负对数似然为 $L=-\frac{1}{T}\sum_{t=1}^{T}\log p_\theta(x_t\mid x_{<t})$，困惑度定义为 $\mathrm{PPL}=e^L$。因此 PPL 直接由 next-token 概率分布导出，适合比较相同 tokenizer、语料和上下文长度下的模型；更换 tokenizer 或测试分布后，数值不再处于同一测量尺度。
 
 语言模型定义了一个序列概率分布 $p(x)$，它对任意一段 token 序列 $x$ 给出概率值，也就是这个序列在模型分布下有多自然。困惑度衡量模型对某个数据集分配高概率的能力。在预训练阶段，模型的目标就是最小化训练集上的困惑度。数值越小，表示模型越容易预测这些 token。训练侧优化交叉熵的等价表述与具体算式见 [第 2 章 §2.4 计算效率](../chapter2/chapter2_pytorch与资源核算.md)。
@@ -232,7 +234,7 @@ $$
 \text{Perplexity} = \left( \frac{1}{p(D)} \right)^{1/|D|}
 $$
 
-其中 $p(D)$ 是模型给整个数据集 $D$ 中所有句子联合概率的乘积（通常取 log 求和再指数还原）；$|D|$ 是数据集中 token 的总数量。
+其中 $p(D)$ 是模型给整个数据集 $D$ 中所有句子联合概率的乘积（通常取 log 求和再指数还原）；$|D|$ 是数据集中 token 的总数量。最优下界为 $\exp(H(t))$，当且仅当 $p = t$ 时达到——这就是 §11.3.7「perplexity is all you need」信念的来源。
 
 ### 11.3.2 为什么要用测试集？
 
@@ -256,21 +258,21 @@ $$
 
 ### 11.3.4 历史与演变
 
-2016 年，Jozefowicz 等人在[《Exploring the Limits of Language Modeling》](https://arxiv.org/abs/1602.02410) 论文里，用纯 CNN + LSTM 架构，在 十亿（1B） Word Benchmark 上把困惑度从 51.3 降到 30.0 —— 当时是非常大的突破。
+Jozefowicz 等人在 [《Exploring the Limits of Language Modeling》](https://arxiv.org/abs/1602.02410) 论文中，用纯 CNN + LSTM 架构，在 十亿（1B） Word Benchmark 上把困惑度从 51.3 降到 30.0。这是工程经验层面的观察，不是公理推导：next-token 概率在更大模型 + 更大数据下确实能拟合得更准，但为什么"扩大到多少就能拟合多准"并无闭式解，靠 scaling law 经验拟合。
 
 ![图 11.3-1 CNN+LSTM 降低困惑度](images/11-3-1-cnn-lstm-perplexity.png)
 
 *图 11.3-1 CNN+LSTM 降低困惑度*
 
-OpenAI 在 [《Language Models are Unsupervised Multitask Learners》](https://cdn.openai.com/better-language-models/) 论文中发布的 GPT-2，在 WebText（来自 Reddit 链接的网页文本，约 40GB）上训练，然后直接在标准数据集上做 zero-shot（零样本）评估。
+OpenAI 在 [《Language Models are Unsupervised Multitask Learners》](https://cdn.openai.com/better-language-models/) 论文中发布的 GPT-2 在 WebText（来自 Reddit 链接的网页文本，约 40GB）上训练，然后直接在标准数据集上做 zero-shot（零样本）评估。这属于「分布外评估」（out-of-distribution），训练和测试来自不同数据源。
 
-这属于“分布外评估”（out-of-distribution），因为训练数据和测试数据来源不同。但它表现很好，说明大规模、多样化的训练数据能带来强大的泛化能力。
+GPT-2 的关键观察是：在大规模、多样化训练下，模型对从未见过的标准测试集仍能保持良好困惑度。这意味着 next-token 训练虽然以单语料为目标，但学到的概率分布能跨域迁移——这一性质目前没有严格推导支撑，属于经验性观察。
 
 ![图 11.3-2 GPT-2 zero-shot 评估](images/11-3-2-gpt2-zero-shot-evaluation.png)
 
 *图 11.3-2 GPT-2 zero-shot 评估*
 
-这是 GPT-2 论文中的关键表格，展示了不同规模模型在多个任务上的表现。可以读出三点：随着模型变大，困惑度持续下降；在 LAMBADA 等任务上，语言建模能力会迁移到下游准确率；但在 1BW 这类更大或更难的数据集上，增大模型带来的改进并不总是同样明显。
+这张表格可以读出三点：随着模型变大，困惑度持续下降；在 LAMBADA 等任务上，语言建模能力会迁移到下游准确率；但在 1BW 这类更大或更难的数据集上，增大模型带来的改进并不总是同样明显。
 
 ### 11.3.5 为什么困惑度仍重要？
 
@@ -396,7 +398,9 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 [MMLU](https://arxiv.org/pdf/2009.03300.pdf) 包含 57 个学科（从数学、历史到法律、伦理）的多项选择题。问题源自网络，由学生收集。它更侧重于知识而非语言理解。
 
-最初用 GPT-3 的少样本提示进行评估时，最大型号的 X-Large（175B）只能取得 43.9% 的平均准确率，而 Small（2.7B）、Medium（6.7B）、Large（13B）三档分别是 25.9%、24.9%、26.0%，基本停在 25% 的随机基线上（[Hendrycks et al., 2020, arXiv:2009.03300](https://arxiv.org/pdf/2009.03300.pdf) Table 1）。几年之后，MMLU 已经接近饱和，这恰恰说明单一知识基准很容易从“有区分度”变成“只剩刷榜价值”。
+最初用 GPT-3 的少样本提示进行评估时，最大型号的 X-Large（175B）只能取得 43.9% 的平均准确率，而 Small（2.7B）、Medium（6.7B）、Large（13B）三档分别是 25.9%、24.9%、26.0%，基本停在 25% 的随机基线上（[Hendrycks et al., 2020, arXiv:2009.03300](https://arxiv.org/pdf/2009.03300.pdf) Table 1）。
+
+几年之后，MMLU 已经接近饱和。这恰恰说明单一知识基准很容易从「有区分度」变成「只剩刷榜价值」。公理上是 difficulty / validity 失衡：当模型的能力下限被推到随机基线之上，准确率开始进入饱和区，分数差异逐渐由题目噪声与 prompt 模板而非真实能力决定。
 
 ![图 11.4-1 GPT-3 在 MMLU 上的 few-shot 提示](images/11-4-1-gpt3-mmlu-few-shot.png)
 
@@ -419,17 +423,21 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 *图 11.4-2 MMLU-Pro 与 MMLU 对比*
 
-把选项从 4 增到 10 并加入 CoT 评估后，模型在 MMLU-Pro 上的得分相对 MMLU 下降 16%–33%：领先模型 GPT-4o 在 MMLU-Pro 上只有 72.6%，而它在 MMLU 上是 88.7%（CoT）/ 87.2%（direct）。同时，GPT-4o、Claude-3-Opus、GPT-4-Turbo 这几个头部模型之间的分差从 MMLU 上的约 2% 拉开到 MMLU-Pro 上的约 9%，prompt 变体带来的分数波动也从 MMLU 的 4%–5% 收窄到 2%，区分度和稳定性同时改善。
+把选项从 4 增到 10 并加入 CoT 评估后，模型在 MMLU-Pro 上的得分相对 MMLU 下降 16%–33%：领先模型 GPT-4o 在 MMLU-Pro 上只有 72.6%，而它在 MMLU 上是 88.7%（CoT）/ 87.2%（direct）。
+
+公理层面，两项设计同时起作用：(a) 选项数从 4 增到 10 把随机基线从 25% 压到 10%，让准确率不再轻易触顶；(b) CoT 把「选择答案」这一动作从「字面猜测」转化为「逐步推理」，让分数差异主要由推理深度而非格式投机带来。两项合起来同时改善区分度和稳定性：GPT-4o、Claude-3-Opus、GPT-4-Turbo 的分差从 MMLU 上的约 2% 拉开到 MMLU-Pro 上的约 9%，prompt 变体带来的分数波动也从 MMLU 的 4%–5% 收窄到 2%。
 
 ### 11.4.3 GPQA (Graduate-Level Google-Proof Q&A)
 
-[GPQA](https://arxiv.org/abs/2311.12022) Main 共 **448 题**（Extended 546 / Diamond 198 子集），由 61 名 PhD 领域专家通过 Upwork 平台设计（论文 §2.1 "The Collection Pipeline" 原文："We hire 61 contractors through Upwork to write and validate the dataset. We require that they have completed or are currently in a PhD program in their field of expertise"）。目标是创建"防谷歌"问题，即非专家即使花 30 分钟用谷歌搜索也难以解答。论文用三档**实测准确率**验证题目确实够难：
+[GPQA](https://arxiv.org/abs/2311.12022) Main 共 **448 题**（Extended 546 / Diamond 198 子集），由 61 名 PhD 领域专家通过 Upwork 平台设计（论文 §2.1 "The Collection Pipeline" 原文："We hire 61 contractors through Upwork to write and validate the dataset. We require that they have completed or are currently in a PhD program in their field of expertise"）。目标是创建「防谷歌」问题，即非专家即使花 30 分钟用谷歌搜索也难以解答。
+
+公理起点是「专家能力上限 ≈ 真值标签」：专家能答对的题才有可能成为有效基准题，专家都答错的题则更像题目噪声。论文用三档**实测准确率**验证题目确实够难：
 
 - 博士级专家在对应领域达到 **65%** accuracy，剔除专家事后自认的明显失误后为 74%（§1、§3.1）
 - 非专家在可访问互联网的条件下达到 **34.1% ± 2.3%** accuracy，中位耗时 30 分钟（§3.2）
 - GPT-4 few-shot CoT 在 Extended / Main / Diamond 三档分别是 38.7% / 39.7% / 38.8%，即摘要里概括的 **39%**（§4 Table 5）
 
-论文 §2.3 "Dataset Splits" 定义的是子集划分规则：Main 剔除"两名专家都答错且三名非专家全部答对"的题，Diamond 进一步只保留"两名专家都答对且多数非专家答错"的题。划分规则与上面三档实测准确率是两件事，前者决定哪些题入选，后者只是入选后的难度验证。
+论文 §2.3 "Dataset Splits" 定义的是子集划分规则：Main 剔除「两名专家都答错且三名非专家全部答对」的题，Diamond 进一步只保留「两名专家都答对且多数非专家答错」的题。划分规则与上面三档实测准确率是两件事，前者决定哪些题入选，后者只是入选后的难度验证。
 
 ![图 11.4-3 GPQA 高难问答基准](images/11-4-3-gpqa-benchmark.png)
 
@@ -439,7 +447,9 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ### 11.4.4 Humanity's Last Exam
 
-[Humanity's Last Exam](https://arxiv.org/abs/2501.14249)（HLE）是一个由社区贡献的多模态、多学科基准，公开题库共 2,500 道，覆盖数学、人文与自然科学等数十个学科。约 14% 的题目需要同时理解文本和图像，约 24% 是选择题，其余 76% 是精确匹配题。奖金池 50 万美元按贡献题目的难度分档：最难的 50 题各 5,000 美元，再往后 500 题各 500 美元。题目由社区贡献，先用前沿 LLM 筛选掉过于简单的题，再经过多阶段专家审查。HLE 的局限在于问题征集过程可能存在严重的选择偏差，且问题类型仍局限于有标准答案的”考试”形式。
+[Humanity's Last Exam](https://arxiv.org/abs/2501.14249)（HLE）是一个由社区贡献的多模态、多学科基准，公开题库共 2,500 道，覆盖数学、人文与自然科学等数十个学科。约 14% 的题目需要同时理解文本和图像，约 24% 是选择题，其余 76% 是精确匹配题。奖金池 50 万美元按贡献题目的难度分档：最难的 50 题各 5,000 美元，再往后 500 题各 500 美元。
+
+题目由社区贡献，先用前沿 LLM 筛选掉过于简单的题，再经过多阶段专家审查。公理起点是「前沿模型集体失分的题」最有可能保留难度梯度——简单题与已饱和的题会被前置筛选过滤，剩余的题在分布上更接近「模型能力上限附近」的样本。HLE 的局限在于问题征集过程可能存在严重的选择偏差，且问题类型仍局限于有标准答案的「考试」形式。
 
 ![图 11.4-4 Humanity's Last Exam 收集筛选流程](images/11-4-4-hle-pipeline.png)
 
@@ -456,7 +466,9 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ### 11.5.1 Chatbot Arena
 
-[Chatbot Arena](https://arxiv.org/abs/2403.04132)（现改名 LMArena）采用盲测配对比较和 Bradley-Terry（BT）系数估计（早期版本使用 ELO，2024 论文已切换为 BT）。真实用户提交提示，同时收到两个匿名模型的回复，并选择更优者。优点是输入动态、能容纳新模型。问题在于评估者是网站访客，样本可能存在偏差；BT 分数可能被策略性操纵。
+[Chatbot Arena](https://arxiv.org/abs/2403.04132)（现改名 LMArena）采用盲测配对比较和 Bradley-Terry（BT）系数估计（早期版本使用 ELO，2024 论文已切换为 BT）。公理起点是 paired comparison 理论：人类对两个匿名回答的偏好满足 $p(A \succ B) = \sigma(\alpha_A - \alpha_B)$（logistic 形式），整体排名可以通过最大化似然 $L = \prod_{(i,j)} p(i \succ j)^{[i \succ j]}$ 反推每个模型的潜在分数 $\alpha_i$。真实用户提交提示，同时收到两个匿名模型的回复，并选择更优者。优点是输入动态、能容纳新模型。
+
+公理的边界同样重要：评估者是网站访客，样本可能存在偏差；BT 分数可能被策略性操纵（gameable），需要把评估时间、流量来源与提示词模板一起记录下来才能复现。
 
 ![图 11.5-1 Chatbot Arena 分数排行榜](images/11-5-1-chatbot-arena-leaderboard.png)
 
@@ -492,7 +504,9 @@ AlpacaEval 2.0 的一个重要变化，是用回归方式修正长度偏置，�
 
 [WildBench](https://arxiv.org/pdf/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（论文 §2.1）。主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude-3-Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。
 
-论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。WildBench 与 Chatbot Arena 高度相关，论文 §4.2 Table 3 报告的 Pearson 相关系数为：WB-Reward（Claude-3-Haiku baseline, K=500）对 top-ranking 模型 0.99、WB-Score 0.95，均高于 ArenaHard 的 0.91 和 AlpacaEval 2.0 length-controlled win rate 的 0.89（论文同时报告其他 baseline 与 K 取值的相关系数随设置变化）。这些数值随评测设置而异，但总体说明 WildBench 已成为新基准有效性的“事实上的”检验标准之一。
+论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。这条性质对应第一性原理的「基元不变性」：不同 LLM 裁判只要共享同一份 checklist，得到的相对排名就保持单调一致。因此 WildBench 度量的是「LLM-as-judge 这一整类尺子给出的相对秩序」——具体 judge 的绝对刻度会被多 judge ensemble 稀释。
+
+WildBench 与 Chatbot Arena 高度相关。论文 §4.2 Table 3 报告的 Pearson 相关系数随 baseline（GPT-4-Turbo / Claude-3-Haiku / 三个模型平均）与长度阈值 $K$（500 字符 / 无阈值）取值不同；其中 WB-Reward 在 GPT-4-Turbo baseline + $K{=}500$ 设置下对 top-ranking 模型达 0.99，三个 baseline 平均 + $K{=}500$ 下为 0.98，Claude-3-Haiku baseline + 无阈值下为 0.985，WB-Score 0.955，均高于 ArenaHard 的 0.91 与 AlpacaEval 2.0 length-controlled win rate 的 0.89（论文同时报告其他 baseline 与 $K$ 取值的相关系数随设置变化）。这些数值随评测设置而异，但总体说明 WildBench 已成为新基准有效性的”事实上的”检验标准之一。
 
 ![图 11.5-5 WildBench 构建流程](images/11-5-5-wildbench-pipeline.png)
 
@@ -508,7 +522,7 @@ AlpacaEval 2.0 的一个重要变化，是用回归方式修正长度偏置，�
 
 ### 11.5.5 LLM-as-judge 的偏差与缓解
 
-LLM-as-judge 把评估成本压低到可大规模运行的级别，但也把 judge 模型自身的偏差带进了分数。主要偏差来源有四类：
+LLM-as-judge 把评估成本压低到可大规模运行的级别，但也把 judge 模型自身的偏差带进了分数。公理起点是「judge 是一个概率分布，其条件独立性只在 prompt 内成立」：当 rubric 要求 judge 同时评分两个回答时，位置 / 长度 / 风格等表面特征便会以非零权重进入条件概率，从而偏移评分。主要偏差来源有四类：
 
 - **长度偏差（length bias）**：judge 模型倾向给更长回答更高分，无论内容质量是否真的更高；这是 AlpacaEval、AlpacaEval 2.0 等基于 LLM-as-judge 的指标最被反复讨论的问题 ([Zheng et al., 2023, arXiv:2306.05685](https://arxiv.org/abs/2306.05685))。缓解办法包括按字符 / token / 段落长度归一化分数、报告 length-controlled win rate，或在 prompt 中显式要求 judge 忽略长度。
 - **位置偏差（position bias）**：当 judge 同时看到两个回答时，倾向给第一个出现的回答更高分；多轮交换位置后取平均可以分离这一效应。
@@ -526,10 +540,12 @@ reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward
 
 这类基准评估模型作为智能体（Agent） 的能力，即在复杂环境中通过工具调用和迭代规划完成任务。
 
-需要特别区分：智能体基准通常评估的是**语言模型 + agent scaffold** 的系统能力，区别于纯语言模型本身。规划循环、工具调用策略、文件读写、上下文压缩、子任务分解和失败重试都会改变结果，因此同一个底座模型在不同 scaffold 下可能表现差异很大。同一个 benchmark 既是评估工具也是 RL 训练数据：SWE-bench 风格任务在[第 13 章 §13.4 案例研究](../chapter13/chapter13_可验证奖励的强化学习.md)的 agentic RL 训练里被大量构造为可验证 rollout。
+需要特别区分：智能体基准通常评估的是**语言模型 + agent scaffold** 的系统能力，区别于纯语言模型本身。规划循环、工具调用策略、文件读写、上下文压缩、子任务分解和失败重试都会改变结果，因此同一个底座模型在不同 scaffold 下可能表现差异很大。
+
+同一个 agent benchmark 既是评估工具也是 RL 训练数据：SWE-bench 风格任务在[第 13 章 §13.4 案例研究](../chapter13/chapter13_可验证奖励的强化学习.md)的 agentic RL 训练里被大量构造为可验证 rollout。
 
 > [!NOTE]
-> **Agent scaffold 的四个核心组件**：**explicit planning**（显式写出多步计划并勾选进度）、**hierarchical delegation**（任务分层委派，子任务可由更小的 agent loop 完成以保持上下文干净）、**persistent memory**（通过读写文件维护跨 turn 状态，区别于纯上下文窗口）、**extreme context engineering**（在 prompt 中显式给出大量过程性指令，区别于单纯的上下文压缩 / 重组 / 检索）。这四项与 2025-2026 主流 agent 框架（Claude Code、Cursor、Aider 等）的设计选择基本对齐；同一底座模型在不同 scaffold 组合下的 benchmark 分数可能差几倍。
+> **Agent scaffold 的四个核心组件**：**explicit planning**（显式写出多步计划并勾选进度）、**hierarchical delegation**（任务分层委派，子任务可由更小的 agent loop 完成以保持上下文干净）、**persistent memory**（通过读写文件维护跨 turn 状态，区别于纯上下文窗口）、**extreme context engineering**（在 prompt 中显式给出大量过程性指令，区别于单纯的上下文压缩 / 重组 / 检索）。公理起点是「语言模型的上下文窗口有限 + 单调成本随序列长度增长」：要让模型在长程任务里不丢状态，必须把状态外置到文件、把计划外置到显式列表、把指令子集分到子 agent。四个组件各自对应一种外置策略（计划 / 子任务边界 / 跨 turn 状态 / 过程性指令）。这四项与 2025-2026 主流 agent 框架（Claude Code、Cursor、Aider 等）的设计选择基本对齐；同一底座模型在不同 scaffold 组合下的 benchmark 分数可能差几倍。
 
 > [!NOTE]
 > **基准饱和与坐标移动**：早期 GPT-3 X-Large 在 MMLU 上只有 43.9%，但刷到接近饱和后被 MMLU-Pro 替代（具体口径见 §11.4.2）。GPQA 论文里 GPT-4 few-shot CoT 在 Diamond 子集上是 38.8%，而当前榜单上 GPQA Diamond 与 SWE-bench Verified 已被多个前沿模型刷到 90% 上下。基准饱和与坐标快速移动说明同一模型在不同时间窗的分数几乎不能直接横比，评估时需要同时记录版本、日期和 prompt 模板。
@@ -544,9 +560,11 @@ reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward
 
 ### 11.6.2 Terminal-Bench
 
-[Terminal-Bench](https://www.tbench.ai/) 将任务放在通用终端环境中，要求模型通过 shell、文件系统和命令行工具完成开放式工作流。它比单步问答更接近真实工程任务，也更能暴露 agent scaffold 在规划、执行和恢复错误上的影响。
+[Terminal-Bench](https://www.tbench.ai/) 把任务放在通用终端环境中，要求模型通过 shell、文件系统和命令行工具完成开放式工作流。它比单步问答更接近真实工程任务，因此能更直接暴露 agent scaffold 在规划、执行和恢复错误上的差异。
 
-Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 个任务构成 Terminal-Bench 2.0 数据集（[arXiv:2601.11868](https://arxiv.org/abs/2601.11868) 与官方 https://www.tbench.ai/，后续版本可能扩展）。论文署名作者由 Mike A. Merrill 领衔，完整合著者名单需查官方 PDF 首列与致谢页。Terminal-Bench 不使用 first-solve time 作为难度指标：先解时间用来度量任务难度是 Cybench 的做法（见 §11.6.3），Terminal-Bench 通过环境多样性和人工解法时长分布来体现任务量级。
+数据集构造与难度口径。Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 个任务构成 Terminal-Bench 2.0 数据集（[arXiv:2601.11868](https://arxiv.org/abs/2601.11868) 与官方 https://www.tbench.ai/，后续版本可能扩展）。论文署名作者由 Mike A. Merrill 领衔，完整合著者名单需查官方 PDF 首列与致谢页。
+
+Terminal-Bench 与 Cybench 的难度口径不同。Cybench 用人类「首次解决时间」（FST）作为难度锚点（见 §11.6.3），Terminal-Bench 则通过环境多样性和人工解法时长分布来体现任务量级，因此同一道题在不同 benchmark 上不能直接横比。
 
 ![图 11.6-2 Terminal-Bench 任务示例](images/11-6-2-terminal-bench-task-example.png)
 
@@ -564,7 +582,7 @@ Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 �
 
 ### 11.6.3 Cybench
 
-[Cybench](https://arxiv.org/abs/2408.08926) 完成 40 个网络安全领域的"夺旗"（CTF）挑战。任务难度通过人类"首次解决时间"（First-Solve Time, FST）来度量；最难的题目由人类团队首解耗时约 24 小时 54 分钟，整体范围从约 2 分钟到 24 小时 54 分钟不等（论文 Figure 3 / Section 5）。
+[Cybench](https://arxiv.org/abs/2408.08926) 完成 40 个网络安全领域的「夺旗」（CTF）挑战。任务难度通过人类「首次解决时间」（First-Solve Time, FST）来度量；最难的题目由人类团队首解耗时约 24 小时 54 分钟，整体范围从约 2 分钟到 24 小时 54 分钟不等（论文 Figure 3 / Section 5）。公理起点是「人类首解时间反映题目的真实难度梯度」：CTF 比赛天然提供了一支庞大的领域专家群体，他们的 FST 是任务难度的客观锚点。
 
 ![图 11.6-5 Cybench 评测流程](images/11-6-5-cybench-workflow.png)
 
@@ -576,7 +594,7 @@ Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 �
 
 ### 11.6.4 MLE-bench
 
-[MLE-bench](https://arxiv.org/abs/2410.07095) 自动化参与 75 个 Kaggle 机器学习竞赛，包括数据处理、模型训练、超参调优和结果提交。在论文给定的设置下，最佳智能体（o1-preview + AIDE scaffold）在 pass@1 条件下获得任何 Kaggle 奖牌（bronze / silver / gold）的比例约为 **16.9%**（论文 Table 2）；同一最佳智能体在 pass@8 时这一比例上升至约 34.1%。
+[MLE-bench](https://arxiv.org/abs/2410.07095) 自动化参与 75 个 Kaggle 机器学习竞赛，包括数据处理、模型训练、超参调优和结果提交。公理起点是「Kaggle 奖牌比例 = 在独立测试集上的相对名次」：把 Kaggle 公开 leaderboard 当作人类基线，agent 的奖牌率直接量化「agent 在 ML 工程任务上接近或超过人类中等水平的频率」。在论文给定的设置下，最佳智能体（o1-preview + AIDE scaffold）在 pass@1 条件下获得任何 Kaggle 奖牌（bronze / silver / gold）的比例约为 **16.9%**（论文 Table 2）；同一最佳智能体在 pass@8 时这一比例上升至约 34.1%（论文 §1）。
 
 ![图 11.6-7 MLE-bench 评测流程](images/11-6-7-mlebench-workflow.png)
 
@@ -615,12 +633,12 @@ ARC-AGI-1:
 
 *图 11.7-3 ARC-AGI-2 任务示例*
 
-它捕捉了一种更纯粹的、类似人类的模式识别和泛化能力，是早期 AGI 研究的重要基准。传统 LLM 在此任务上表现极差，而新一代模型的进展说明交互、搜索和测试时适应正在改变这类任务的解法空间。
+它捕捉了一种更纯粹的、类似人类的模式识别和泛化能力，是早期 AGI 研究的重要基准。公理起点是「模式归纳可在不依赖语言与世界知识的前提下成立」：网格任务只要求从有限样本推断变换规则，知识库与语料规模对解法影响有限，传统 LLM 在此任务上表现极差。新一代模型的进展说明交互、搜索和测试时适应正在改变这类任务的解法空间——把推理的算力从「参数中」转移到「测试时搜索」上。
 
-ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到交互环境：模型在环境中尝试操作、观察反馈并调整策略，覆盖了 ARC-AGI-1/2 未涉及的"规则未知环境下的探索与归纳"。这是 ARC-AGI 系列首次引入交互环境的新成员。
+ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到交互环境：模型在环境中尝试操作、观察反馈并调整策略，覆盖了 ARC-AGI-1/2 未涉及的「规则未知环境下的探索与归纳」。这是 ARC-AGI 系列首次引入交互环境的新成员。
 
 > [!NOTE]
-> **ARC-AGI-1 自 o1/o3 后已基本解决**：ARC-AGI-1 早期传统 LLM 几乎无法通过，但在 OpenAI o1、o3 引入 test-time compute / search 后分数迅速上升至接近饱和，ARC-AGI-2 也正在被快速解决。这是 reasoning model 范式（CoT + search + test-time adaptation）改变纯推理任务解法空间的关键转折点，常作为 reasoning 模型价值的代表性证据。
+> **ARC-AGI-1 自 o1/o3 后已基本解决**：ARC-AGI-1 早期传统 LLM 几乎无法通过，但在 OpenAI o1、o3 引入 test-time compute / search 后分数迅速上升至接近饱和，ARC-AGI-2 也正在被快速解决。这条经验观察支撑的论断是：test-time compute 在模式归纳类任务上能补足「参数中未压缩的推理能力」——纯语言建模 + scaling 并不能直接产生模式归纳能力，但配合搜索与自适应步数就能。这是 reasoning model 范式（CoT + search + test-time adaptation）改变纯推理任务解法空间的关键转折点，常作为 reasoning 模型价值的代表性证据。
 
 ![图 11.7-4 ARC-AGI-3 交互环境](images/11-7-4-arc-agi-3-environment.png)
 
@@ -685,9 +703,11 @@ ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到�
 
 ### 11.8.5 但安全究竟是什么？
 
-安全不仅关乎“拒绝”，也关乎“能力”。在医疗等高风险场景，减少幻觉本身就是提升安全性和能力。对于闭源 API 模型，倾向性（propensity） 是关键；而对于开源基础模型，能力（capability） 本身就是风险。
+安全不仅关乎「拒绝」，也关乎「能力」。在医疗等高风险场景，减少幻觉本身就是提升安全性和能力。第一性原理：风险可分解为「能产生危害的能力」与「在不被阻止时实际产生危害的倾向」两个独立分量。
 
-安全还具有强烈的上下文依赖：政治、法律、社会规范、行业政策和国家地区都会改变“可接受回答”的边界。网络安全智能体尤其具有 dual-use 特征，同一套能力既可以用于渗透测试，也可以用于攻击系统，因此评估时必须同时记录任务意图、权限边界和部署语境。
+闭源 API 模型由部署方控制推理接口，因此只需衡量「倾向性」（propensity）——给同样的 prompt，模型会不会主动配合有害指令。开源基础模型的权重一旦发布就不可收回，「能力」（capability）本身就是风险：下游使用者可以微调、可以构造 jailbreak，可以接入工具。所以两类模型的安全评估口径并不相同，不能直接横比。
+
+安全还具有强烈的上下文依赖：政治、法律、社会规范、行业政策和国家地区都会改变「可接受回答」的边界。网络安全智能体尤其具有 dual-use 特征，同一套能力既可以用于渗透测试，也可以用于攻击系统，因此评估时必须同时记录任务意图、权限边界和部署语境。
 
 ## 11.9 真实性
 
@@ -708,7 +728,7 @@ ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到�
 
 ### 11.9.1 GDPval
 
-[GDPval](https://arxiv.org/pdf/2510.04374) 试图把评估拉回真实职业场景：任务来自美国 GDP 贡献较高行业中的职业工作，目标是衡量模型在专业工作流中的实际可用性。这类高真实度评估往往需要领域专家、私有任务和更复杂的评分标准，成本也会显著提高。
+[GDPval](https://arxiv.org/pdf/2510.04374) 试图把评估拉回真实职业场景：任务来自美国 GDP 贡献较高行业中的职业工作，目标是衡量模型在专业工作流中的实际可用性。公理起点是「真实使用分布应当与经济活动权重对齐」：把样本按行业 GDP 占比采样，让评估结果对部署决策更可迁移。
 
 GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重要：它试图用经济活动权重来定义真实使用分布，同时也天然面临隐私、版权和专家评分成本的约束。
 
@@ -741,13 +761,13 @@ GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重�
 
 ### 11.10.1 训练-测试集重叠（Train-Test Overlap）
 
-在预训练数据即整个互联网的时代，确保测试集未被模型“见过”变得极其困难。这会导致评估结果虚高。解决方法包括开发工具推断重叠情况和推动行业规范，要求模型提供商主动报告重叠检测结果。
+在预训练数据即整个互联网的时代，确保测试集未被模型「见过」变得极其困难。这会导致评估结果虚高。解决方法从两条公理出发：① 如果模型在训练阶段见过某题，其在该题上的条件概率会比未见题更高（permutation test 的统计推断基础）；② 测试集相对训练语料的「时间距离」越大，污染概率越低。下面的四条路线分别从「推断」「披露」「时效」「私有」四个角度落实这两条公理。
 
 经典机器学习评估要求测试集不参与训练。ImageNet、SQuAD 这类基础模型时代的数据集通常有明确 train/test 划分；语言模型训练则会混合大规模、多来源语料，大部分机构也不会公开完整数据清单。
 
 #### 路线 1：尝试从模型中推断训练集和测试集的重叠部分
 
-[PROVING TEST SET CONTAMINATION IN BLACK BOX LANGUAGE MODELS](https://arxiv.org/pdf/2310.17623)利用数据点的可交换性尝试从模型中推断训练集和测试集的重叠部分：
+公理：测试集中的样本应当可交换（exchangeability），即打乱顺序后模型的概率输出不变。若模型对某个排列显著更偏好，则可推断它曾接触过该集合的特定顺序。[PROVING TEST SET CONTAMINATION IN BLACK BOX LANGUAGE MODELS](https://arxiv.org/pdf/2310.17623) 利用这一性质给出 black-box 模型污染的可证明下界。
 
 ![图 11.10-1 训练-测试重叠推断思路](images/11-10-1-contamination-exchangeability.png)
 
@@ -755,15 +775,15 @@ GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重�
 
 #### 路线 2：鼓励报告规范
 
-[Language model developers should report train-test overlap](https://arxiv.org/abs/2410.08385) 提倡模型提供者应报告训练集与测试集的重叠情况。
+公理：若无法直接核验，则只能依赖模型方主动披露训练语料与测试集的重叠情况。[Language model developers should report train-test overlap](https://arxiv.org/abs/2410.08385) 提倡模型提供者应报告训练集与测试集的重叠情况，把外部审计所需的最小信息接口规范化。
 
 #### 路线 3：使用新鲜评估集
 
-LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务，降低模型在预训练阶段见过测试题的概率。但“时间戳新”并不自动等于“无污染”，因为网页内容可能复制旧题，或者评估题在发布后很快进入训练数据流。
+公理：测试题发布时间晚于模型训练截止时间，则预训练不可能见过该题。LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务，降低模型在预训练阶段见过测试题的概率。但「时间戳新」并不自动等于「无污染」，因为网页内容可能复制旧题，或者评估题在发布后很快进入训练数据流。
 
 #### 路线 4：使用私有评估集
 
-企业内部代码库、未公开文档、个人写作和私有业务数据更不容易被预训练语料覆盖。私有评估更贴近真实业务，也更适合做条件困惑度或端到端任务评估；代价是外部可复现性较差，难以形成公开排行榜。
+公理：测试集位于公网之外（如企业内部代码库、未公开文档、个人写作），预训练爬虫便无法接触到。私有评估更贴近真实业务，也更适合做条件困惑度或端到端任务评估；代价是外部可复现性较差，难以形成公开排行榜。
 
 ### 11.10.2 数据集质量
 
@@ -775,7 +795,11 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 因此，现代评估不只需要更难的题，也需要更干净的题。Platinum benchmark 的思路是对已有基准做高质量人工复核，减少错误答案、歧义题和噪声标签（["Do Large Language Model Benchmarks Test Reliability?", arXiv:2502.03461](https://arxiv.org/abs/2502.03461)）。
 
-对智能体基准，题目之外还要检查测试用例是否充分、任务是否能被简单脚本绕过、agent trace 是否暴露不合理捷径。一个具体例子是 τ-bench 把空响应记成成功：在设计上本就无法完成的任务（例如改签不可退票）里，一个只返回空响应的 trivial agent 在 airline 子集上拿到 38% 成功率，反而超过基于 GPT-4o 的 agent（[Zhu 等, Establishing Best Practices for Building Rigorous Agentic Benchmarks, arXiv:2507.02825](https://arxiv.org/abs/2507.02825)）。[Docent](https://transluce.org/introducing-docent) 一类方法尝试用 LLM 辅助审查 agent 执行轨迹，帮助发现评估集自身的问题。
+agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅看最终输出，还要看测试用例是否充分、任务是否能被简单脚本绕过、agent trace 是否暴露不合理捷径。第一性原理来源是「scoring 函数必须真正奖励目标行为」——若 trivial agent 能满足 scoring，则该 scoring 没有信度。
+
+τ-bench 是这条性质的反例。该基准在设计上把空响应记为成功，导致在 airline 子集里，38% 的任务在设计上本就不可完成（如改签不可退票），只返回空响应的 trivial agent 在该子集上拿到 38% 成功率，反而超过基于 GPT-4o 的 agent（[Zhu 等, Establishing Best Practices for Building Rigorous Agentic Benchmarks, arXiv:2507.02825](https://arxiv.org/abs/2507.02825)，论文 §1 与 §5.2）。
+
+针对这类问题，[Docent](https://transluce.org/introducing-docent) 一类方法尝试用 LLM 辅助审查 agent 执行轨迹，帮助发现评估集自身的漏洞。
 
 有效性检查可以总结成三步：先检查题目是否干净，再检查模型是否可能见过题，最后检查 scoring 是否真的奖励了目标行为。fresh evals、private evals、人工复核、Platinum benchmark 和 agent trace 审查，分别是在这三步上降低不同类型的失真。
 
@@ -786,10 +810,12 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 评估对象必须先说清楚：当前比较的是方法还是模型/系统。这个边界就是评估的 rules of the game。
 
-- 过去：在 ImageNet 时代，我们评估的是方法（method），即在固定数据集和训练协议下，新算法的优劣。
-- 现在：我们更多评估的是模型/系统（model/system），即”端到端”的最终产品，开发者可以使用任何数据、任何技巧。
+公理起点是「评估结果的可比性来自被允许的自由度」。在 ImageNet 时代，研究者被允许修改的只有算法本身（其他变量都被数据集与训练协议钉死），因此评估的是方法——「同一张考卷下，谁的算法更好」。在 foundation-model 时代，研究者被允许修改一切（数据、tokenizer、训练配方、scaffold），因此评估的是模型/系统——「同一产品目标下，谁的整体更好」。两者回答的问题不同，规则也不同。
 
-这两种范式各有价值：评估方法能促进算法创新；评估系统对下游用户更有意义。但必须清晰界定评估的“游戏规则”，否则比较将失去意义。
+- 过去：在 ImageNet 时代，我们评估的是方法（method），即在固定数据集和训练协议下，新算法的优劣。
+- 现在：我们更多评估的是模型/系统（model/system），即「端到端」的最终产品，开发者可以使用任何数据、任何技巧。
+
+这两种范式各有价值：评估方法能促进算法创新；评估系统对下游用户更有意义。但必须清晰界定评估的「游戏规则」，否则比较将失去意义。
 
 也存在介于两者之间的评估，例如 nanoGPT speedrun：固定数据和目标验证损失，比较在有限时间内谁能把训练系统跑得更快。它在明确规则下鼓励算法、系统和工程优化。
 
@@ -799,7 +825,11 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 ## 本章总结与下章衔接
 
-评估设计本身的工程判断可以收成三条规则。第一，**单一分数不足以支撑结论**——perplexity、exam、chat、agent、推理、安全、真实使用这七类评估各回答一个独立问题，任何一份模型评估材料都应先定位它属于哪一类，再判断结论的适用边界。第二，**评估的规则优先于分数本身**——相同的「78%」分数在不同 prompt 范围、采样参数、工具权限、agent scaffold 下含义不同，比较前必须先确认 rules of the game 一致（§11.2 与 §11.11）。第三，**评估与训练相互定义**——LM-as-judge 的偏差清单（§11.5.5）直接决定偏好优化目标（[第 12 章 §12.5 偏好优化与 DPO 系列](../chapter12/chapter12_大模型基本训练流程.md)）和 RLVR 验证信号（[第 13 章 §13.3 GRPO 与 Dr. GRPO](../chapter13/chapter13_可验证奖励的强化学习.md)）的偏差结构，judge 与 reward 的偏差需要一起维护。
+评估设计本身的工程判断可以收成三条规则。第一，**单一分数不足以支撑结论**——perplexity、exam、chat、agent、推理、安全、真实使用这七类评估各回答一个独立问题，任何一份模型评估材料都应先定位它属于哪一类，再判断结论的适用边界。这条规则的公理起点是「单一指标只能约束一个目标维度」：当目标是「模型有多好」这一多维构念时，任何一个数字都是多个分量的投影，没有跨分量的信息。
+
+第二，**评估的规则优先于分数本身**——相同的「78%」分数在不同 prompt 范围、采样参数、工具权限、agent scaffold 下含义不同，比较前必须先确认 rules of the game 一致（§11.2 与 §11.11）。这对应 difficulty / realism / validity 三维度（§11.2）：规则变动会同时改变三维度，因此同一分数跨规则横比不成立。
+
+第三，**评估与训练相互定义**——LM-as-judge 的偏差清单（§11.5.5）直接决定偏好优化目标（[第 12 章 §12.5 偏好优化与 DPO 系列](../chapter12/chapter12_大模型基本训练流程.md)）和 RLVR 验证信号（[第 13 章 §13.3 GRPO 与 Dr. GRPO](../chapter13/chapter13_可验证奖励的强化学习.md)）的偏差结构，judge 与 reward 的偏差需要一起维护。这条规则的公理起点是「奖励函数定义优化目标」：评估侧的偏差会被训练侧的损失函数继承。
 
 下章进入[第 12 章 §12.2 大模型训练的第一个阶段：预训练（Pre-training，PT）](../chapter12/chapter12_大模型基本训练流程.md)：评估方法定下来后，训练流水线按 pre-training → mid-training → SFT → RLHF/PPO/DPO 组织；其中 RLHF 与 DPO 的偏好数据来源与 judge 偏差控制直接对应本章 §11.5.5 的四类偏差。
 
@@ -853,7 +883,7 @@ LiveCodeBench、UncheatableEval 这类评估会持续抓取新网页或新任务
 
 ## 来源与更新记录
 
-- 来源：本章以公开评估资料、论文与模型技术报告为主；现代榜单、模型分数和 benchmark 声明需要按官方榜单、论文或模型卡逐条复核。
-- 课程映射：Lecture 12 提供 difficulty、realism、validity、rules of the game、contamination、agent benchmark 和安全评估主线。
-- 来源说明：现代榜单、模型分数和 benchmark 声明随官方来源更新。
-- 查阅日期：2026-05-28（首次成体系核证）；2026-09-05（Section 11.4.1 MMLU Table 1、Section 11.4.2 MMLU-Pro、Section 11.4.3 GPQA 分档准确率、Section 11.5.4 WildBench 小节编号与相关系数、Section 11.10.2 agentic benchmark 复核，参考文献补全）。
+- 来源：本章以公开评估资料、论文与模型技术报告为主；现代榜单、模型分数和 benchmark 声明按官方榜单、论文或模型卡逐条复核。
+- 课程映射：Lecture 12 提供 difficulty、realism、validity、rules of the game、contamination、agent benchmark 和安全评估主线；evaluation 主线对应本笔记第 11 章。
+- 来源说明：现代榜单、模型分数和 benchmark 声明随官方来源更新；本节事实声明的数字（WildBench Table 3、MLE-bench Table 2 / §1、GPQA §1 §3 §4、HLE 2500 题 + 14% multimodal、Terminal-Bench 93/229/89、Cybench 40 + 24h54m、SWE-bench 2294、MMLU-Pro 12032、τ-bench 38%）均来自对应 arXiv 一手页面或 HF / 官方仓库。
+- 查阅日期：2026-05-28（首次成体系核证）；2026-09-05（Section 11.4.1 MMLU Table 1、Section 11.4.2 MMLU-Pro、Section 11.4.3 GPQA 分档准确率、Section 11.5.4 WildBench 小节编号与相关系数、Section 11.10.2 agentic benchmark 复核，参考文献补全）；2026-09-16（§11.3 perplexity 公理起点、§11.4 MMLU / MMLU-Pro / GPQA / HLE 第一性原理强化与段落拆段、§11.5 Chatbot Arena BT 公理 + LLM-as-judge 偏差公理 + WildBench Pearson 数字修正、§11.6 agent scaffold 四组件公理 + Terminal-Bench 拆段、§11.7 ARC-AGI 第一性原理、§11.8 propensity vs capability 公理、§11.10 contamination 四路线公理 + Docent 拆段、§11.11 method vs system 公理、本章总结三条规则公理化）。
