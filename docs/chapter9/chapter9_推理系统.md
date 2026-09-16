@@ -86,6 +86,8 @@ $$
 P(\text{token}_i \mid \text{token}_1, \text{token}_2, \dots, \text{token}_{i-1})
 $$
 
+generation 时 $x_i$ 的概率分布只能在前一步采样出 $x_{i-1}$ 之后才能计算，模型因此被强制在时间维度上串行执行；训练则因为有 ground-truth token 直接喂入（teacher forcing），所有位置可以并行处理。
+
 关键差异来自前文来源和并行方式：
 
 | 阶段 | 前文来源 | 并行方式 | 主要瓶颈 |
@@ -207,7 +209,13 @@ $$
 
 ### 9.2.2 Attention 层：batch 不能同样摊薄 KV cache
 
-attention generation 更难。对 attention 的核心矩阵乘法，近似计算可写成：
+attention generation 更难。attention 的核心是两个矩阵乘：$Q (B \times T \times D) \cdot K (B \times S \times D)$ 计算 attention logits（$2 B S T D$ FLOPs），随后 $\mathrm{softmax}(\cdot) \cdot V (B \times S \times D)$ 计算加权和（$2 B S T D$ FLOPs）。HBM 读写方面，Q、K、V 三者各 $2 B \cdot (\text{batch+seq}) \cdot D$ 字节，加上输出 Y 的 $2 B T D$ 字节。代入 $D \gg B T$ 的假设简化得：
+
+$$
+\mathrm{FLOPs} = 4 B S T D,\quad \mathrm{Bytes} = 4 B S D + 4 B T D
+$$
+
+两者之比即为 attention 的算术强度：
 
 $$
 I_{\mathrm{attention}} \approx \frac{S T}{S + T}
@@ -440,7 +448,7 @@ $$
 
 当 draft model 过度偏向某个 token 时，第一次拒绝后从归一化的残差分布 $r_i(y) \propto \max(q_i(y) - p_i(y), 0)$ 采样一个 token。若 $k$ 个候选全部被接受，再从 target model 采样一个额外 token。接受与残差采样共同补偿 proposal distribution 的偏差。
 
-关键性质在于分布保持。正确的 speculative sampling 是修改过的 rejection sampling，可以保持从 target model 分布精确采样。它减少 target model 串行 generation 步数，同时保留 target model 的目标分布。
+分布保持成立：设两元素词表 $\{A, B\}$，target 概率 $[q(A), q(B)]$，draft 概率 $[p(A), p(B)]$，且 $p(A) > q(A)$（draft 偏向 $A$）即 $p(B) < q(B)$。接受 $A$ 的概率为 $p(A) \cdot \min(1, q(A)/p(A)) = q(A)$。第一次拒绝后从残差 $\max(q-p, 0)$ 归一化分布（此处只剩 $B$）采样 $B$ 的概率为 $p(A) \cdot (1 - q(A)/p(A)) = p(A) - q(A) = q(B)$。两个互斥事件概率之和恰为 $q(A) + q(B) = 1$，输出分布与 target model 完全一致；该代数推导可推广到任意词表，证明 speculative sampling 是 exact sampler。
 
 速度实验要把分布保持与加速收益分开验证：固定 target model、提示集合和采样温度，扫描 draft model 大小与候选长度 $k$，分别记录接受率、每轮接受 token 数、target forward 次数和端到端 latency。接受率只说明候选质量；只有当并行检查节省的 target 计算超过 draft 开销时，吞吐才会上升。
 
@@ -492,6 +500,8 @@ PagedAttention 面向在线服务中 KV cache 的生命周期管理。传统做�
 
 - 内部碎片：请求实际生成很短，却占了最大长度的空间。
 - 外部碎片：多个请求释放后留下零散空洞，总空闲显存够，但找不到足够大的连续块。
+
+设总请求数 $N$、平均实际生成长度 $\bar L$、预留上限 $L_{\max}$，则内部碎片总量期望为 $(L_{\max} - \bar L) \cdot N$，与并发数线性增长；外部碎片则依赖请求生命周期的交错——一段连续空闲区域被新请求的部分占用切成更短的连续区，期望长度随 $\sqrt{N}$ 量级缩小。PagedAttention 论文 Figure 2 报告，按最大长度预留的现有系统实际有效内存只占总分配 KV cache 的 20%–38%，意味着 62%–80% 的显存被两类碎片与冗余复制浪费，导致 batch 装不下更多请求。这两个数学约束直接导出 block-based allocation 的设计要求：把 KV cache 切成固定大小 block 后，单请求内部碎片期望退化为 $\text{block\_size}/2$（最后一个未填满的 block），外部碎片因块等大而完全消失；剩余代价是 block table 的额外间接寻址开销，对 attention kernel 是 gather 索引访问而非连续内存。
 
 KV cache 的硬件预算与 HBM 容量约束已在 [第 5 章 §5.8 KV cache：HBM 上的另一笔账](../chapter5/chapter5_GPU和GPU相关优化.md) 给出，本节继续讲服务侧的调度问题。
 
