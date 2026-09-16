@@ -892,7 +892,7 @@ DeepSeek-R1-Zero 展现了强推理能力，也暴露出可读性差、语言混
 
 DeepSeek-V3-Base 作为基座模型，使用**冷启动长思维链数据**进行 **SFT** 训练得到 **DeepSeek-R1-Dev1**。
 
-冷启动长 CoT 数据规模是“数千条”（thousands of cold-start data），用于把 DeepSeek-V3-Base 微调成 RL 的初始 actor。DeepSeek-R1 论文 §2.3.1 列出的收集方式有四种：用一条长 CoT 作为示例做 few-shot prompting；直接提示模型生成带反思和验证的详细答案；把 DeepSeek-R1-Zero 的输出整理成可读格式；再由人工标注者做后处理精修。
+冷启动长 CoT 数据规模是"数千条"（thousands of cold-start data），用于把 DeepSeek-V3-Base 微调成 RL 的初始 actor。DeepSeek-R1 论文 Appendix B.3.2 列出的收集方式有四步：先用 DeepSeek-R1-Zero 对每个 prompt 生成多条推理轨迹，过滤出最终答案正确且格式可读的样本；再用 DeepSeek-V3 对这些轨迹的推理和摘要做格式与可读性精修；用人工改写后的样本作为示例提示另一个 LLM，让它按相同风格继续重写更多数据；最后所有 LLM 生成结果再经过一轮人工验证。
 
 可读性通过固定输出格式来保证：`|special_token|<reasoning_process>|special_token|<summary>`，即推理过程后接一段摘要，并过滤掉不利于阅读的回复。图 13.4-8 展示了用于生成可读解答摘要的提示模板。
 
@@ -912,7 +912,7 @@ DeepSeek-V3-Base 作为基座模型，使用**冷启动长思维链数据**进�
 
 某些非推理任务会先由 DeepSeek-V3 生成潜在 chain-of-thought，再形成回答；简单问候类查询则直接回答。最终非推理训练样本约 200k 条。
 
-在 DeepSeek-R1-Dev3 上继续进行 RL，对于推理数据使用基于规则的奖励；通用数据由于没有一个明确的对错规则奖励信号，采用 Reward Models 来捕捉复杂且细致场景中的人类偏好，从 helpful 和 safety 两个角度计算奖励。
+最后在 DeepSeek-R1-Dev3 上继续做 RL：推理数据走基于规则的奖励，通用数据没有客观对错规则，改用 Reward Models 捕获复杂细致场景里的人类偏好，从 helpful 和 safety 两个角度计算奖励。
 
 ##### DeepSeek-R1 结果快照
 
@@ -956,7 +956,7 @@ DeepSeek-R1 论文 [arXiv:2501.12948](https://arxiv.org/abs/2501.12948) §2.4 "D
 
 [s1: Simple test-time scaling](https://arxiv.org/pdf/2501.19393)（Muennighoff 等，2025）使用 1k 个高质量、带有长思维链的数据，在 Qwen2.5-32B-Instruct 上进行 SFT，从而明显提升数学推理表现。
 
-上海交通大学刘鹏飞团队的 [LIMO: Less is More for Reasoning](https://arxiv.org/abs/2502.03387) 得到相似结论：用不到千条高质量、带长思维链的样本在 Qwen2.5-32B-Instruct 上做 SFT，就能显著提高数学推理表现。论文最初报告 817 条样本；2025-07 的修订版（v3 §3.1.1）描述候选筛选路径从约 2,125 条按质量分加权（solution length 30% + self-verification 20% + exploratory language 25% + adaptive granularity 25%）取 top 800 作为最终训练集合，Hugging Face 公开的 `GAIR/LIMO` 数据集目前含 817 行。
+上海交通大学刘鹏飞团队的 [LIMO: Less is More for Reasoning](https://arxiv.org/abs/2502.03387) 得到相似结论：用不到千条高质量、带长思维链的样本在 Qwen2.5-32B-Instruct 上做 SFT，就能显著提高数学推理表现。论文 v3 §3.1.1 给出的候选筛选路径是从 tens of millions 数学题出发，先用 Qwen2.5-Math-7B-Instruct 做 baseline 难度过滤，再用 DeepSeek-R1-Distill-Qwen-32B 做 32 次采样评估（只保留 1-3/32 解出的），得到 2,125 条 LIMO-Pool；再按 solution length 30% + self-verification 20% + exploratory language 25% + adaptive granularity 25% 的质量分加权取 top 800 作为最终训练集合。Hugging Face 公开的 `GAIR/LIMO` 数据集目前含 817 行，比论文正文 800 多出 17 行 system prompt、格式示例与元数据。
 
 ![图 13.4-13 LIMO 使用 800 个高质量样本提升数学推理](images/13-4-13-limo-small-data-math.png)
 
@@ -981,7 +981,7 @@ Base+RL 也能直接得到推理模型。除 DeepSeek-R1-Zero 外，[LIMR: Less 
 
 ### 13.4.5 R1 探索期不成功的尝试
 
-DeepSeek-R1 论文 §2.2 "Unsuccessful Attempts"（[arXiv:2501.12948](https://arxiv.org/abs/2501.12948)）说明了两类更复杂方案的落地难点：
+DeepSeek-R1 论文 Appendix G.2 "Unsuccessful Attempts"（[arXiv:2501.12948](https://arxiv.org/abs/2501.12948)）说明了两类更复杂方案的落地难点：
 
 **过程奖励模型（Process Reward Model, PRM）**：PRM 试图通过对中间推理步骤进行评估来 rerank、引导搜索或改进思路，但在实际应用中存在若干问题。
 - 难以明确界定细粒度的中间步骤。很难给出一个通用、可自动化评估的“正确中间步骤”定义，导致对中间过程的逐步注释和评估困难。
@@ -1224,15 +1224,15 @@ RLVR 把后训练主线从“人类偏好 → 偏好模型”换成“可验证�
 
 - 来源说明：Lecture 16 是本章 RLVR 主依据；Lecture 15 用于承接 RLHF、PPO、DPO 与 overoptimization。
 - 论文与文档来源（查阅日期 2026-09-05）：
-  - [DeepSeekMath, arXiv:2402.03300](https://arxiv.org/abs/2402.03300) §4.1.2 / §4.1.3 / §4.2 / §5.2.1（outcome vs process supervision、GRPO+OS / GRPO+PS、约 144K 条 GSM8K + MATH CoT 训练数据、RFT = Rejection Sampling Fine-tuning）
+  - [DeepSeekMath, arXiv:2402.03300](https://arxiv.org/abs/2402.03300) §4.1.1（PPO → GRPO 推导）、§4.1.2 / §4.1.3（outcome vs process supervision 与 GRPO+OS / GRPO+PS）、§4.2（约 144K 条 GSM8K + MATH CoT 训练数据）、§5.2.1（RFT = Rejection Sampling Fine-tuning）
   - [Implementation Matters in Deep Policy Gradients, arXiv:2005.12729](https://arxiv.org/abs/2005.12729)（Engstrom et al., 2020）
   - [alpaca_farm PPO trainer](https://github.com/tatsu-lab/alpaca_farm/blob/30717ddae735365de756ee2085191b491a71788d/src/alpaca_farm/rl/ppo_trainer.py)（`objective/kl_sum_seq`、`objective/rewards`、`objective/non_score_rewards`、`objective/shaped_rewards` 的定义）
-  - [DeepSeek-R1, arXiv:2501.12948](https://arxiv.org/abs/2501.12948) §2.2 "Unsuccessful Attempts"（PRM / MCTS 落地难点）、§2.3.1 冷启动、§2.3.3 拒绝采样与 SFT（600k + 200k = 800k，两个 epoch）、§2.4 蒸馏（六个学生基座，只做 SFT）
+  - [DeepSeek-R1, arXiv:2501.12948](https://arxiv.org/abs/2501.12948) Appendix G.2 "Unsuccessful Attempts"（PRM / MCTS 落地难点）、Appendix B.3.2 冷启动数据收集（四步：R1-Zero 多 trajectory → V3 精修 → LLM 风格重写 → 人工验证）、§2.3.3 拒绝采样与 SFT（600k + 200k = 800k，两个 epoch）、§2.4 蒸馏（六个学生基座，只做 SFT）
   - [Dr. GRPO, arXiv:2503.20783](https://arxiv.org/abs/2503.20783) §2.2 template 影响、§2.3 "Aha Moment Already Appears in Base Models Including DeepSeek-V3-Base"、§3.1 "GRPO Leads to Biased Optimization"（response-level length bias 与 question-level difficulty bias）、§3.2 Dr. GRPO 与 `masked_mean` 常量分母
   - [Kimi k1.5, arXiv:2501.12599](https://arxiv.org/abs/2501.12599) §2.1 RL Prompt Set Curation（不带 CoT 猜答案、N = 8 easy-to-hack 过滤）、§2.3.3 Length Penalty、§2.3.5 Reward Modeling for Math（约 800k CoT 标注样本）
   - [Qwen3, arXiv:2505.09388](https://arxiv.org/abs/2505.09388) §4.2 Reasoning RL（3,995 query-verifier pairs、170 RL steps、AIME 2024 70.1 → 85.1）、§4.3 Thinking Mode Fusion（`/think` 与 `/no think` 标记、预算耗尽时插入的停止思考指令）、Table 22（Qwen3-32B 在 Stage 2 / 3 / 4 的评测结果）
   - [s1: Simple test-time scaling, arXiv:2501.19393](https://arxiv.org/abs/2501.19393)（1k 样本 + Qwen2.5-32B-Instruct）
-  - [LIMO, arXiv:2502.03387](https://arxiv.org/abs/2502.03387) v1 §3.3.1（817）与 v3 §3.1.1（top 800）
+  - [LIMO, arXiv:2502.03387](https://arxiv.org/abs/2502.03387) §3.1.1（候选筛选路径 tens of millions → baseline 难度过滤 → 32 次采样评估 → 2,125 LIMO-Pool）、§3.1.2（推理链质量分加权 30/20/25/25 → top 800）；Hugging Face `GAIR/LIMO` 数据集 817 行 = 800 训练样本 + 17 行 system prompt / 格式示例 / 元数据
   - [LIMR, arXiv:2502.11886](https://arxiv.org/abs/2502.11886)（Qwen2.5-Math-7B + PPO，1,389 / 8,523 样本）
   - [Less is More: Improving LLM Alignment via Preference Data Selection, arXiv:2502.14560](https://arxiv.org/abs/2502.14560)（Xun Deng et al., 2025；Dual-Margin 数据选择、UltraFeedback 约 10% 子集、Llama-3 / Llama-3.2-3B 与 Mistral-7B-Instruct-v0.2 上 AlpacaEval 2.0 相对提升 3%-8%）
   - [Qwen3-Coder-Next 模型卡](https://huggingface.co/Qwen/Qwen3-Coder-Next)（80B 总参 / 3B 激活 / 262,144 原生上下文）
