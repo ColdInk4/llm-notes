@@ -120,7 +120,7 @@ The Pile 把 Common Crawl、arXiv、GitHub、StackExchange、邮件列表等 22 
 > | CommonPile | 8TB | permissive-licensed only，探讨 license laundering 风险；包含 Comma v0.1-1T / 2T 两个 7B 验证模型 |
 > | Llama 3 训练语料 | 15.6T tokens（旗舰 405B；8B / 70B 同语料；arXiv:2407.21783） | 与 FineWeb 同量级 |
 > | Qwen3 训练语料 | 36T tokens | |
-> | DeepSeek V3 / R1 系列训练语料 | 14.8T tokens（V3 paper 表 1 报告，multi-stage sampling 后） | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) |
+> | DeepSeek V3 训练语料 | 14.8T tokens（V3 paper 表 1 报告，multi-stage sampling 后） | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) |
 
 **近期模型：阶段化数据账本。**
 
@@ -209,7 +209,11 @@ Qwen 3 的公开材料也体现了这种阶段分工：预训练覆盖大规模�
 > [!NOTE]
 > **Shadow libraries 是训练数据的另一条来源**。生态包括 LibGen（2019 约 4M books）、Z-Library、Anna's Archive、Sci-Hub（2022 约 88M papers）等。这些来源在版权合规上普遍不可用于商业训练，但部分研究型项目（CommonPile 等）以 permissive-only 路线探索合法替代。Shadow library 在数据清单中应作为负面参照而非训练来源，与"模型团队的数据披露边界"放在同一节处理。
 >
-> **Anthropic 版权诉讼和解。** Bartz v. Anthropic PBC（Case No. 3:24-cv-05417，N.D. Cal.，原承办法官为 William Alsup）是 Andrea Bartz 等作者提起的集体诉讼。2025 年 6 月 23 日，法院就 fair use 作出 summary judgment：用合法取得的图书副本训练模型构成 fair use，把合法购买的纸书扫描留作模型训练库也构成 fair use，但下载并长期保存数百万本盗版书籍本身不构成 fair use（piracy 部分发回审判）。2025 年 8 月 26 日，Anthropic 同意支付 15 亿美元（约 48.2 万部作品）达成和解，是当时美国公开记录中金额最高的版权和解；2025 年 9 月 25 日法院作出 preliminary approval。Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官，2026 年 5 月 14 日后者以律师费细节、未及时 opt-out 通知等理由推迟 final approval，要求补交费用细分与延迟通知解释，金额与和解条款本身未受质疑。该案与本节 shadow library 议题直接相关：争议核心是从盗版图书库获取语料能否被 fair use 覆盖，而购买并扫描同一批图书并不能豁免此前下载盗版副本的责任。
+> **Anthropic 版权诉讼和解（案件事实链）。** Bartz v. Anthropic PBC（Case No. 3:24-cv-05417，N.D. Cal.，原承办法官为 William Alsup）是 Andrea Bartz 等作者提起的集体诉讼。2025 年 6 月 23 日，法院就 fair use 作出 summary judgment：用合法取得的图书副本训练模型构成 fair use，把合法购买的纸书扫描留作模型训练库也构成 fair use，但下载并长期保存数百万本盗版书籍本身不构成 fair use（piracy 部分发回审判）。2025 年 8 月 26 日，Anthropic 同意支付 15 亿美元（约 48.2 万部作品）达成和解，是当时美国公开记录中金额最高的版权和解；2025 年 9 月 25 日法院作出 preliminary approval。
+>
+> **Anthropic 版权诉讼和解（2026 年进展）。** Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官。2026 年 5 月 14 日后者举行 75 分钟 fairness hearing，对律师费明细、lead-plaintiff 服务费、开支分摊与未及时 opt-out 通知提出补充材料要求；2026 年 7 月 20 日 Judge Martínez-Olguín 作出 final approval，确认 $1.5B、482,460 部作品（claims rate 约 92.77%、约 $3,000/部）的条款公平合理，仍是美国公开记录中金额最高的版权和解；同时命令 Anthropic 在 final judgment 后 30 日内销毁所有 LibGen / PiLiMi 来源的盗版文件。
+>
+> 该案与本节 shadow library 议题直接相关：争议核心是从盗版图书库获取语料能否被 fair use 覆盖，而购买并扫描同一批图书并不能豁免此前下载盗版副本的责任。
 >
 > **周期性 dump 的投毒时间窗口**。Carlini 等人的 "Poisoning Web-Scale Training Datasets is Practical"（[arXiv:2302.10149](https://arxiv.org/abs/2302.10149)）提出 frontrunning poisoning：Wikipedia 这类周期性快照的语料，攻击者可以在 dump 截取的时刻之前注入内容，即使编辑随后被回滚，被污染的版本仍会进入 dump 并流入训练集。注入内容能造成什么后果，可以参考 Wallace 等人的 "Concealed Data Poisoning Attacks on NLP Models"（[arXiv:2010.12563](https://arxiv.org/abs/2010.12563)）：少量不含触发词的毒样本，就能让模型在输入出现 "James Bond" 时稳定输出指定的情感标签。这条针对 dump 时序窗口的攻击路径，与下文 250 份文档的后门研究互补：前者利用快照时间差，后者利用大规模数据中的统计小样本。
 
@@ -326,7 +330,7 @@ DSIR 的训练判断很直接：目标数据定义希望靠近的分布，候选
 
 三类方法都需要一个共同的收益证明：过滤到底值多少训练预算。两个公开案例给出了量级。OpenWebMath（[arXiv:2310.06786](https://arxiv.org/abs/2310.06786)）用规则加分类器从 Common Crawl 里提取并保留了 LaTeX 的数学网页，得到 14.7B tokens；按 OpenWebMath 论文 Table 2 的对照，1.4B 模型在这份语料上的 MATH Algebra-Easy 单答准确率为 5.62%，而对照基线有两条：相同 14.7B tokens 的 The Pile 仅 2.81%（同规模过滤收益）；Pythia-1.4B 在 300B tokens（约 20 倍）的通用 The Pile 上也只有 3.93%。两组对照共同支撑论文的核心结论——领域过滤在 1/20 token 量下超过通用语料。
 
-代码侧的对照来自 phi-1（[arXiv:2306.11644](https://arxiv.org/abs/2306.11644)）。同样的 350M 模型，在未过滤的 Stack Python 去重子集加 StackOverflow 上训练，跑到 96K 步（约 200B tokens）时 HumanEval 停在 12.19% 不再上升；换成用 GPT-4 标注教育价值、再由随机森林分类器筛出的子集，36K 步就到 17.68%。训练步数不到原来的四成，分数反而更高——这是过滤最直接的工程收益：省下来的 FLOPs 可以留给更多有效 token 或更大的模型。
+代码侧的对照来自 phi-1（[arXiv:2306.11644](https://arxiv.org/abs/2306.11644)）。phi-1 是 1.3B 参数模型（论文 §2.1 与 abstract 给出；同篇论文还给出 phi-1-small = 350M 参数、HumanEval 45% 的更小对照版本）。在未过滤的 Stack Python 去重子集加 StackOverflow 上训练 phi-1，跑到 96K 步（约 200B tokens）时 HumanEval 停在 12.19% 不再上升；换成用 GPT-4 标注教育价值、再由随机森林分类器筛出的子集，36K 步就到 17.68%。训练步数不到原来的四成，分数反而更高——这是过滤最直接的工程收益：省下来的 FLOPs 可以留给更多有效 token 或更大的模型。
 
 ### 10.2.2 数据去重
 
@@ -377,7 +381,7 @@ $$
 这条 S 型曲线决定去重阈值。band 内部要求全部相等、band 之间只要一个命中，这种 and-or 结构把平缓的 $s$ 变成陡峭的门限。增大 $r$ 会提高单个 band 的全匹配门槛，曲线右移，只有更相似的文档才成为候选；增大 $b$ 会增加命中机会，曲线左移，更多中等相似度文档进入候选集。
 
 > [!NOTE]
-> Lee 等人在 arXiv:2107.06499 中使用的一组具体参数是： $n = 9000$ 个哈希函数，分成 $b = 20$ 个 band，每 band $r = 450$ 行（与本节「b 个 band、每 band r 行」约定一致；CS336 2026 Lecture 14 代码讲义 `lecture_14.py` 也是这套记号）。相变阈值 $\theta = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.984$ ：在这个相似度上，单个 band 全匹配的概率恰好是 $1/b$ ，于是候选碰撞概率为 $1 - (1 - 1/b)^b \approx 1 - 1/e \approx 0.63$ 。相似度高于 0.984 的文档对碰撞概率迅速趋近 1，低于 0.984 的则迅速趋近 0，这样就把全量 $O(N^2)$ 精确比对压缩成对少量候选对的验证。论文 §2.1 正是按这组参数，把「在 Common Crawl / C4 这类网页语料上抓到 Jaccard 接近 1 的近重复文档」的目标做成了可行操作。
+> Lee 等人在 arXiv:2107.06499 中使用的一组具体参数是： $n = 9000$ 个哈希函数（5-gram 文档签名），分成 $b = 20$ 个 band，每 band $r = 450$ 行（与本节「b 个 band、每 band r 行」约定一致；CS336 2026 Lecture 14 代码讲义 `lecture_14.py` 也是这套记号）。相变阈值 $\theta = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.993$ ：在这个相似度上，单个 band 全匹配的概率恰好是 $1/b$ ，于是候选碰撞概率为 $1 - (1 - 1/b)^b \approx 1 - 1/e \approx 0.63$ 。相似度高于 0.993 的文档对碰撞概率迅速趋近 1，低于 0.993 的则迅速趋近 0，这样就把全量 $O(N^2)$ 精确比对压缩成对少量候选对的验证；论文在候选对之上再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做一次精确过滤（论文 §4.2），把相变点定在更宽松的位置，让更多中等相似度候选进入二次比对。论文 §2.1 正是按这组参数，把「在 Common Crawl / C4 这类网页语料上抓到 Jaccard 接近 1 的近重复文档」的目标做成了可行操作。
 
 ![图 10.2-5 LSH band 与相似度关系](images/10-2-5-lsh-bands-threshold.png)
 
@@ -565,9 +569,9 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 - 课程材料：CS336 2026 Lecture 13（数据来源、版权与公开数据集）与 Lecture 14（转换、过滤、去重、混合、后训练合成数据）slides/video。
 - 数据集规模：The Pile（arXiv:2101.00027、Pythia arXiv:2304.01373 的 token 口径）、C4（arXiv:1910.10683 与 HF `allenai/c4`）、LLaMA 1（arXiv:2302.13971 表 1）、FineWeb（arXiv:2406.17557）、Dolma（HF `allenai/dolma`）、DCLM（arXiv:2406.11794、HF `mlfoundations/dclm-baseline-1.0`）、Nemotron-CC（arXiv:2412.02595）、The Stack v2（arXiv:2402.19173、HF `bigcode/the-stack-v2`）；查阅日期：2026-09-05。
 - Common Crawl 单次 crawl 统计：Common Crawl 官方 crawl 公告（CC-MAIN-2026-17）；查阅日期：2026-09-05。
-- 过滤与去重方法：OpenWebMath（arXiv:2310.06786 表 2 的 MATH Algebra-Easy 对照：1.4B 模型在 14.7B OpenWebMath tokens 上 5.62%，相同 14.7B Pile/ProofPile tokens 2.81%，Pythia-1.4B 在 300B Pile tokens 上 3.93%）、phi-1（arXiv:2306.11644 §2.1 的 350M 模型 96K / 36K 步对照）、arXiv:2202.06539（重复 10 次的序列被生成的频率约为出现 1 次序列的 1000 倍）、arXiv:2107.06499（论文 §2.1 的 $n = 9000$ 个 MinHash 函数、$b = 20$ 个 band、每 band $r = 450$ 行，与本节「b 个 band、每 band r 行」约定一致；相变阈值 $\theta = (1/b)^{1/r} \approx 0.984$）、UniMax（arXiv:2304.09151，§5.3 进一步 ablation 中 max-epoch $N \in \{1, 5, 10\}$ 的 TyDi QA 对照与 $N = 1$ 的默认设定）；查阅日期：2026-09-05。
+- 过滤与去重方法：OpenWebMath（arXiv:2310.06786 表 2 的 MATH Algebra-Easy 对照：1.4B 模型在 14.7B OpenWebMath tokens 上 5.62%，相同 14.7B Pile/ProofPile tokens 2.81%，Pythia-1.4B 在 300B Pile tokens 上 3.93%）、phi-1（arXiv:2306.11644 §2.1 的 1.3B 模型 96K / 36K 步对照，HumanEval 12.19% → 17.68%；同篇 §3 与 abstract 给出 phi-1-small = 350M、HumanEval 45% 的更小版本）、arXiv:2202.06539（重复 10 次的序列被生成的频率约为出现 1 次序列的 1000 倍）、arXiv:2107.06499（论文 §4.2 的 $n = 9000$ 个 MinHash 函数 / 5-gram 文档签名、$b = 20$ 个 band、每 band $r = 450$ 行，与本节「b 个 band、每 band r 行」约定一致；相变阈值 $\theta = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.993$；论文在候选对上再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做精确过滤）、UniMax（arXiv:2304.09151，§5.3 进一步 ablation 中 max-epoch $N \in \{1, 5, 10\}$ 的 TyDi QA 对照与 $N = 1$ 的默认设定）；查阅日期：2026-09-05。
 - 法律与数据安全：Bartz v. Anthropic PBC, Case No. 3:24-cv-05417 (N.D. Cal.) 公开报道与和解页面、arXiv:2302.10149、arXiv:2010.12563、arXiv:2510.07192；查阅日期：2026-09-05。
-- 后训练合成数据：OpenThoughts（arXiv:2506.04178 §4.1 的 27 code / 21 math / 14 science 来源与 §4.4 的 1× / 4× / 16× 采样 ablation、HF `open-thoughts/OpenThoughts3-1.2M`）、SWE-smith（arXiv:2504.21798）、SWE-rebench（arXiv:2505.20411）、SWE-ZERO-12M（HF `AlienKevin/SWE-ZERO-12M-trajectories`）；查阅日期：2026-09-05。
+- 后训练合成数据：OpenThoughts（arXiv:2506.04178 §4.1 的 27 code / 21 math / 14 science 来源与 §4.4 的 1× / 4× / 16× 采样 ablation、HF `open-thoughts/OpenThoughts3-1.2M`）、SWE-smith（arXiv:2504.21798，128 GitHub 仓库生成 50K+ 任务）、SWE-Zero（arXiv:2508.00923，300K trajectories / 150K PRs / 13K SWE-Hero projects；OpenHands scaffold 与 Qwen3-Coder-480B distill）、SWE-rebench（arXiv:2505.20411）、SWE-ZERO-12M（HF `AlienKevin/SWE-ZERO-12M-trajectories`，32K 可执行 + 120K 不可执行 SWE-rebench-v2 任务）；查阅日期：2026-09-05。
 - 训练数据评估：信息引导探针（arXiv:2503.12072，参考模型为 BERT-110M、探针形式为 cloze 填空）；查阅日期：2026-09-05。
 - CommonPile 数据集（arXiv:2506.05209、HF `common-pile/common-pile`）；查阅日期：2026-09-05。
 - DeepSeek V3 训练语料：arXiv:2412.19437 表 1 报告 14.8T tokens；查阅日期：2026-09-05。
