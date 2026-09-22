@@ -2,7 +2,7 @@
 
 前面的训练流程章节（[第 12 章 §12.4 大模型训练的第三个阶段：对齐人类偏好（RLHF）](../chapter12/chapter12_大模型基本训练流程.md)）已经讨论过 RLHF（基于人类反馈的强化学习）。RLHF 是使模型遵循指令的关键，也带来明显的扩展挑战：人类反馈昂贵、缓慢，奖励模型还容易被过度优化（Goodhart's Law）。
 
-本章讨论 **o1**、**DeepSeek R1**、**Kimi k1.5**、**Qwen 3** 等推理模型背后的训练路线：**RLVR (Reinforcement Learning from Verifiable Rewards)**。
+本章讨论 **o1**、**DeepSeek-R1**、**Kimi k1.5**、**Qwen3** 等推理模型背后的训练路线：**RLVR (Reinforcement Learning from Verifiable Rewards)**。
 
 ## 本章学习目标
 
@@ -11,7 +11,7 @@
 - 说出 RLHF 与 RLVR 在奖励信号本质上的区别（人类偏好 / 奖励模型 vs 可验证的标量反馈）。
 - 描述 PPO → GRPO → Dr. GRPO 的算法演进主线，特别是 value model 去掉后 advantage 如何估计，以及组内标准差和响应长度两个分母各自引入什么偏差、怎么修。
 - 把 GRPO 训练流程分成六个步骤：rollout、reward 计算、组内 z-score 得到 advantage、ratio clipping、KL penalty、policy 更新。
-- 解释 DeepSeek R1、Kimi k1.5、Qwen 3 这三个案例在冷启动、长 CoT、长度控制、agentic RL 上的工程边界。
+- 解释 DeepSeek-R1、Kimi k1.5、Qwen3 这三个案例在冷启动、长 CoT、长度控制、agentic RL 上的工程边界。
 - 在自己的可验证任务（数学、代码、形式化证明）上设计一个最小可跑的 RLVR 流水线。
 
 ## 本章主线
@@ -20,7 +20,7 @@
 
 认识链从任务目标能否被判分开始：先定义状态、动作、轨迹和 verifier 输出的标量奖励，再由 policy-gradient 定理说明奖励如何进入参数更新；组内采样、长度归一化和 KL 约束是为控制方差与分布漂移加入的机制。实验上固定题目池、采样温度和 rollout 数，分别记录 pass@1、pass@k、平均响应长度、verifier 通过率和 KL，才能把能力提升与搜索预算或长度偏差区分开；跨任务、跨 verifier 的迁移仍需独立复测。
 
-学习时可以抓住三条线索。第一，PPO 到 GRPO 的变化主要围绕 advantage 如何估计、value model 能否省掉、更新是否稳定。第二，PPO 和 GRPO 的代码实现都要同时处理 policy loss、KL penalty、reward shaping 和 rollout 数据。第三，DeepSeek R1、Kimi k1.5 和 Qwen 3 这些案例把算法、冷启动数据、长 CoT、长度控制和蒸馏放进同一条后训练流水线。
+学习时可以抓住三条线索。第一，PPO 到 GRPO 的变化主要围绕 advantage 如何估计、value model 能否省掉、更新是否稳定。第二，PPO 和 GRPO 的代码实现都要同时处理 policy loss、KL penalty、reward shaping 和 rollout 数据。第三，DeepSeek-R1、Kimi k1.5 和 Qwen3 这些案例把算法、冷启动数据、长 CoT、长度控制和蒸馏放进同一条后训练流水线。
 
 RLVR 还会把推理系统带进训练循环：rollout 需要慢速 generation，长短不一的回答会形成 ragged batch，verifier 或执行环境会增加等待时间。训练框架和推理框架之间如何分工、rollout 能否复用、on-policy 稳定性和 off-policy 吞吐之间如何取舍，都是本章案例里的系统约束。
 
@@ -48,14 +48,14 @@ RLVR 还会把推理系统带进训练循环：rollout 需要慢速 generation�
 
    主线 2：公开模型案例
    ─────────────
-   DeepSeek R1（§13.4.1-§13.4.3）  冷启动 + 多阶段 RL + 蒸馏
+   DeepSeek-R1（§13.4.1-§13.4.3）  冷启动 + 多阶段 RL + 蒸馏
    Kimi k1.5（§13.4.6）            long-CoT SFT + 长度奖励 λ∈[-0.5, 0.5]
-   Qwen 3（§13.4.7）               思考模式融合 + 3,995 条低数据 RLVR
+   Qwen3（§13.4.7）               思考模式融合 + 3,995 条低数据 RLVR
    + s1 / LIMO / LIMR（§13.4.4）   小数据推理路线
    + R1 探索期不成功尝试（§13.4.5）  PRM / MCTS 落地难点
 ```
 
-主线 1 解决「可验证奖励用什么算法更新策略」：先回顾 PPO 在语言模型后训练中的角色与痛点，再看 DPO 在 pairwise 偏好之外为什么不能直接复用，最后到 GRPO 与 Dr. GRPO 如何省掉 value model 并消除两个分母带来的偏差。主线 2 把算法接到三个公开模型案例上：DeepSeek R1 演示「纯 RL → 冷启动 → 蒸馏」完整流程，Kimi k1.5 演示「long-CoT SFT + 长度奖励 + 8 次猜测过滤」的成本控制，Qwen 3 演示「3,995 条 query-verifier pair 的低数据 RLVR + 思考模式融合 + agentic 蒸馏」。
+主线 1 解决「可验证奖励用什么算法更新策略」：先回顾 PPO 在语言模型后训练中的角色与痛点，再看 DPO 在 pairwise 偏好之外为什么不能直接复用，最后到 GRPO 与 Dr. GRPO 如何省掉 value model 并消除两个分母带来的偏差。主线 2 把算法接到三个公开模型案例上：DeepSeek-R1 演示「纯 RL → 冷启动 → 蒸馏」完整流程，Kimi k1.5 演示「long-CoT SFT + 长度奖励 + 8 次猜测过滤」的成本控制，Qwen3 演示「3,995 条 query-verifier pair 的低数据 RLVR + 思考模式融合 + agentic 蒸馏」。
 
 ## 13.1 为什么需要 RLVR？
 
@@ -747,6 +747,8 @@ $$
 
 Dr. GRPO 对应的实现改动很小：在 `masked_mean` 里把 `mask.sum(axis=dim)` 换成常量分母，论文写作 "replace the mask.sum(axis=dim) with a constant value (e.g., generation budget)"，代码里取 `MAX_TOKENS`。单条响应的 token 数从此不再进入梯度。
 
+两个分母本身并不是从 policy gradient theorem 或 baseline invariance 直接推导的产物。lecture_16 明确指出「if you try to derive GRPO from first principles… you'll end up with something different」——长度归一化和组内 std 缩放是 GRPO 落地时选择的工程经验，对应实证效果里观察到的长度膨胀与难度权重失真；Dr. GRPO 的修正是用「去掉这两个工程项」回到更接近 REINFORCE with leave-one-out 的形式。该判断的论证按 STYLE.md 第一性原理方法论属于经验 / 拟合结果，不是公理推导。
+
 #### 两个改动合起来的效果
 
 ![图 13.3-4 Dr. GRPO 与标准 GRPO 的对比](images/13-3-4-dr-grpo-comparison.png)
@@ -777,17 +779,17 @@ Dr. GRPO 对应的实现改动很小：在 `masked_mean` 里把 `mask.sum(axis=d
 
 本节用三个公开模型案例理解 RLVR 的工程形态：
 
-- DeepSeek R1：展示纯 RL、冷启动数据和蒸馏路线。
+- DeepSeek-R1：展示纯 RL、冷启动数据和蒸馏路线。
 - Kimi K1.5：展示长 CoT 数据管理、参考策略 RL 和长度控制。
-- Qwen 3：展示 thinking budget、模式融合和 agentic coding 后训练。
+- Qwen3：展示 thinking budget、模式融合和 agentic coding 后训练。
 
 ### 13.4.1 R1-Zero：纯 GRPO 起点
 
-[DeepSeek R1](https://arxiv.org/pdf/2501.12948) 把规则奖励 RL、长 CoT 和蒸馏同时推到公开视野中。R1 系列分两条平行路径：R1-Zero 是纯 RL 起点（验证规则奖励驱动 RL 在大模型上的可学性；该团队在 DeepSeekMath 中提出 GRPO，所以 R1 系列常被一并阅读），R1 在 R1-Zero 之上加入冷启动 SFT + 多阶段 RL（验证可发布质量）。R1 蒸馏把这两条路径产出的轨迹迁回非推理学生模型。
+[DeepSeek-R1](https://arxiv.org/pdf/2501.12948) 把规则奖励 RL、长 CoT 和蒸馏同时推到公开视野中。R1 系列分两条平行路径：R1-Zero 是纯 RL 起点（验证规则奖励驱动 RL 在大模型上的可学性；该团队在 DeepSeekMath 中提出 GRPO，所以 R1 系列常被一并阅读），R1 在 R1-Zero 之上加入冷启动 SFT + 多阶段 RL（验证可发布质量）。R1 蒸馏把这两条路径产出的轨迹迁回非推理学生模型。
 
-![图 13.4-1 DeepSeek R1 引发的关注](images/13-4-1-deepseek-r1-attention.png)
+![图 13.4-1 DeepSeek-R1 引发的关注](images/13-4-1-deepseek-r1-attention.png)
 
-*图 13.4-1 DeepSeek R1 引发的关注*
+*图 13.4-1 DeepSeek-R1 引发的关注*
 
 图 13.4-1 把 R1 发布前后一段时间里社交媒体与技术社区的关注度变化放在同一张图上，作为 R1 现象级的背景证据；技术细节与训练数据需要回到后面的小节单独看。
 
@@ -799,7 +801,7 @@ R1 案例要点可以分成三条线：
 
 R1 系列沿用了 DeepSeekMath 论文中的 GRPO 思路，算法本身与 §13.3 讲过的一致，效果对比见图 13.3-3。R1 的新内容集中在把这套算法接到规则奖励、冷启动数据和蒸馏流程上。
 
-DeepSeek R1 系列至少说明了一件事：在可验证任务上，规则奖励驱动的强化学习可以成为后训练中的强信号来源。
+DeepSeek-R1 系列至少说明了一件事：在可验证任务上，规则奖励驱动的强化学习可以成为后训练中的强信号来源。
 
 #### R1-Zero：纯粹的 RL
 
@@ -860,11 +862,11 @@ verifier 鲁棒性与 reward hacking 决定 RLVR 的工程上限。在 SWE-bench
 
 形式化验证器同理：验证规则覆盖不全或对证明结构做弱匹配时，policy 可能提交形式合法但语义空洞的证明换取奖励。verifier 按对抗性威胁模型设计，并定期人工审计被 hacking 的样本类型。
 
-![图 13.4-7 DeepSeek R1 相对 R1-Zero 的训练差异](images/13-4-7-r1-zero-r1-differences.png)
+![图 13.4-7 DeepSeek-R1 相对 R1-Zero 的训练差异](images/13-4-7-r1-zero-r1-differences.png)
 
-*图 13.4-7 DeepSeek R1 相对 R1-Zero 的训练差异*
+*图 13.4-7 DeepSeek-R1 相对 R1-Zero 的训练差异*
 
-图 13.4-7 把 R1 和 R1-Zero 的训练流程并排展示：左列是 R1-Zero（DeepSeek-V3-Base + 规则奖励 GRPO），右列是 R1（在 R1-Zero 之上加入冷启动 SFT、语言一致性奖励、通用 RL）。后续「阶段 1 / 阶段 2 / 阶段 3」按这条差异逐步展开。
+图 13.4-7 是 lecture_16 的一张对照页：标题 "Pushing performance further – R1"，正文以 "R1 vs R1-zero" 引出三条关键差异——SFT initialization、Language consistency reward for CoT、Non-verifiable rewards (in stage 2)；下半部分给出 R1 的 4 阶段流水线 Deepseek-V3 → Reasoning SFT → RL (GRPO) → SFT/RLHF，作为差异落到具体训练阶段的示意图。后续「阶段 1 / 阶段 2 / 阶段 3」按这三条差异在 4 阶段流水线上的落点逐步展开。
 
 ##### 阶段 1：DeepSeek-R1-Zero
 
@@ -924,7 +926,7 @@ DeepSeek-R1 论文 [arXiv:2501.12948](https://arxiv.org/abs/2501.12948) Appendix
 
 *图 13.4-11 用 R1 轨迹蒸馏非推理模型*
 
-图 13.4-11 把蒸馏路径画成一条单向流：R1 采样器（DeepSeek-V3 + R1 训练后的策略）生成 CoT 轨迹 → 拒绝采样 + 答案校验 → 约 800k SFT 样本 → 6 个学生 base。轨迹质量、覆盖范围和答案校验是这条路径的关键变量。
+图 13.4-11 是 lecture_16 的一张蒸馏对比页：标题 "Distillation – can we get non-reasoning models to reason?"，上方两点流水线 "Have R1 generate CoT traces (800k!), Teach Qwen 2.5 via distillation" 给出蒸馏的关键变量（轨迹量 800k、目标学生 Qwen 2.5 系列），下方把 GPT-4o-0513、Claude-3.5-Sonnet-1022、OpenAI-o1-mini、QwQ-32B-Preview 与 6 个 DeepSeek-R1-Distill 学生模型在同一张表上对比 AIME 2024、MATH-500、GPQA Diamond、LiveCodeBench 与 CodeForces rating。轨迹质量、覆盖范围和答案校验是这条路径的关键变量。
 
 ### 13.4.4 小数据推理路线：s1 / LIMO / LIMR
 
@@ -1118,7 +1120,7 @@ Kimi-k1.5 的公开结果展示了长思维链 SFT 与后续 RL 组合在若干�
 > [!WARNING]
 > 注意，上述分数来自一个内部 long-CoT 模型，其模型尺寸远小于 k1.5 long-CoT 模型；这些消融更适合用来观察训练机制，不适合作完整旗舰模型的性能外推。
 
-### 13.4.7 Qwen 3：思维模式融合
+### 13.4.7 Qwen3：思维模式融合
 
 Qwen3 的公开材料表明，思考模式融合与 thinking budget 控制已经从“研究技巧”走向了更系统的后训练设计。图 13.4-21 的跨模型对比由各家技术报告的评测设置、提示模板与采样参数共同限定。
 
@@ -1141,7 +1143,7 @@ Qwen3 的后训练流程围绕两类控制展开：
 
 这条路线和 DeepSeek、Kimi 等案例有明显共性：先做高质量 CoT/SFT 预热，再用可验证奖励或偏好信号做后续强化。
 
-数据进入 RL 前先做难度过滤：移除模型在没有 CoT 时就能答对的问题，移除与验证数据过于相似的内容，并人工检查 CoT 是有效推理还是猜测。过滤后剩下的强化学习样本很少——Qwen 3 技术报告 §4.2（[arXiv:2505.09388](https://arxiv.org/abs/2505.09388)）给出 Reasoning RL 阶段共 3,995 组 query-verifier pair，用 GRPO 训练 170 个 RL step，Qwen3-235B-A22B 的 AIME 2024 成绩从 70.1 升到 85.1。这个数字只覆盖 Reasoning RL 这一个阶段，不含后面 General RL 用到的数据。四千条量级就能推动这样的分数变化，说明样本品质、验证可靠性和采样策略比样本条数更值得投入。
+数据进入 RL 前先做难度过滤：移除模型在没有 CoT 时就能答对的问题，移除与验证数据过于相似的内容，并人工检查 CoT 是有效推理还是猜测。过滤后剩下的强化学习样本很少——Qwen3 技术报告 §4.2（[arXiv:2505.09388](https://arxiv.org/abs/2505.09388)）给出 Reasoning RL 阶段共 3,995 组 query-verifier pair，用 GRPO 训练 170 个 RL step，Qwen3-235B-A22B 的 AIME 2024 成绩从 70.1 升到 85.1。这个数字只覆盖 Reasoning RL 这一个阶段，不含后面 General RL 用到的数据。四千条量级就能推动这样的分数变化，说明样本品质、验证可靠性和采样策略比样本条数更值得投入。
 
 #### Thinking Mode Fusion
 
@@ -1153,7 +1155,7 @@ Qwen3 的后训练流程围绕两类控制展开：
 
 思考模式融合让模型同时见到带 `<think>` 的长推理回答和直接回答，用户则通过 chat template 里的 `/think` 与 `/no think` 标记选择模式，默认是思考模式，多轮对话按最后一次出现的标记生效。
 
-模型学会两种模式后，也能处理中间状态：当思考长度达到 thinking budget 时，系统截断 `<think>` 过程并插入一条停止思考的指令（"Considering the limited time by the user, I have to give the solution based on the thinking directly now."），模型再基于已经生成的推理给出最终答案。Qwen 3 报告指出这种按预算截断的能力没有被显式训练，而是从模式融合的训练分布里自然出现的，所以预算控制在实现上只是一层外部逻辑。
+模型学会两种模式后，也能处理中间状态：当思考长度达到 thinking budget 时，系统截断 `<think>` 过程并插入一条停止思考的指令（"Considering the limited time by the user, I have to give the solution based on the thinking directly now."），模型再基于已经生成的推理给出最终答案。Qwen3 报告指出这种按预算截断的能力没有被显式训练，而是从模式融合的训练分布里自然出现的，所以预算控制在实现上只是一层外部逻辑。
 
 #### 测试时间扩展（Test time scaling，TTS）
 
@@ -1173,7 +1175,7 @@ Qwen3 的后训练流程围绕两类控制展开：
 
 表格按列展开 Stage 2 Reasoning RL、Stage 3 Thinking Mode Fusion 和 Stage 4 General RL 之后的成绩，Stage 3 和 Stage 4 各分 Thinking 与 Non-Thinking 两列，绿色和红色数字是相对上一阶段的增减。
 
-通用与格式类任务一路上升：LiveBench 从 68.6 到 70.9 再到 74.9，Arena-Hard 从 86.8 到 93.8，衡量模式切换是否被遵守的 ThinkFollow 从 88.7 升到 98.9。代价出现在推理密集任务上：Thinking 模式下 AIME 2024 从 83.8 降到 81.9 再到 81.4，LiveCodeBench v5 从 68.4 经 67.2 降到 65.7。Qwen 3 报告把这种回退归因于模型被摊到更广的通用任务上、专门能力被稀释。工程上这是一个明确的取舍：换来的是通用可用性和模式可控性，付出的是数学与代码分数的小幅下降。
+通用与格式类任务一路上升：LiveBench 从 68.6 到 70.9 再到 74.9，Arena-Hard 从 86.8 到 93.8，衡量模式切换是否被遵守的 ThinkFollow 从 88.7 升到 98.9。代价出现在推理密集任务上：Thinking 模式下 AIME 2024 从 83.8 降到 81.9 再到 81.4，LiveCodeBench v5 从 68.4 经 67.2 降到 65.7。Qwen3 报告把这种回退归因于模型被摊到更广的通用任务上、专门能力被稀释。工程上这是一个明确的取舍：换来的是通用可用性和模式可控性，付出的是数学与代码分数的小幅下降。
 
 #### Qwen3-Coder-Next：agentic RL
 
@@ -1198,7 +1200,7 @@ Qwen3-Coder-Next 是 agentic RL 的代表性案例。按 [Hugging Face 模型卡
 
 RLVR 把后训练主线从“人类偏好 → 偏好模型”换成“可验证奖励 → policy gradient”。算法一侧的推进路线是：PPO 在语言模型后训练中要同时维护 rollout、reward shaping、GAE、value loss 和 KL 统计，实现细节多到需要专门的清单来对照；GRPO 去掉 value function，用组内 reward z-score 估计 advantage，把工程量压到能写进单个脚本；Dr. GRPO 再修掉 z-score 的两个分母，消除按题目难度和响应长度产生的权重失真。
 
-三个案例研究给出当前 RLVR 的工程骨架。DeepSeek-R1 用规则奖励 + 冷启动长 CoT + 800k 规模 SFT 数据 + 六个学生模型的蒸馏；Kimi k1.5 用 long-CoT SFT + 不带 CoT 的 8 次猜测过滤 + 长度奖励 $\lambda \in [-0.5, 0.5]$ + 约 800k 样本训练的 CoT reward model；Qwen 3 用 3,995 条 query-verifier pair 的低数据 RLVR + thinking mode fusion，再到 Qwen3-Coder-Next 的 repository-level 中期数据和 agentic RL 蒸馏。
+三个案例研究给出当前 RLVR 的工程骨架。DeepSeek-R1 用规则奖励 + 冷启动长 CoT + 800k 规模 SFT 数据 + 六个学生模型的蒸馏；Kimi k1.5 用 long-CoT SFT + 不带 CoT 的 8 次猜测过滤 + 长度奖励 $\lambda \in [-0.5, 0.5]$ + 约 800k 样本训练的 CoT reward model；Qwen3 用 3,995 条 query-verifier pair 的低数据 RLVR + thinking mode fusion，再到 Qwen3-Coder-Next 的 repository-level 中期数据和 agentic RL 蒸馏。
 
 横向来看，RLVR 与[第 9 章 §9.1 Inference Workload：为什么推理不同于训练](../chapter9/chapter9_推理系统.md)（推理预算与 serving 成本）、[推理行为与能力专题 §3 预训练与解码：潜在推理如何被显式取出](../topics/reasoning_behavior.md)（Pass@k）以及[推理行为与能力专题 §4 后训练：奖励信号如何改变搜索偏好](../topics/reasoning_behavior.md)（搜索空间重加权）共同构成“训练 → 行为 → 部署”链；rollout、verifier、agent 环境和 on/off-policy 取舍等系统侧细节在两章中分别给出。
 
