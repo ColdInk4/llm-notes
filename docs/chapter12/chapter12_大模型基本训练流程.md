@@ -314,7 +314,7 @@ RLHF / DPO 数据的质量不止取决于标注一致性，还取决于标注者
   宗教维度上，论文给 RLHF 模型列出的对齐群体是「不信仰宗教，或信仰佛教、伊斯兰教、印度教之外宗教」的人群，这个集合按字面排除 Buddhist / Muslim / Hindu 三类；与 base LM 集中代表的 Protestant / Roman Catholic 相比，RLHF 模型的代表性在 base 群体的基础上叠加了世俗化与高学历 / 高收入维度，但并未脱离基督教范围（Jewish 仍在对齐集合内）。论文下一句指出，这批对齐群体的人口构成与 InstructGPT 论文报告的众包标注者吻合，标注池的人口结构直接写进对齐方向。后训练数据若想复现 InstructGPT 的对齐方向，prompt pool 与 RLHF 后训练数据在人口维度上的分布要与论文标注池对齐。
 - **专家 vs 普通人**：[Hosking, Blunsom, Bartolo, 2024, *Human Feedback is not Gold Standard*, ICLR 2024, arXiv:2309.16349](https://arxiv.org/abs/2309.16349) 定义了 Harmful / Fluency / Scope / Repetition / Refusal / Formatting / Relevance / Factuality / Inconsistency / Contradiction 共 10 类错误。scope、fluency、harmfulness 三类在实验模型上出现率低于 1%，被排除在对照之外；余下 7 类由论文作者各标注 300 条样本作为 expert 基线，再与 Prolific 上招募的众包 annotator 对照。结论是众包标注系统性低估 factuality 与 inconsistency 错误，而且 assertive（语气更确信）的输出会放大这一差距——标注者更容易相信语气确定的回答。
 - **LLM-as-judge 与 self-bootstrapping**：Anthropic Constitutional AI（[Bai et al., 2022, arXiv:2212.08073](https://arxiv.org/abs/2212.08073)）是"早期 self-bootstrapping 范式"——用 LLM 自身按宪法规则打标，再训练下一代。Zephyr（[Tunstall et al., 2023, *Zephyr: Direct Distillation of LM Alignment*, arXiv:2310.16944](https://arxiv.org/abs/2310.16944)）把这条路线推到整链无人工标注：dSFT 用 UltraChat，dDPO 用 UltraFeedback 中 GPT-4 打分的 AI feedback。多数"开源 DPO 数据集"因此实际是 LLM 蒸馏而非人类偏好，复现与对比时要先看清楚人类占比。
-- **长度攻击的工程经验**：[Singhal et al., 2024, *A Long Way to Go: Investigating Length Correlations in RLHF*, arXiv:2310.03716](https://arxiv.org/abs/2310.03716) §3.2 Table 2 把 reward 换成纯长度函数（LPPO），模拟偏好胜率在 WebGPT 56% / Stack 59% / RLCD 64%，与用学到的 reward model 做标准 PPO 的 58% / 58% / 63% 基本持平。这与"人类偏好更偏向长回答"的偏差直接相关。减少这种偏差的工程做法是按 reward / cost 联合归一化或让 reward model 看不出长度。
+- **长度攻击的工程经验**：[Singhal et al., 2024, *A Long Way to Go: Investigating Length Correlations in RLHF*, arXiv:2310.03716](https://arxiv.org/abs/2310.03716) §3.2 Table 2 把 reward 换成纯长度函数（LPPO），模拟偏好胜率与用学到的 reward model 做标准 PPO 在 WebGPT 56% vs 58% / RLCD 64% vs 63% 基本持平。StackExchange 数字在不同 §3 表格里分歧（笔记原 58%，Table 6 Sim Pref 给 43%）；笔记采用论文 §3.2 口径。这与"人类偏好更偏向长回答"的偏差直接相关。减少这种偏差的工程做法是按 reward / cost 联合归一化或让 reward model 看不出长度。
 
 这四条观察指向同一个前提：reward 的来源决定了对齐的目标。标注池的人口构成、专家与众包的比例、judge model 的身份，以及 reward 里残留多少长度信号，都会写进最终策略；同一套 PPO 或 DPO 代码换一份偏好数据，得到的行为可以完全不同。因此比较后训练方法时，偏好数据的来源必须和算法一起报告。
 
@@ -522,7 +522,7 @@ mode collapse 是另一类副作用。经过强偏好优化后，模型可能减
 
 - Santurkar et al. §4.1 demographic transfer 结论（base LM 代表 Protestant / Roman Catholic；RLHF 模型对齐 liberal、高收入、高学历与非宗教或佛教 / 伊斯兰 / 印度教之外宗教的群体，与 InstructGPT 众包标注者人口构成吻合）
 - Rafailov et al. §3/§4 的 KL-constrained RLHF objective → closed-form optimal policy → 隐式 reward 重参数化 → Bradley-Terry → DPO cross-entropy 推导路径
-- Singhal et al. §3.2 Table 2 纯长度 reward（LPPO）对照实验（WebGPT 56% / Stack 59% / RLCD 64%）
+- Singhal et al. §3.2 Table 2 纯长度 reward（LPPO）对照实验（WebGPT 56% / RLCD 64% vs 标准 PPO 58% / 63%；StackExchange 数字 §3 不同表格分歧，Table 6 Sim Pref 给 43%；笔记采用论文 §3.2 口径）
 - UltraFeedback — 63,967 instruction / 255,864 completion / 340,025 preference pair
 - Tulu 3 Table 7 prompt 池 / SFT / DPO 三列口径（23,327,961 / 939,344 / 425,145）已核验，Table 8 去污染比例
 - AlpacaFarm Table 2（PPO Sim 46.8±1.8 / DPO Sim 46.8±1.7 / PPO Human 55.1±1.7 / DPO Human 未报告）；附录 C.2 Figure 9 人类 longer 62% / lists 69% 与模拟 64% / 63%

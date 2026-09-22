@@ -42,7 +42,7 @@ $$
 F_{\text{total}} \approx 6 \times N_{\text{param}} \times N_{\text{token}}
 $$
 
-公式里的 **6** 倍来自前向和反向的粗略 FLOPs 账：前向传播约为 $2 \times$ 参数量（乘法+加法），反向传播计算梯度约为前向的 2 倍，也就是 $4 \times$ 参数量。 $N_{\text{param}}$ 取非 embedding 参数量；70B 级别模型的 embedding 占比通常小于 1%，粗估时可忽略。
+公式里的 **6** 倍来自前向和反向的粗略 FLOPs 账：前向传播约为 $2 \times$ 参数量（乘法+加法），反向传播计算梯度约为前向的 2 倍，也就是 $4 \times$ 参数量。 $N_{\text{param}}$ 取非 embedding 参数量；70B 级别模型的 embedding（含 input 与 output 两张词表，未做 weight tying）占比随词表大小变化，常见区间约 1%–3%（[LLaMA-3 70B config.json](https://huggingface.co/meta-llama/Meta-Llama-3-70B/blob/main/config.json) `vocab_size=128256`、`hidden_size=8192`、`tie_word_embeddings=false` 时两张 embedding 表合计 ≈ 2.10B / 70.6B ≈ 3%），粗估时可忽略。
 
 代入数据：
 
@@ -80,7 +80,7 @@ $$
 
 *图 2.1-3 H100 SXM 与 H100 NVL 规格对比*
 
-图 2.1-3 给出 H100 SXM 与 H100 NVL 两类形态的横向规格对照：SXM5 BF16 Tensor Core 1,979 teraFLOPS（dense 为一半，约 989.5 teraFLOPS）、HBM 80 GB、3.35 TB/s；NVL 形态把显存扩到 94 GB、带宽提到 3.9 TB/s，但 BF16 Tensor Core 降到 1,671 teraFLOPS。本节后面的例子按 SXM5 规格估算（与 [NVIDIA H100 datasheet](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/H100/H100-datasheet-us-update.pdf) 一致），如换 NVL 或 PCIe 形态需按该形态的峰值重算。
+图 2.1-3 给出 H100 SXM 与 H100 NVL 两类形态的横向规格对照：SXM5 BF16 Tensor Core 1,979 teraFLOPS（含稀疏；dense 为一半，约 989.5 teraFLOPS）、HBM 80 GB、3.35 TB/s；NVL 形态把显存扩到 94 GB、带宽提到 3.9 TB/s，但 BF16 Tensor Core 降到 1,671 teraFLOPS（含稀疏；dense 约为一半，即 835 teraFLOPS）。两个 Tensor Core 行都带 `*`，按 NVIDIA datasheet 惯例表示含 2:4 稀疏，dense Transformer 应按一半重算。本节后面的例子按 SXM5 规格估算（与 [NVIDIA H100 datasheet](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/H100/H100-datasheet-us-update.pdf) 一致），如换 NVL 或 PCIe 形态需按该形态的峰值重算。
 
 上述 989.5 TFLOP/s 是 H100 的理论峰值，但实际运行模型时，由于各种软硬件开销，你几乎不可能达到 100% **模型算力利用率 (MFU, Model FLOPs Utilization)**，通常按 30%–60% 的利用率估算更现实。这里取 50% 用作后续估计。
 
@@ -1452,6 +1452,7 @@ class CruncherCheckpointed(nn.Module):
 - [Glorot & Bengio 2010](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf)：式 1 standard initialization 与式 16 normalized（Xavier / Glorot）initialization，查阅日期 2026-09-03。
 - [Goodfellow et al. *Deep Learning* §8.4](https://www.deeplearningbook.org/contents/optimization.html)：参数初始化策略与式 8.23，查阅日期 2026-09-03。
 - [LLaMA, arXiv:2302.13971](https://arxiv.org/abs/2302.13971) Table 1：预训练数据各子集磁盘大小，查阅日期 2026-09-03。
+- [Meta-Llama-3-70B config.json](https://huggingface.co/meta-llama/Meta-Llama-3-70B/blob/main/config.json)：`vocab_size=128256`、`hidden_size=8192`、`tie_word_embeddings=false`；embedding 表尺寸核验依据，查阅日期 2026-09-22。
 - [PyTorch AMP 文档](https://pytorch.org/docs/stable/amp.html)、[PyTorch `nn.init` 文档](https://docs.pytorch.org/docs/stable/nn.init.html)、[NVIDIA Transformer Engine 仓库](https://github.com/NVIDIA/TransformerEngine)、[FP8-LM MS-AMP 仓库](https://github.com/Azure/MS-AMP)（FP8-LM Microsoft Research 路线，与 NVIDIA Transformer Engine 区分）。
 - [PyTorch `torch/optim/optimizer.py`](https://github.com/pytorch/pytorch/blob/main/torch/optim/optimizer.py)：`def zero_grad(self, set_to_none: bool = True)`，查阅日期 2026-09-04。
 

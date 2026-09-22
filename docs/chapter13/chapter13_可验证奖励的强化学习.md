@@ -1082,9 +1082,9 @@ $R_{\text{len}}(i)$ 在论文里写作 `len_reward(i)` 。
 采样策略：
 
 - 为数据集分配难度标签，从易到难
-- 问题的采样比例与 $(1-\text{success\\_rate})$ 成正比，以避免重复已解决的问题
+- 问题的采样比例与 $(1-\text{success rate})$ 成正比，以避免重复已解决的问题
 
-前面提到的 reward hacking 过滤在论文里有一条具体规则：让模型不带 CoT 直接猜答案，只要在 8 次尝试内猜对一次，这个 prompt 就被判定为容易被套分并移除（[arXiv:2501.12599](https://arxiv.org/abs/2501.12599) §2.1 RL Prompt Set Curation 原文 "If the model predicts the correct answer within N attempts, the prompt is considered too easy-to-hack and removed. We found that setting N = 8 can remove the majority easy-to-hack prompts."）。它和上面按 $(1-\text{success\\_rate})$ 分配采样比例的难度课程是两条独立机制：前者删掉不需要推理就能答对的题，后者决定剩下的题以什么频率被采到。DeepSeek-R1 报告没有这道 N 次猜测检测，它的数据筛选走拒绝采样取正确答案的路径。
+前面提到的 reward hacking 过滤在论文里有一条具体规则：让模型不带 CoT 直接猜答案，只要在 8 次尝试内猜对一次，这个 prompt 就被判定为容易被套分并移除（[arXiv:2501.12599](https://arxiv.org/abs/2501.12599) §2.1 RL Prompt Set Curation 原文 "If the model predicts the correct answer within N attempts, the prompt is considered too easy-to-hack and removed. We found that setting N = 8 can remove the majority easy-to-hack prompts."）。它和上面按 $(1-\text{success rate})$ 分配采样比例的难度课程是两条独立机制：前者删掉不需要推理就能答对的题，后者决定剩下的题以什么频率被采到。DeepSeek-R1 报告没有这道 N 次猜测检测，它的数据筛选走拒绝采样取正确答案的路径。
 
 奖励：
 

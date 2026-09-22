@@ -1037,7 +1037,7 @@ DeepSeek-V3 论文在 MoE 之外同时披露了两项独立于 MoE 的核心架�
 
 ---
 
-### 4.3.2 DeepSeek V4 的改进
+### 4.3.2 DeepSeek V4-Pro 的改进
 
 面对浅层 MoE 训练不稳定的问题，一些模型会把浅层保留为 dense FFN，或用静态路由启动前几层，让后续可学习路由看到更稳定的表示。DeepSeek 的公开 config 给出了多条落地路径：`deepseek-moe-16b-base` 与 `DeepSeek-V2` config 都用 `first_k_dense_replace: 1` 让首层保持 dense FFN；`DeepSeek-V3` config 把这个值提到 `first_k_dense_replace: 3`（前 3 层走 dense FFN）；`DeepSeek-V4-Pro` 的 config 则给出 `num_hash_layers: 3`，把前几层交给哈希路由，同一份 config 还配有 `n_routed_experts: 384`、`n_shared_experts: 1`、`num_experts_per_tok: 6`。
 

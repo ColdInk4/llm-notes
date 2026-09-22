@@ -537,7 +537,7 @@ reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward
 
 **Agent scaffold 的四个核心组件**：**explicit planning**（显式写出多步计划并勾选进度）、**hierarchical delegation**（任务分层委派，子任务可由更小的 agent loop 完成以保持上下文干净）、**persistent memory**（通过读写文件维护跨 turn 状态，区别于纯上下文窗口）、**extreme context engineering**（在 prompt 中显式给出大量过程性指令，区别于单纯的上下文压缩 / 重组 / 检索）。公理起点是「语言模型的上下文窗口有限 + 单调成本随序列长度增长」：要让模型在长程任务里不丢状态，必须把状态外置到文件、把计划外置到显式列表、把指令子集分到子 agent。四个组件各自对应一种外置策略（计划 / 子任务边界 / 跨 turn 状态 / 过程性指令）。这四项与 2025-2026 主流 agent 框架（Claude Code、Cursor、Aider 等）的设计选择基本对齐；同一底座模型在不同 scaffold 组合下的 benchmark 分数可能差几倍。
 
-**基准饱和与坐标移动**：早期 GPT-3 X-Large 在 MMLU 上只有 43.9%，但刷到接近饱和后被 MMLU-Pro 替代（具体口径见 §11.4.2）。GPQA 论文里 GPT-4 few-shot CoT 在 Diamond 子集上是 38.8%，而 2026 年 9 月的官方榜单上，GPQA Diamond 已有多个前沿模型超过 94%，SWE-bench Verified 的最高分达到 76.8%。基准饱和与坐标快速移动说明同一模型在不同时间窗的分数几乎不能直接横比，评估时需要同时记录版本、日期和 prompt 模板。
+**基准饱和与坐标移动**：早期 GPT-3 X-Large 在 MMLU 上只有 43.9%，但刷到接近饱和后被 MMLU-Pro 替代（具体口径见 §11.4.2）。GPQA 论文里 GPT-4 few-shot CoT 在 Diamond 子集上是 38.8%，而 2026 年 9 月的官方榜单上，GPQA Diamond 已有多个前沿模型超过 94%（[gpqa.ai](https://gpqa.ai/) 头部模型达 98.9%），SWE-bench Verified 的最高分达到约 79.9%（[swebench.com](https://www.swebench.com/) Claude Opus 4.5, 2025-12）。基准饱和与坐标快速移动说明同一模型在不同时间窗的分数几乎不能直接横比，评估时需要同时记录版本、日期和 prompt 模板。
 
 ### 11.6.1 SWE-bench
 
@@ -914,7 +914,7 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 
 本章事实声明均按论文 § 编号 + 段首句定位：
 
-- §11.3 perplexity 公理起点：language model as distribution $p(x)$ 与 $\mathrm{PPL}=e^L$ 定义见 lecture_12.py L60-L106；Jozefowicz 等 2016 1BW 困惑度 51.3 → 30.0 见 [arXiv:1602.02410](https://arxiv.org/abs/1602.02410) §2 / Table 2。
+- §11.3 perplexity 公理起点：language model as distribution $p(x)$ 与 $\mathrm{PPL}=e^L$ 定义见 lecture_12.py L60-L106；Jozefowicz 等 2016 1BW 困惑度 51.3 → 30.0 见 [arXiv:1602.02410](https://arxiv.org/abs/1602.02410) Table 1 / §5。
 - §11.4 知识类基准：MMLU GPT-3 X-Large 43.9% / Small 25.9% / Medium 24.9% / Large 26.0% 见 [arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1；MMLU-Pro 12,032 题 + 14 学科 + 来源组成 6,810 + 4,083 + 598 + 541 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §3 Table 1；GPT-4o MMLU 88.7% (CoT) / 87.2% (direct) 与 MMLU-Pro 72.6% 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §4 Table 2；GPQA 448 / 546 / 198 题数 + 61 PhD contractors + 65% / 74% 专家准确率 + 34.1% ± 2.3% 非专家准确率 + GPT-4 38.7% / 39.7% / 38.8% 见 [arXiv:2311.12022](https://arxiv.org/abs/2311.12022) §1 §3.1 §3.2 §4 Table 5；HLE 2,500 题 + 14% multimodal + 24% / 76% MCQ / EM + $500K 奖金见 [arXiv:2501.14249](https://arxiv.org/abs/2501.14249) §2。
 - §11.5 指令遵循基准：Chatbot Arena BT 公理 $p(A \succ B) = \sigma(\alpha_A - \alpha_B)$ 与 $\prod_{(i,j)} p(i \succ j)^{[i \succ j]}$ 见 [arXiv:2403.04132](https://arxiv.org/abs/2403.04132) §3；WildBench 1024 题（从 1M 中筛出）+ WB-Reward / WB-Score Pearson 相关系数 + 多 judge ensemble 见 [arXiv:2406.04770](https://arxiv.org/abs/2406.04770) §2.1 §3.1 §3.2 §4.2 Table 3；AlpacaEval 2.0 length-controlled win rate 见 [arXiv:2404.04475](https://arxiv.org/abs/2404.04475)；LLM-as-judge 四类偏差（length / position / self-preference / style）见 [arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3。
 - §11.6 智能体基准：SWE-bench 2,294 题 + 12 仓库见 [arXiv:2310.06770](https://arxiv.org/abs/2310.06770) §3；Terminal-Bench 2.0 数据集构造（93 contributors / 229 tasks / 89 tasks 入 2.0 / frontier < 65%）见 [arXiv:2601.11868](https://arxiv.org/abs/2601.11868) §2 / 摘要；Cybench 40 题 + FST 2 分钟到 24 小时 54 分钟见 [arXiv:2408.08926](https://arxiv.org/abs/2408.08926) §5 / Figure 3；MLE-bench 75 题 + o1-preview + AIDE pass@1 16.9% / pass@8 34.1% 见 [arXiv:2410.07095](https://arxiv.org/abs/2410.07095) Table 2 / §1。

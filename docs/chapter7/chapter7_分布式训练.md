@@ -161,7 +161,7 @@ PyTorch 里的 `torch.distributed` 是更高一层的接口。写训练代码时
 
 这类输出有两个固定现象：多进程打印顺序不保证按 rank 排列；`torch.empty` 预分配缓冲区在 collective 之前可能显示旧值或未初始化值。判断 collective 语义，要看调用完成后每个 rank 拿到的结果。
 
-stdout 里的三行结果正好对应三个语义：all-reduce 后每个 rank 都得到完整 `[6, 10, 14, 18]`；reduce-scatter 后 rank 0/1/2/3 分别只拿到 `6/10/14/18` 这一片；再接 all-gather 后，每个 rank 又恢复完整 `[6, 10, 14, 18]`。这组结果把 `all-reduce = reduce-scatter + all-gather` 的关系落到了具体张量上。
+stdout 里的三组结果正好对应三个语义：all-reduce 后每个 rank 都得到完整 `[6, 10, 14, 18]`；reduce-scatter 后 rank 0/1/2/3 分别只拿到 `6/10/14/18` 这一片；再接 all-gather 后，每个 rank 又恢复完整 `[6, 10, 14, 18]`。这组结果把 `all-reduce = reduce-scatter + all-gather` 的关系落到了具体张量上。
 
 ### 7.2.2 Collective 语义概览
 
