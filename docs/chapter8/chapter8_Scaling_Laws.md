@@ -130,10 +130,10 @@ Scaling law 不会替你做决定；它把昂贵的大训练决策拆成一组�
 统计学习理论很早就在研究“样本变多后误差怎么下降”。例如 VC 维理论给出类似下面的上界：
 
 $$
-\epsilon(\hat{h}) \le \epsilon(h^*) + \mathcal{O}\left(\sqrt{\frac{d}{m}}\right)
+\epsilon(\hat{h}) \le \epsilon(h^\ast) + \mathcal{O}\left(\sqrt{\frac{d}{m}}\right)
 $$
 
-其中 $\hat{h}$ 是学到的假设， $h^*$ 是假设类里的最优假设， $\epsilon(\cdot)$ 是泛化误差， $m$ 是样本数， $d$ 是模型类复杂度。它说明样本数会影响泛化误差，但这类理论通常给出 worst-case upper bound，和实际训练 loss 还有距离。
+其中 $\hat{h}$ 是学到的假设， $h^\ast$ 是假设类里的最优假设， $\epsilon(\cdot)$ 是泛化误差， $m$ 是样本数， $d$ 是模型类复杂度。它说明样本数会影响泛化误差，但这类理论通常给出 worst-case upper bound，和实际训练 loss 还有距离。
 
 这和现代 scaling law 的关系是：两者都在问“资源增加后误差怎么下降”。区别在于，理论 bound 往往很保守，关心最坏情况；LLM scaling law 更像工程测量，关心某组固定训练条件在真实数据和真实模型上的经验曲线。因此它不能替代理论证明，但能直接服务训练预算决策。
 
@@ -391,10 +391,10 @@ Data repetition 处理的是有限数据集的放大问题。无限新数据的 
 比如有 100B unique tokens，训练 4 个 epoch 时，raw tokens 是 400B。但这 400B 里有很多内容是重复的，效果可能只相当于 250B fresh tokens。这个 250B 就是 effective data 的直觉。Raw tokens 会随着 epoch 近似线性增加；effective data 增长更慢，因为重复 token 提供的新信息会递减：
 
 $$
-D' = U_D + U_D R_D^* \left(1 - e^{-R_D / R_D^*}\right)
+D' = U_D + U_D R_D^\ast \left(1 - e^{-R_D / R_D^\ast}\right)
 $$
 
-其中 $D'$ 是 effective data， $U_D$ 是 unique tokens， $R_D$ 表示重复强度， $R_D^*$ 控制重复收益多快饱和。第一项 $U_D$ 是第一遍独特数据的价值；第二项是重复训练带来的额外价值。
+其中 $D'$ 是 effective data， $U_D$ 是 unique tokens， $R_D$ 表示重复强度， $R_D^\ast$ 控制重复收益多快饱和。第一项 $U_D$ 是第一遍独特数据的价值；第二项是重复训练带来的额外价值。
 
 读这个量时，不必先判断它“比谁大”。它的角色是给重复 token 打折：第一遍 unique tokens 按 $U_D$ 算满；后面重复训练还能加一些等价新数据量，但加得越来越慢。这样算出来的 $D'$ 表示模型实际得到的有效数据信号，raw tokens 表示训练过程实际处理了多少 token。
 
@@ -1412,16 +1412,16 @@ $$
 其中 $\sigma_l$ 是初始化标准差。用 spectral norm（operator norm）衡量矩阵的最大放大倍数：
 
 $$
-\|W_l\|_* = \max_{\|x\|_2 = 1} \|W_l x\|_2
+\|W_l\|_\ast = \max_{\|x\|_2 = 1} \|W_l x\|_2
 $$
 
 对上述随机矩阵，数量级近似为：
 
 $$
-\|W_l\|_* \approx \sigma_l(\sqrt{n_{l-1}} + \sqrt{n_l})
+\|W_l\|_\ast \approx \sigma_l(\sqrt{n_{l-1}} + \sqrt{n_l})
 $$
 
-若 $h_{l-1}$ 的每个坐标是 $\Theta(1)$，则 $\lVert h_{l-1}\rVert_2=\Theta(\sqrt{n_{l-1}})$。A1 要求输出范数为 $\Theta(\sqrt{n_l})$，因此需要让 $\lVert W_l\rVert_*=\Theta(\sqrt{n_l/n_{l-1}})$。对应图 8.6-40 中的初始化标准差：
+若 $h_{l-1}$ 的每个坐标是 $\Theta(1)$，则 $\lVert h_{l-1}\rVert_2=\Theta(\sqrt{n_{l-1}})$。A1 要求输出范数为 $\Theta(\sqrt{n_l})$，因此需要让 $\lVert W_l\rVert_\ast=\Theta(\sqrt{n_l/n_{l-1}})$。对应图 8.6-40 中的初始化标准差：
 
 $$
 \sigma_l=\Theta\!\left(
@@ -1447,10 +1447,10 @@ $$
 A2 要求 $\Delta h_l$ 的每个坐标保持 $\Theta(1)$，也就是 $\|\Delta h_l\|_2=\Theta(\sqrt{n_l})$。因此 update matrix 需要满足：
 
 $$
-\|\Delta W_l\|_* \sqrt{n_{l-1}} = \Theta(\sqrt{n_l})
+\|\Delta W_l\|_\ast \sqrt{n_{l-1}} = \Theta(\sqrt{n_l})
 $$
 
-这就是 learning-rate scaling 的来源。把 $\lVert\Delta W_l\rVert_* = \eta_l \|g_l\| \|h_{l-1}\|$（Adam 把 $\lVert g_l/\sqrt{v_l}\rVert_2$ 量级记为 $\|g_l\|$ 同样适用），代入 $\|g_l\| = \Theta(\sqrt{n_l})$、 $\|h_{l-1}\| = \Theta(\sqrt{n_{l-1}})$，解 $\eta_l \sqrt{n_l n_{l-1}} = \Theta(\sqrt{n_l/n_{l-1}})$ 得到 $\eta_l = \Theta(1/n_{l-1})$。因此图 8.6-40 的简化线性层里，Adam 对 hidden matrix 的 learning-rate factor 是 $1/n_{l-1}$；Tensor Programs V（[arXiv:2203.03466](https://arxiv.org/abs/2203.03466) §4 Table 3）给出的完整规则区分 hidden weight 与 output weight：Adam 对 hidden matrix 与 output matrix 均为 $1/n_{l-1}$，而 SGD 的对应项不同——hidden matrix 是 $\Theta(1)$，只有 output matrix 是 $1/n_{l-1}$。相邻层等宽时退化为常见的 $1/n$，与 Tensor Programs V §B.1 给出的 Transformer 实施规则一致。标准参数化在同一张表里的对应项是初始化标准差 $\Theta(1/\sqrt{n_{l-1}})$ 、learning rate $\Theta(1)$ ；两者差别集中在 per-parameter LR 缩放以及 fan-out 小于 fan-in 时的初始化项。具体规则取决于 optimizer 和参数类型；Transformer 的 embedding、attention / MLP matrices、output head、bias 与 norm 参数需要分别处理。
+这就是 learning-rate scaling 的来源。把 $\lVert\Delta W_l\rVert_\ast = \eta_l \|g_l\| \|h_{l-1}\|$（Adam 把 $\lVert g_l/\sqrt{v_l}\rVert_2$ 量级记为 $\|g_l\|$ 同样适用），代入 $\|g_l\| = \Theta(\sqrt{n_l})$、 $\|h_{l-1}\| = \Theta(\sqrt{n_{l-1}})$，解 $\eta_l \sqrt{n_l n_{l-1}} = \Theta(\sqrt{n_l/n_{l-1}})$ 得到 $\eta_l = \Theta(1/n_{l-1})$。因此图 8.6-40 的简化线性层里，Adam 对 hidden matrix 的 learning-rate factor 是 $1/n_{l-1}$；Tensor Programs V（[arXiv:2203.03466](https://arxiv.org/abs/2203.03466) §4 Table 3）给出的完整规则区分 hidden weight 与 output weight：Adam 对 hidden matrix 与 output matrix 均为 $1/n_{l-1}$，而 SGD 的对应项不同——hidden matrix 是 $\Theta(1)$，只有 output matrix 是 $1/n_{l-1}$。相邻层等宽时退化为常见的 $1/n$，与 Tensor Programs V §B.1 给出的 Transformer 实施规则一致。标准参数化在同一张表里的对应项是初始化标准差 $\Theta(1/\sqrt{n_{l-1}})$ 、learning rate $\Theta(1)$ ；两者差别集中在 per-parameter LR 缩放以及 fan-out 小于 fan-in 时的初始化项。具体规则取决于 optimizer 和参数类型；Transformer 的 embedding、attention / MLP matrices、output head、bias 与 norm 参数需要分别处理。
 
 ![图 8.6-40 muP mini recap](images/8-6-40-mup-mini-recap.png)
 

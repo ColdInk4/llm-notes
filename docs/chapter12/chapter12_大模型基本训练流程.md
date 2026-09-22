@@ -70,14 +70,14 @@ next-token prediction 就是自监督目标。给定文本序列 $x_1,\dots,x_T$
 decoder-only 语言模型的预训练目标是预测下一个 token。对序列 $x_1,\dots,x_T$ ，最大化条件概率：
 
 $$
-\sum_{t=1}^{T} \log p_\theta(x_t \mid x_{<t})
+\sum_{t=1}^{T} \log p_\theta(x_t \mid x_{\lt t})
 $$
 
 等价地，训练最小化每个位置的交叉熵：
 
 $$
 \mathcal L_{\mathrm{PT}}
-= -\sum_{t=1}^{T} \log p_\theta(x_t \mid x_{<t})
+= -\sum_{t=1}^{T} \log p_\theta(x_t \mid x_{\lt t})
 $$
 
 例如文本“自然语言处理是人工智能的重要分支”可以形成连续训练位置。上下文“自然 语言 处理”对应标签“是”，上下文“语言 处理 是”对应后续 token。真实训练不会手写这些样本，而是在 tokenized 文本上滑动构造。
@@ -391,7 +391,7 @@ $$
 的闭式最优策略出发。该目标关于 $\pi$ 的变分最优解是
 
 $$
-\pi^*(y \mid x) = \frac{1}{Z(x)} \pi_{\mathrm{ref}}(y \mid x) \exp\!\left(\frac{r(x,y)}{\beta}\right)
+\pi^\ast(y \mid x) = \frac{1}{Z(x)} \pi_{\mathrm{ref}}(y \mid x) \exp\!\left(\frac{r(x,y)}{\beta}\right)
 $$
 
 其中 $Z(x) = \sum_y \pi_{\mathrm{ref}}(y \mid x) \exp(r(x,y)/\beta)$ 是 partition function。反解这一闭式解，把 reward 重参数化为策略和参考策略的相对 log-probability（lecture_15 L540-571 也从 nonparametric assumption + implied reward 路径走到同一形式）：

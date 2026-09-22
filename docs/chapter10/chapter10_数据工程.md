@@ -19,7 +19,7 @@
 从目标函数看，数据工程直接决定训练分布：
 
 $$
-\mathcal{L}(\theta;D)=\mathbb E_{x\sim D}\left[-\log p_\theta(x)\right],\qquad D=\operatorname{mix}\!\left(\operatorname{dedup}(\operatorname{filter}(\operatorname{convert}(R)))\right).
+\mathcal{L}(\theta;D)=\mathbb E_{x\sim D}\left[-\log p_\theta(x)\right],\qquad D=\mathrm{mix}\!\left(\mathrm{dedup}(\mathrm{filter}(\mathrm{convert}(R)))\right).
 $$
 
 原始池 $R$ 经过格式转换、过滤、去重和混合后形成训练分布 $D$；因此每个数据工程决策都会改变模型实际优化的样本概率，而不仅是改变文件大小。

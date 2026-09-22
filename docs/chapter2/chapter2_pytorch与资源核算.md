@@ -904,7 +904,7 @@ nn.Parameter 是 torch.Tensor 的子类，因此它“表现得像一个张量�
 x = nn.Parameter(torch.randn(input_dim)) # 输入向量
 output = x @ w # 输出向量
 ```
-当输入与权重都用 `torch.randn`（即 `x_j ~ N(0,1)`、`W_{ij} ~ N(0,1)`）独立采样时， $y_i = \sum_j W_{ij} x_j$ 的方差满足 $\mathrm{Var}(y_i) = \sum_j \mathrm{Var}(W_{ij})\mathrm{Var}(x_j) = n$（[Goodfellow et al. *Deep Learning* §8.4 Parameter Initialization Strategies](https://www.deeplearningbook.org/contents/optimization.html)），所以 `output` 的标准差为 $\sqrt{n} = \sqrt{\text{input\_dim}}$。例如 `input_dim = 16384` 时 `output` 标准差约为 128，远大于 `x` 的标准差 1，会逐层放大导致梯度爆炸（gradient explosion），使训练过程变得极不稳定，甚至无法收敛。
+当输入与权重都用 `torch.randn`（即 `x_j ~ N(0,1)`、`W_{ij} ~ N(0,1)`）独立采样时， $y_i = \sum_j W_{ij} x_j$ 的方差满足 $\mathrm{Var}(y_i) = \sum_j \mathrm{Var}(W_{ij})\mathrm{Var}(x_j) = n$（[Goodfellow et al. *Deep Learning* §8.4 Parameter Initialization Strategies](https://www.deeplearningbook.org/contents/optimization.html)），所以 `output` 的标准差为 $\sqrt{n} = \sqrt{\text{input\\_dim}}$。例如 `input_dim = 16384` 时 `output` 标准差约为 128，远大于 `x` 的标准差 1，会逐层放大导致梯度爆炸（gradient explosion），使训练过程变得极不稳定，甚至无法收敛。
 
 为了克服这个问题，需要一种对输入维度 `input_dim` 不敏感的初始化方法。CS336 代码讲义采用按 fan-in 缩放：权重除以输入维度的平方根 $\sqrt{d_{\text{in}}}$ ，把 $\mathrm{Var}(y_i)$ 拉回 $O(1)$ 。这里的 $d_{\text{in}}$ 对应代码里的 `input_dim`。
 
@@ -914,7 +914,7 @@ $$
 W \sim U\left[-\sqrt{\frac{6}{n_{\text{in}} + n_{\text{out}}}},\ \sqrt{\frac{6}{n_{\text{in}} + n_{\text{out}}}}\right]
 $$
 
-PyTorch 的 `nn.init.xavier_uniform_` 就按 $a = \text{gain} \times \sqrt{6 / (\text{fan\_in} + \text{fan\_out})}$ 取均匀分布边界。当 $n_{\text{in}} = n_{\text{out}}$（本节 `Linear(dim, dim)` 的情形）时两者只差一个常数因子 $\sqrt{3}$ ，所以按 $1/\sqrt{d_{\text{in}}}$ 缩放在数量级上等价。
+PyTorch 的 `nn.init.xavier_uniform_` 就按 $a = \text{gain} \times \sqrt{6 / (\text{fan\\_in} + \text{fan\\_out})}$ 取均匀分布边界。当 $n_{\text{in}} = n_{\text{out}}$（本节 `Linear(dim, dim)` 的情形）时两者只差一个常数因子 $\sqrt{3}$ ，所以按 $1/\sqrt{d_{\text{in}}}$ 缩放在数量级上等价。
 
 相关资料可见 [Xavier 初始化论文](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf) 和 [Stack Exchange 讨论](https://ai.stackexchange.com/questions/30491/is-there-a-proper-initialization-technique-for-the-weight-matrices-in-multi-head)。
 

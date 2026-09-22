@@ -1029,29 +1029,29 @@ Long-CoT SFT 从精炼后的 RL prompt set 中选题，再用 prompt engineering
 Kimi RL 的目标是在参考答案上最大化期望奖励，同时约束模型不要偏离原始行为太远：
 
 $$
-\max_{\theta} \mathbb E_{(x,y^*) \sim \mathcal{D}} \left[ \mathbb E_{(y,z) \sim \pi_\theta} \left[ r(x, y, y^*) \right] - \tau \text{KL}(\pi_\theta(x) || \pi_{\theta_i}(x)) \right]
+\max_{\theta} \mathbb E_{(x,y^\ast) \sim \mathcal{D}} \left[ \mathbb E_{(y,z) \sim \pi_\theta} \left[ r(x, y, y^\ast) \right] - \tau \text{KL}(\pi_\theta(x) || \pi_{\theta_i}(x)) \right]
 $$
 
 Kimi 的目标借鉴了 DPO 的无奖励偏好优化思想，用当前策略与参考策略的差异构造“伪奖励”，再用平方损失去逼近它。
 
-这里假设存在一个“理想策略” $\pi^*$ ，可理解为人类偏好分布或专家策略。DPO 式推导把奖励函数 $r$ 与策略比值联系起来：奖励减去归一化常数 $\tau \log Z$ 后，等于 $\tau$ 倍的理想策略与参考策略的对数比值。
+这里假设存在一个“理想策略” $\pi^\ast$ ，可理解为人类偏好分布或专家策略。DPO 式推导把奖励函数 $r$ 与策略比值联系起来：奖励减去归一化常数 $\tau \log Z$ 后，等于 $\tau$ 倍的理想策略与参考策略的对数比值。
 
 推导基于非参数假设，把奖励函数隐含表达为当前策略与参考策略的对数比值，不再显式建模。最终得到的 $r$ 可以写成策略函数。
 
 $$
-r(x, y, y^*) - \tau \log Z = \tau \log \frac{\pi^*(y, z|x)}{\pi_{\theta_i}(y, z|x)}
+r(x, y, y^\ast) - \tau \log Z = \tau \log \frac{\pi^\ast(y, z|x)}{\pi_{\theta_i}(y, z|x)}
 $$
 
-因为直接优化原始目标可能困难，这里用了一个**平方误差损失**来近似优化。它的目标是让当前策略 $\pi_\theta$ 的输出，尽可能匹配“理想策略” $\pi^*$ 所对应的奖励表达式。采样来自**参考策略 $\pi_{\theta_i}$**，这样可以稳定训练，避免自举（bootstrapping）带来的偏差。最终损失 $L(\theta)$ 是对所有样本和采样结果取期望后的平方误差。
+因为直接优化原始目标可能困难，这里用了一个**平方误差损失**来近似优化。它的目标是让当前策略 $\pi_\theta$ 的输出，尽可能匹配“理想策略” $\pi^\ast$ 所对应的奖励表达式。采样来自**参考策略 $\pi_{\theta_i}$**，这样可以稳定训练，避免自举（bootstrapping）带来的偏差。最终损失 $L(\theta)$ 是对所有样本和采样结果取期望后的平方误差。
 
 $$
-L(\theta) = \mathbb E_{(x,y^*) \sim \mathcal{D}} \left[ \mathbb E_{(y,z) \sim \pi_{\theta_i}} \left[ \left( r(x, y, y^*) - \tau \log Z - \tau \log \frac{\pi_\theta(y, z|x)}{\pi_{\theta_i}(y, z|x)} \right)^2 \right] \right]
+L(\theta) = \mathbb E_{(x,y^\ast) \sim \mathcal{D}} \left[ \mathbb E_{(y,z) \sim \pi_{\theta_i}} \left[ \left( r(x, y, y^\ast) - \tau \log Z - \tau \log \frac{\pi_\theta(y, z|x)}{\pi_{\theta_i}(y, z|x)} \right)^2 \right] \right]
 $$
 
 最终用于更新模型参数 θ 的带正则化的基线策略梯度：
 
 $$
-\frac{1}{k} \sum_{j=1}^{k} \left( \nabla_\theta \log \pi_\theta(y_j, z_j | x) \left( r(x, y_j, y^*) - \bar{r} \right) - \frac{\tau}{2} \nabla_\theta \left( \log \frac{\pi_\theta(y_j, z_j | x)}{\pi_{\theta_i}(y_j, z_j | x)} \right)^2 \right)
+\frac{1}{k} \sum_{j=1}^{k} \left( \nabla_\theta \log \pi_\theta(y_j, z_j | x) \left( r(x, y_j, y^\ast) - \bar{r} \right) - \frac{\tau}{2} \nabla_\theta \left( \log \frac{\pi_\theta(y_j, z_j | x)}{\pi_{\theta_i}(y_j, z_j | x)} \right)^2 \right)
 $$
 
 Kimi 的优化目标可以概括为 reference-based reward model：借鉴 DPO 类型推导，在非参数假设下解出 reward，再用平方损失 surrogate 和带 baseline 的 policy gradient 做更新。这个目标没有 GRPO 同样的长度归一化偏差，但仍需要额外的长度控制来压缩 CoT 成本。
@@ -1079,8 +1079,8 @@ $\lambda$ 的取值落在 $[-0.5, 0.5]$，组内更长的回复拿到更低的 $
 $$
 R_{\text{len}}(i) =
 \begin{cases}
-    \lambda & \text{if } r(x, y_i, y^*) = 1 \\
-    \min(0, \lambda) & \text{if } r(x, y_i, y^*) = 0
+    \lambda & \text{if } r(x, y_i, y^\ast) = 1 \\
+    \min(0, \lambda) & \text{if } r(x, y_i, y^\ast) = 0
 \end{cases}
 $$
 
@@ -1097,9 +1097,9 @@ $R_{\text{len}}(i)$ 在论文里写作 `len_reward(i)` 。
 采样策略：
 
 - 为数据集分配难度标签，从易到难
-- 问题的采样比例与 $(1-\text{success\_rate})$ 成正比，以避免重复已解决的问题
+- 问题的采样比例与 $(1-\text{success\\_rate})$ 成正比，以避免重复已解决的问题
 
-前面提到的 reward hacking 过滤在论文里有一条具体规则：让模型不带 CoT 直接猜答案，只要在 8 次尝试内猜对一次，这个 prompt 就被判定为容易被套分并移除（[arXiv:2501.12599](https://arxiv.org/abs/2501.12599) §2.1 RL Prompt Set Curation 原文 "If the model predicts the correct answer within N attempts, the prompt is considered too easy-to-hack and removed. We found that setting N = 8 can remove the majority easy-to-hack prompts."）。它和上面按 $(1-\text{success\_rate})$ 分配采样比例的难度课程是两条独立机制：前者删掉不需要推理就能答对的题，后者决定剩下的题以什么频率被采到。DeepSeek-R1 报告没有这道 N 次猜测检测，它的数据筛选走拒绝采样取正确答案的路径。
+前面提到的 reward hacking 过滤在论文里有一条具体规则：让模型不带 CoT 直接猜答案，只要在 8 次尝试内猜对一次，这个 prompt 就被判定为容易被套分并移除（[arXiv:2501.12599](https://arxiv.org/abs/2501.12599) §2.1 RL Prompt Set Curation 原文 "If the model predicts the correct answer within N attempts, the prompt is considered too easy-to-hack and removed. We found that setting N = 8 can remove the majority easy-to-hack prompts."）。它和上面按 $(1-\text{success\\_rate})$ 分配采样比例的难度课程是两条独立机制：前者删掉不需要推理就能答对的题，后者决定剩下的题以什么频率被采到。DeepSeek-R1 报告没有这道 N 次猜测检测，它的数据筛选走拒绝采样取正确答案的路径。
 
 奖励：
 

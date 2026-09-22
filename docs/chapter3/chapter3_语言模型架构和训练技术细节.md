@@ -843,7 +843,7 @@ $$
 
 MLA 在 attention 路径中增加了投影或重构计算。KV cache 和 HBM bandwidth 已成为瓶颈时，这些额外计算可以换取更低的显存占用和读取量。
 
-RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_k^R$ ，其中 $d_c$ 是 shared KV latent 的维度、 $d_k^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_k^R = 64$，约为 $d_k / 3$—— $d_k = qk\_nope\_head\_dim + qk\_rope\_head\_dim = 128 + 64 = 192$，其中 $64/192$ 用于位置编码；具体字段见 [`deepseek-ai/DeepSeek-V2-Chat` 的 `config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)）。
+RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_k^R$ ，其中 $d_c$ 是 shared KV latent 的维度、 $d_k^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_k^R = 64$，约为 $d_k / 3$—— $d_k = qk\\_nope\\_head\\_dim + qk\\_rope\\_head\\_dim = 128 + 64 = 192$，其中 $64/192$ 用于位置编码；具体字段见 [`deepseek-ai/DeepSeek-V2-Chat` 的 `config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)）。
 
 ![图 3.2-17 MLA 实验](images/3-2-17-mla-experiment.png)
 

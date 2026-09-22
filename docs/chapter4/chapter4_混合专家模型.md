@@ -1075,7 +1075,7 @@ MoE 稳定性通常需要同时处理路由更新、激活异常值和损失尖�
 
 - **seq-wise balance auxiliary loss**：NoAux-TC 不替代、而**配合**一条权重极小的序列级辅助损失。公理起点是 expert 负载的归一化熵 $H(\mathbf f_s) = -\sum_{i=1}^{E} \bar f_{i,s} \log \bar f_{i,s}$，其中 $\bar f_{i,s}$ 是序列 $s$ 内 expert $i$ 被分配的 token 比例（按序列归一化）。当所有 expert 均匀分配时 $H = \log E$（最大值），当一个 expert 拿走全部 token 时 $H = 0$（最小值）。DeepSeek-V3 论文 §2.1.2 把这条辅助损失写成 $\mathcal L_{\text{seq}} = \alpha \sum_{s \in \text{batch}} H(\mathbf f_s)$，其中 $\alpha$ 是极小权重（论文未明示数值）。这条机制给出兜底：per-expert bias 是在 batch 级做在线调整，seq-wise loss 是在序列级做兜底约束，两者粒度互补；[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) 报告这套组合在完整预训练中实现「无不可恢复的 loss spike、无回滚」（具体训练 token 数与 GPU-小时数见论文 §5.1）。
 
-- **node-limited routing**：把每 token 激活的 expert 数限制在最多 $M=4$ 个节点上，配合 $routed\_scaling\_factor=2.5$ 与 $n\_group=8, topk\_group=4$ 三件套。这条机制从通信账本（ $\text{all-to-all volume} \propto \text{tokens} \times \text{active nodes}$）出发压住跨节点 dispatch 带宽，从系统视角保住训练不出现通信尾延迟引发的有效 loss spike。
+- **node-limited routing**：把每 token 激活的 expert 数限制在最多 $M=4$ 个节点上，配合 $routed\\_scaling\\_factor=2.5$ 与 $n\\_group=8, topk\\_group=4$ 三件套。这条机制从通信账本（ $\text{all-to-all volume} \propto \text{tokens} \times \text{active nodes}$）出发压住跨节点 dispatch 带宽，从系统视角保住训练不出现通信尾延迟引发的有效 loss spike。
 
 - **SwiGLU clamping**：对 SwiGLU 中容易产生异常值的分支做范围限制，例如将线性分量限制在 `[-10, 10]`，并限制门控分量上界（[DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 中的 `swiglu_limit: 10.0` 即此参数；DeepSeek-V3 config 没有该字段，gpt-oss-120b 取的是 `swiglu_limit: 7.0`）。这样可以降低 activation outlier 和 loss spike 风险，但是否值得使用仍取决于模型规模、精度和训练设置。
 

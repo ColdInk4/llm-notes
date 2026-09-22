@@ -440,7 +440,7 @@ GeLU 的 block 之间完全独立；softmax 的一行必须在一个 program 内
 
 ## 6.5 Matmul tiling、PTX 和工具选择
 
-本节先把前面的 block / tile 思想推到矩阵乘：用一个 program 负责 $C$ 的一个 $(\mathrm{BLOCK\_M}, \mathrm{BLOCK\_N})$ 输出 tile，沿 $K$ 维循环加载 $A$ 和 $B$ 的 tile 累加；然后把编译后的 Triton kernel 对照 PTX 文本，读出 `.target` / `.reqntid` / `%ctaid.x` / `%tid.x` / `ld.global.v4.b32` 这些执行模型信号。读完后应能解释 thread coarsening 在 PTX 层体现为几条向量化指令。最后给出一条工具选择链：PyTorch builtin → `torch.compile` → Triton → CUDA C++ / PTX / SASS。
+本节先把前面的 block / tile 思想推到矩阵乘：用一个 program 负责 $C$ 的一个 $(\mathrm{BLOCK\\_M}, \mathrm{BLOCK\\_N})$ 输出 tile，沿 $K$ 维循环加载 $A$ 和 $B$ 的 tile 累加；然后把编译后的 Triton kernel 对照 PTX 文本，读出 `.target` / `.reqntid` / `%ctaid.x` / `%tid.x` / `ld.global.v4.b32` 这些执行模型信号。读完后应能解释 thread coarsening 在 PTX 层体现为几条向量化指令。最后给出一条工具选择链：PyTorch builtin → `torch.compile` → Triton → CUDA C++ / PTX / SASS。
 
 理想路径是把 $A$ 和 $B$ 都放进 shared memory 后再计算 $C$，这样读次数能从 $O(MKN)$ 降到接近 $O(MK + KN)$。
 
@@ -448,7 +448,7 @@ GeLU 的 block 之间完全独立；softmax 的一行必须在一个 program 内
 
 **理想路径（全部进 shared memory）**：把 $A$ 和 $B$ 整体放进 shared memory，每个 $A[m, k]$ 只读一次，每个 $B[k, n]$ 只读一次。Reads = $MK + KN$，writes = $MN$，因此 arithmetic intensity 从 $O(1)$（朴素）提到 $O(N)$（理想），跨过 roofline 的 $I_{\text{ridge}}$ 边界。
 
-现实中矩阵太大，shared memory 放不下完整矩阵，所以采用 **tiling**：一个 program 负责 $C$ 的一个 $(\mathrm{BLOCK\_M}, \mathrm{BLOCK\_N})$ 输出 tile，沿 $K$ 维逐段加载 $A$ tile 和 $B$ tile，累加 partial sum，最后写回 HBM。每个 tile 的 $A$ tile 在 $\mathrm{BLOCK\_N}$ 个输出列中复用，每个 $B$ tile 在 $\mathrm{BLOCK\_M}$ 个输出行中复用，reads ≈ $MK + KN$ 数量级，写 $MN$ 个输出 tile。这是 tiled matmul 优于朴素 matmul 的根本原因，也是 §6.1 末段算术强度提升的具体落点。
+现实中矩阵太大，shared memory 放不下完整矩阵，所以采用 **tiling**：一个 program 负责 $C$ 的一个 $(\mathrm{BLOCK\\_M}, \mathrm{BLOCK\\_N})$ 输出 tile，沿 $K$ 维逐段加载 $A$ tile 和 $B$ tile，累加 partial sum，最后写回 HBM。每个 tile 的 $A$ tile 在 $\mathrm{BLOCK\\_N}$ 个输出列中复用，每个 $B$ tile 在 $\mathrm{BLOCK\\_M}$ 个输出行中复用，reads ≈ $MK + KN$ 数量级，写 $MN$ 个输出 tile。这是 tiled matmul 优于朴素 matmul 的根本原因，也是 §6.1 末段算术强度提升的具体落点。
 
 ![图 6.5-1 GEMM tiling data reuse](images/6-5-1-gemm-tiling.png)
 
@@ -456,7 +456,7 @@ GeLU 的 block 之间完全独立；softmax 的一行必须在一个 program 内
 
 图 6.5-1 右侧橙色块是当前输出 tile；为计算它，kernel 沿 $K$ 维读取左侧 $A$ 的行 tile 和中间 $B$ 的列 tile。紫色块表示外层 tile 扫描，绿色块表示内层元素乘加。tile 越大，每次 HBM 读入后能服务更多乘加，算术强度越高；tile 太大会增加 shared memory 和 register 压力，降低可驻留 block 数。
 
-Triton 版 matmul + ReLU 的 wrapper 先确定 $M$、 $K$、 $N$，再启动二维 grid。每个 program 对应 $C$ 的一个 $(\mathrm{BLOCK\_M}, \mathrm{BLOCK\_N})$ tile。
+Triton 版 matmul + ReLU 的 wrapper 先确定 $M$、 $K$、 $N$，再启动二维 grid。每个 program 对应 $C$ 的一个 $(\mathrm{BLOCK\\_M}, \mathrm{BLOCK\\_N})$ tile。
 
 ```python
 def triton_matmul_relu(a: torch.Tensor, b: torch.Tensor):

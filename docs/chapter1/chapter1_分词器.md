@@ -141,13 +141,13 @@ Byte Pair Encoding（BPE）算法最早由 Philip Gage 在 1994 年的数据压�
 
 $$
 \begin{aligned}
-&\text{初始化：} \; \text{indices} = \text{UTF-8}(s), \quad \text{vocab} = \{i \mapsto \text{bytes}(i) : 0 \le i < 256\}, \quad \text{merges} = \{\} \\
+&\text{初始化：} \; \text{indices} = \text{UTF-8}(s), \quad \text{vocab} = \{i \mapsto \text{bytes}(i) : 0 \le i \lt 256\}, \quad \text{merges} = \{\} \\
 &\text{for } i = 1, 2, \dots, V - 256: \\
 &\quad \text{counts}(a, b) = \sum_{k} \mathbb{1}[\text{indices}[k]=a \land \text{indices}[k+1]=b] \\
-&\quad (a^*, b^*) = \arg\max_{(a,b)} \text{counts}(a, b) \\
-&\quad \text{vocab}[256 + i - 1] = \text{vocab}[a^*] \oplus \text{vocab}[b^*] \\
-&\quad \text{merges}[(a^*, b^*)] = 256 + i - 1 \\
-&\quad \text{indices} = \text{merge}(\text{indices}, (a^*, b^*), 256 + i - 1)
+&\quad (a^\ast, b^\ast) = \arg\max_{(a,b)} \text{counts}(a, b) \\
+&\quad \text{vocab}[256 + i - 1] = \text{vocab}[a^\ast] \oplus \text{vocab}[b^\ast] \\
+&\quad \text{merges}[(a^\ast, b^\ast)] = 256 + i - 1 \\
+&\quad \text{indices} = \text{merge}(\text{indices}, (a^\ast, b^\ast), 256 + i - 1)
 \end{aligned}
 $$
 
@@ -182,13 +182,13 @@ $$
 同一条"数据驱动切分"的思路还有几种不同实现，它们的差异主要在优化目标和工程接口。BPE 用频率贪心合并：
 
 $$
-\text{merge}^* = \arg\max_{(a, b)} \text{counts}(a, b)
+\text{merge}^\ast = \arg\max_{(a, b)} \text{counts}(a, b)
 $$
 
 WordPiece 把合并准则换成"提升语料对数似然最多的子词对"：
 
 $$
-\text{merge}^* = \arg\max_{(a, b)} \frac{\text{counts}(a, b)}{\text{counts}(a) \cdot \text{counts}(b)}
+\text{merge}^\ast = \arg\max_{(a, b)} \frac{\text{counts}(a, b)}{\text{counts}(a) \cdot \text{counts}(b)}
 $$
 
 即按互信息（PMI）排序而不是绝对频率。Unigram 从一个较大的初始 token 候选词表出发，给每个候选 token 赋概率 $P(t)$ ，把一段文本 $x$ 的所有可能分词记成候选集合 $S(x)$ ，其中每个 $s \in S(x)$ 是一串 token。对 $S(x)$ 求边缘似然，用负对数似然作为训练 loss：

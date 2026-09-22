@@ -232,7 +232,7 @@ $$
 `generation` 时 $T = 1$ ，所以：
 
 $$
-I_{\mathrm{attention,generation}} \approx \frac{S}{S + 1} < 1
+I_{\mathrm{attention,generation}} \approx \frac{S}{S + 1} \lt 1
 $$
 
 这里的关键是 batch size 并没有像 MLP 那样进入公式。原因是 MLP 权重对 batch 中所有请求共享，读一次权重可以服务多个 sequence；但 attention 里的 KV cache 是每个请求自己的历史， $B$ 个请求就有 $B$ 份不同 KV cache。把更多请求合到一起，确实增加总工作量，却不能像共享权重那样复用同一份 KV。
@@ -501,7 +501,7 @@ PagedAttention 面向在线服务中 KV cache 的生命周期管理。传统做�
 - 内部碎片：请求实际生成很短，却占了最大长度的空间。
 - 外部碎片：多个请求释放后留下零散空洞，总空闲显存够，但找不到足够大的连续块。
 
-设总请求数 $N$、平均实际生成长度 $\bar L$、预留上限 $L_{\max}$，则内部碎片总量期望为 $(L_{\max} - \bar L) \cdot N$，与并发数线性增长；外部碎片则依赖请求生命周期的交错——一段连续空闲区域被新请求的部分占用切成更短的连续区，期望长度随 $\sqrt{N}$ 量级缩小。PagedAttention 论文 Figure 2 报告，按最大长度预留的现有系统实际有效内存只占总分配 KV cache 的 20%–38%，意味着 62%–80% 的显存被两类碎片与冗余复制浪费，导致 batch 装不下更多请求。这两个数学约束直接导出 block-based allocation 的设计要求：把 KV cache 切成固定大小 block 后，单请求内部碎片期望退化为 $\text{block\_size}/2$（最后一个未填满的 block），外部碎片因块等大而完全消失；剩余代价是 block table 的额外间接寻址开销，对 attention kernel 是 gather 索引访问而非连续内存。
+设总请求数 $N$、平均实际生成长度 $\bar L$、预留上限 $L_{\max}$，则内部碎片总量期望为 $(L_{\max} - \bar L) \cdot N$，与并发数线性增长；外部碎片则依赖请求生命周期的交错——一段连续空闲区域被新请求的部分占用切成更短的连续区，期望长度随 $\sqrt{N}$ 量级缩小。PagedAttention 论文 Figure 2 报告，按最大长度预留的现有系统实际有效内存只占总分配 KV cache 的 20%–38%，意味着 62%–80% 的显存被两类碎片与冗余复制浪费，导致 batch 装不下更多请求。这两个数学约束直接导出 block-based allocation 的设计要求：把 KV cache 切成固定大小 block 后，单请求内部碎片期望退化为 $\text{block\\_size}/2$（最后一个未填满的 block），外部碎片因块等大而完全消失；剩余代价是 block table 的额外间接寻址开销，对 attention kernel 是 gather 索引访问而非连续内存。
 
 KV cache 的硬件预算与 HBM 容量约束已在 [第 5 章 §5.8 KV cache：HBM 上的另一笔账](../chapter5/chapter5_GPU和GPU相关优化.md) 给出，本节继续讲服务侧的调度问题。
 
