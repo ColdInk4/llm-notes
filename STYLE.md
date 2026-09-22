@@ -38,11 +38,12 @@
 
 - 行内公式使用单美元符号包裹；独立公式使用双美元符号包裹，并让开始和结束分隔符各自单独成行。独立公式前后各保留一个空行，避免 GitHub 把双美元符号当成普通段落文本。
 - 正文中不使用反斜杠形式的行内或块级公式分隔符，例如 `\(...\)` 或 `\[...\]`。
-- 公式分隔符内侧不留首尾空格，行内公式不要包进反引号。
-- 行内公式与普通正文、括号和标点之间默认都保留一个空格，例如 `变量 $B$ 表示 batch`、`空间（ $d_k = d_{\text{model}} / h$ ）`、`公式 $B$ 。`
-- 冒号、括号、破折号后接行内公式时，也保留一个空格，例如“记为： $F_{\text{forward}}$ ”、“， $s$ 是 sequence length”、“是 $s$ 。”，避免公式和中文正文黏连。
+- 公式分隔符内侧不留首尾空格。行内公式默认不包进反引号；斜体图注（`*…*` 内）是例外——`*…*` 内的裸 `$expr$` GitHub 不渲染，必须写成官方反引号形式 `` `` $`expr`$ `` ``。
+- 行内公式的开 `$` 前必须有半角空格，否则 GitHub 跳过该公式、 `$` 以字面形式残留在页面上。公式与正文、括号、标点之间都保留这一个空格，覆盖汉字、全角标点（`，、：；。（）`）、半角标点、冒号和破折号，例如 `变量 $B$ 表示 batch`、`均为 $[d_{\text{model}}, d_{\text{model}}]$`、`记为： $F_{\text{forward}}$`、`—— $d_k = 192$`。闭 `$` 后紧接标点可以渲染，但默认同样保留空格。
 - 较长的独立公式优先写成多行 display math，避免把整条公式塞进一行。
-- 本仓库默认以 GitHub Web 的 MathJax 预览为兼容目标。写公式时优先使用 GitHub 原生支持的单美元行内公式和双美元 display math；只有在 Markdown 冲突明显时，才改用 fenced `math` code block。
+- 行内公式中 `}` 或 `|` 紧贴 `_`（如 `$\hat{R}_t$`、 `$\hat{A}_{i,t}$`、 `$|h_l|_2$`）会被 CommonMark 解析成强调标记，切碎公式；display 块内同型写法只要凑齐开、关一对就切碎整块 `$$`。改写为单参数命令省花括号形式： `$\hat R_t$`、 `$\hat A_{i,t}$`（`_` 前变成字母，intraword 不再触发强调），LaTeX 渲染结果不变。
+- 正文或表格中的字面美元金额写 `<span>$</span>100`、表头写 `<span>$</span>/GB`（GitHub 官方规则），防止金额的 `$` 与相邻公式错误配对。
+- 本仓库以 GitHub Web 的渲染结果为兼容目标（服务端 `math-renderer` 识别 + 客户端渲染）。写公式时优先使用单美元行内公式和双美元 display math；只有在 Markdown 冲突明显时，才改用 fenced `math` code block。
 - 多字母下标如果表示词语或配置名，优先写成 `\text{}` 或 `\mathrm{}`，例如 $d_{\text{model}}$ 、 $N_{\text{param}}$ 、 $D_{\mathrm{KL}}$ 。
 - 代码属性和数学变量分开写：正文里用 `h2.grad` 表示 PyTorch 属性，公式里用 $G_{h_2}$ 这类数学记号，并在文字中说明二者对应关系。
 - 避免将代码风格标识符直接塞进公式，例如“把 `w1.grad` 包进数学环境”或“在 `\text{}` 里硬塞 snake_case 名字”。正文里用反引号写代码名，公式里改用数学记号，并在文字中说明二者对应关系。
@@ -60,7 +61,7 @@
 - **公式后立刻给承接句**：display math 之后下一段必须给出「这个公式意味着什么 / 工程后果是什么 / 与什么章节承接」的承接句，不允许公式孤立成段。
 - **长算式拆多行 display math**：单条公式 $> 4$ 行时，用 `aligned` / `split` / 多行换行拆开，避免 GitHub Web 预览把整条公式塞进一行。
 - **变量与符号的跨章节一致性**：同一符号在不同章节指同一变量。如 $N$ 在 ch8 = 总参数量，在 ch2 = token 数，必须分别定义或换字母。同一硬件数字（H100 BF16 dense 989.5 TFLOP/s）在所有章节口径一致。
-- 避免将代码 span、强调和公式塞进同一个 Markdown 强调块；例如把桶宽度说明写成普通段落：**桶宽度** $\epsilon$ 与量化步长对应。
+- 斜体强调 `*…*` 内不渲染公式（图注场景改用 `` `` $`expr`$ `` ``）；粗体 `**…**` 内的公式可以渲染。仍避免把代码 span、强调和公式挤进同一个强调块；例如把桶宽度说明写成普通段落：**桶宽度** $\epsilon$ 与量化步长对应。
 - 自然语言赋值优先写成等式，例如 $B_r = 128$ ；不要写成符号和中文动词黏在一起的半公式。
 - 中文与英文、数字之间默认留空格；固定代码标识、文件名、URL、路径和链接目标不拆。
 - 连续字段说明优先使用平铺列表，不把多个 `**字段**：...` 挤在同一行。
@@ -87,7 +88,7 @@
 
 1. **公理起点明确**：每段论证标注从哪个公理 / 公式 / 定理 / 物理约束推导过来（如「从 `loss(N,D)=E+A/N^α+B/D^β` 推导 Chinchilla 比例」、「从 policy gradient theorem + baseline invariance 推导 baseline 选取」、「从 roofline 算力 / 带宽约束推导 arithmetic intensity」、「从 `6ND` FLOPs 推导训练 FLOPs」、「从 attention / FFN / Norm 数学定义推导各自功能」）。不要直接抛概念名词而不交代公理来源。
 2. **推导链完整**：从公理起点到结论中间步骤不跳，不写「显然」「可以看到」「经验上」等省略语。读者沿论证链应能逐步看到从公理到结论的中间步骤。
-3. **经验 vs 推导清楚区分**：vibes / 行业惯例 / 类比的段落明确标注「这是经验 / 类比，不是公理推导」，不能伪装成推导。本仓库**当前**无清晰推导路径的论域（明确标注为 vibes / 经验 / 类比，不假装是推导）：数据 filter / dedup / mixing 阈值（lecture_13 L802 明说「data processing is... a lot just based on kind of vibes」）；GRPO 加的 length normalizer + std normalization（lecture_16 L164-167 明说「if you try to derive GRPO from first principles... you'll end up with something different」）；现代组件具体值选择（SwiGLU / RoPE / RMSNorm 是 scaling 拟合后的「幸存者」）。这类论域的处理方式：正文写「目前业界做法」+ 引用典型代表（如 FineWeb MinHash + LSH + 阈值 0.75）+ 标注「vibes / 经验 / 推导待补」；未推导部分不写入笔记，由主 agent 在 chat 流程核验后再写。
+3. **经验 vs 推导清楚区分**：vibes / 行业惯例 / 类比的段落明确标注「这是经验 / 类比，不是公理推导」，不能伪装成推导。本仓库**当前**无清晰推导路径的论域（明确标注为 vibes / 经验 / 类比，不假装是推导）：数据 filter / dedup / mixing 阈值（lecture_13 L802 明说「data processing is... a lot just based on kind of vibes」）；GRPO 加的 length normalizer + std normalization（lecture_16 L164-167 明说「if you try to derive GRPO from first principles... you'll end up with something different」）；现代组件具体值选择（SwiGLU / RoPE / RMSNorm 是 scaling 拟合后的「幸存者」）。这类论域的正文写法：给出「目前业界做法」+ 引用典型代表（如 FineWeb MinHash + LSH + 阈值 0.75），并把该判断明确表述为经验规则（「业界经验」「拟合结果」），不伪装成从公理推导。推导补全与否在 chat / sub-agent 流程里核验，笔记正文不写「待补」标记。
 
 #### 整条认识链：从问题到结论
 
@@ -304,6 +305,7 @@ rg -n "chapter[0[0-9]]+|chapter ?one|chapter ?two" docs/
 ## HTML
 
 - 正文中尽量不使用 HTML。
+- 字面美元金额是例外：正文与表格里的金额写 `<span>$</span>100`，防止金额的 `$` 被当成公式与相邻公式错误配对（见「公式与排版」渲染条目）。
 - 能用 Markdown 表达的内容，优先用 Markdown。
 - 教学示例中的 HTML 可以保留，但应放在 fenced code block 中。
 - Markdown 表格中不使用 HTML 换行标签。
@@ -316,7 +318,7 @@ rg -n "chapter[0[0-9]]+|chapter ?one|chapter ?two" docs/
 
 - 来源链接：优先官方文档、论文、技术报告或模型卡。
 - 查阅日期：使用 `YYYY-MM-DD`。
-- 状态：例如 `官方`、`论文`、`课程材料`、`社区观察` 或 `待复核`。
+- 状态：例如 `官方`、`论文`、`课程材料` 或 `社区观察`。
 
 CS336 2026 的公开课件和课程视频可以作为课程材料来源。若某个解释来自视频口头讲解，
 可在章节末来源记录中写 `CS336 2026 Lecture X video`，必要时补充公开视频时间点；
