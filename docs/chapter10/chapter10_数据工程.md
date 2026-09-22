@@ -6,9 +6,9 @@
 
 - 列出预训练、中期训练、后训练三个阶段各自需要的数据形态，并解释为什么同一份原始文本不应被无差别地复用到三个阶段。
 - 描述从 Common Crawl / Wikipedia / GitHub / arXiv 到可训练文本的标准转换管线：HTML→text、PDF→text、格式归一化、质量过滤。
-- 区分按 URL / 文档 / 子串 / embedding 等不同粒度的去重策略，并说明它们对训练数据污染和记忆的影响。
-- 解释 data mixing 的常见做法：temperature sampling、DoReMi、domain reweighting，以及训练 log 中应记录的混合比例字段。
-- 描述后训练合成数据的来源（self-instruct、UltraFeedback、Constitutional AI、verifier-driven）与对应 verifier 的可靠性边界。
+- 区分精确去重、Bloom Filter、MinHash + LSH 三档去重策略的适用场景与代价，并说明重复频次与训练数据记忆的关系。
+- 解释 data mixing 的常见做法：epoch 账本、UniMax 的 epoch 上限、RegMix 的回归建模、DoReMi 的 domain reweighting，以及小模型最优配比外推到大模型的两个前提。
+- 描述后训练合成数据按 env → task → response → verifier 构造的流程，并通过 OpenThoughts、SWE-smith、SWE-Zero 理解 verifier 的可靠性边界。
 
 ## 本章主线
 
@@ -49,8 +49,7 @@ $$
 
 这条速查图按三步推进：先沿主线 1 看数据从哪来、合法性能不能用，再沿主线 2 看怎么筛、怎么配、怎么合成，最后用主线 3 在只有文本接口的条件下审计训练数据是否被记住。三条主线在工程上互为前置约束。
 
-> [!NOTE]
-> 数据的长尾特性是：常见样本在训练数据中出现得非常频繁，而专业领域或罕见场景的数据在单一类别中出现次数很少。由于少见样本的类型数量极多，它们共同决定了大语言模型能力的覆盖范围和泛化边界。
+数据的长尾特性是：常见样本在训练数据中出现得非常频繁，而专业领域或罕见场景的数据在单一类别中出现次数很少。由于少见样本的类型数量极多，它们共同决定了大语言模型能力的覆盖范围和泛化边界。
 
 > [!TIP]
 > Evaluation rules 可以反向用于数据工程：先写清楚任务规则、输入分布和评分方式，再决定要收集哪些数据、过滤哪些噪声、保留哪些长尾样本。这样数据配比才能服务目标行为。
@@ -96,31 +95,27 @@ WebText 没有直接使用整张网页爬取池，而是从 Reddit 帖子中抽�
 
 Common Crawl 提供了大规模网页 raw data，但 raw data 需要解析、过滤和去重后才适合训练。GPT-3 这类流程通常会去掉 HTML 标记和脚本，过滤乱码或非自然语言文本，并用去重减少重复 token 带来的记忆和浪费。
 
-> [!NOTE]
-> GPT-3 的数据处理经验说明，清理、过滤和去重是决定海量语料能否转化为有效训练信号的关键步骤。
-
 **The Pile：用多来源覆盖能力面。**
 
 The Pile 把 Common Crawl、arXiv、GitHub、StackExchange、邮件列表等 22 个来源放到同一个公开语料集中。它给后续数据工程提供了一个重要模板：网页数据负责规模，专业来源负责能力覆盖，多来源混合负责减少单一分布偏置。规模上 The Pile 约 **825 GiB**，用 GPT-NeoX tokenizer 计约 **334B tokens**，全局文档级去重后约 **207B tokens**，是 2020-2022 年间多来源开源语料的代表性规模。
 
-> [!NOTE]
-> **公开数据规模速查**：
->
-> | 数据集 | 规模 | 备注 |
-> | --- | --- | --- |
-> | Common Crawl 单次 crawl | 官方口径每月新增 3-5B 网页、累计超过 300B 网页；2026 年 4 月的 CC-MAIN-2026-17 实际为 2.19B 网页 / 379.2 TiB（未压缩） | 原始 HTML，未清洗 |
-> | C4 | 原始 C4 约 750 GB；HF `allenai/c4` 的 `en` 清洗版约 305 GB | April 2019 Common Crawl 子集，规则过滤 + 三句跨度去重后保留 |
-> | The Pile | 825 GiB；GPT-NeoX tokenizer 计 334B tokens，全局去重后 207B tokens | 22 来源混合 |
-> | LLaMA 1 训练语料 | 约 1.0T / 1.4T tokens（7B / 13B 训练 1.0T，33B / 65B 训练 1.4T；arXiv:2302.13971 表 1） | CCNet 处理的 CommonCrawl（67%）+ C4（15%）+ GitHub + Wikipedia + Books（Gutenberg 与 Books3）+ arXiv + Stack Exchange；质量分类器的正例取自 Wikipedia 页面引用指向的网页 |
-> | FineWeb | 15T tokens | 96 个 Common Crawl dumps（[arXiv:2406.17557](https://arxiv.org/abs/2406.17557)），MinHash 去重 + PII 匿名 |
-> | Dolma | v1.6 约 3.06T tokens；v1.7 全量 2.31T tokens，按来源比例采样后取 1.72T 子集训练 OLMo 7B-v1.7 | AI2 开源多来源混合（Reddit + PeS2o + C4 + Gutenberg + Wikipedia） |
-> | DCLM | DCLM-Pool 240T tokens / 200B documents（未过滤 Common Crawl，gzip 后 370 TB）；DCLM-Baseline 3.8T tokens（fastText 质量过滤后；论文公开口径） | [DataComp-LM arXiv:2406.11794](https://arxiv.org/abs/2406.11794)、[HF mlfoundations/dclm-baseline-1.0](https://huggingface.co/datasets/mlfoundations/dclm-baseline-1.0) |
-> | Nemotron-CC | 6.3T tokens（4.4T 真实去重 + 1.9T 合成；HQ 子集 1.1T） | HTML→text 选用 **jusText**：它抽出的 token 总量与高质量 token 数都高于 trafilatura，而下游精度基本持平 |
-> | The Stack v2 | 104.2M GitHub 仓库、3.28B unique files、67.5 TB 未压缩；供 StarCoder2-15B 使用的训练集含 913B+ unique tokens，模型实际训练 4.3T tokens | 代码数据 |
-> | CommonPile | 8TB | permissive-licensed only，探讨 license laundering 风险；包含 Comma v0.1-1T / 2T 两个 7B 验证模型 |
-> | Llama 3 训练语料 | 15.6T tokens（旗舰 405B；8B / 70B 同语料；arXiv:2407.21783） | 与 FineWeb 同量级 |
-> | Qwen3 训练语料 | 36T tokens | |
-> | DeepSeek V3 训练语料 | 14.8T tokens（V3 paper 表 1 报告，multi-stage sampling 后） | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) |
+**公开数据规模速查。**
+
+| 数据集 | 规模 | 备注 |
+| --- | --- | --- |
+| Common Crawl 单次 crawl | 官方口径约每月发布一次、每次通常超过 20 亿网页，归档总量超过 10 PiB；2026 年 4 月的 CC-MAIN-2026-17 实际为 2.19B 网页 / 379.2 TiB（未压缩） | 原始 HTML，未清洗 |
+| C4 | 原始 C4 约 750 GB；HF `allenai/c4` 的 `en` 清洗版约 305 GB | April 2019 Common Crawl 子集，规则过滤 + 三句跨度去重后保留 |
+| The Pile | 825 GiB；GPT-NeoX tokenizer 计 334B tokens，全局去重后 207B tokens | 22 来源混合 |
+| LLaMA 1 训练语料 | 约 1.0T / 1.4T tokens（7B / 13B 训练 1.0T，33B / 65B 训练 1.4T；arXiv:2302.13971 表 2） | CCNet 处理的 CommonCrawl（67%）+ C4（15%）+ GitHub + Wikipedia + Books（Gutenberg 与 Books3）+ arXiv + Stack Exchange；质量分类器的正例取自 Wikipedia 页面引用指向的网页 |
+| FineWeb | 15T tokens | 96 个 Common Crawl dumps（[arXiv:2406.17557](https://arxiv.org/abs/2406.17557)），MinHash 去重 + PII 匿名 |
+| Dolma | v1.6 约 3.06T tokens；v1.7 全量 2.31T tokens，按来源比例采样后取 1.72T 子集训练 OLMo 7B-v1.7 | AI2 开源多来源混合（Reddit + PeS2o + C4 + Gutenberg + Wikipedia） |
+| DCLM | DCLM-Pool 240T tokens / 200B documents（未过滤 Common Crawl，gzip 后 370 TB）；DCLM-Baseline 3.8T tokens（fastText 质量过滤后；论文公开口径） | [DataComp-LM arXiv:2406.11794](https://arxiv.org/abs/2406.11794)、[HF mlfoundations/dclm-baseline-1.0](https://huggingface.co/datasets/mlfoundations/dclm-baseline-1.0) |
+| Nemotron-CC | 6.3T tokens（4.4T 真实去重 + 1.9T 合成；HQ 子集 1.1T） | HTML→text 选用 **jusText**：它抽出的 token 总量与高质量 token 数都高于 trafilatura，而下游精度基本持平 |
+| The Stack v2 | 104.2M GitHub 仓库、3.28B unique files、67.5 TB 未压缩；供 StarCoder2-15B 使用的训练集含 913B+ unique tokens，模型实际训练 4.3T tokens | 代码数据 |
+| CommonPile | 8TB | permissive-licensed only，探讨 license laundering 风险；包含 Comma v0.1-1T / 2T 两个 7B 验证模型 |
+| Llama 3 训练语料 | 15.6T tokens（旗舰 405B；8B / 70B 同语料；arXiv:2407.21783） | 与 FineWeb 同量级 |
+| Qwen3 训练语料 | 36T tokens | |
+| DeepSeek V3 训练语料 | 14.8T tokens（V3 paper abstract 与正文报告，multi-stage sampling 后） | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) |
 
 **近期模型：阶段化数据账本。**
 
@@ -152,7 +147,7 @@ token 数与文档数的比值同时给出平均文档长度：DCLM-Baseline 约
 
 图 10.1-3 把中期训练拆成两块：Dolmino 高质量子集合计 832.6B tokens，Dolmino 数学子集合计 10.7B tokens。相对预训练的 3.90T tokens，中期训练的总量约为其五分之一，其中数学部分不到千分之三。
 
-高质量子集里最大的一条仍是 DCLM-Baseline，但取的是 FastText 打分 top 7% 且 FineWeb 质量分不低于 2 的 752B tokens 子集；其余是 FLAN 指令数据 17.0B、peS2o 学术论文 58.6B、Wikipedia & Wikibooks 3.7B 和 Stack Exchange 问答 1.26B。同一个来源在两张表里出现两次时口径不同：预训练取全量，中期训练取分数最高的一段。
+高质量子集里最大的一条仍是 DCLM-Baseline，但取的是 FastText 打分 top 7% 且 FineWeb 质量分高于 2 的 752B tokens 子集；其余是 FLAN 指令数据 17.0B、peS2o 学术论文 58.6B、Wikipedia & Wikibooks 3.7B 和 Stack Exchange 问答 1.26B。同一个来源在两张表里出现两次时口径不同：预训练取全量，中期训练取分数最高的一段。
 
 数学子集由合成与真实数据拼成：TinyGSM-MIND 6.48B tokens 与 MathCoder2 合成教材 3.87B tokens 占了 10.7B 里的绝大部分，其余是 TuluMath 230M、Metamath 84.2M、Dolmino SynthMath 28.7M、GSM8K 训练集 2.74M 和 CodeSearchNet 1.78M。后面这几条单条 token 数很小，作用在于提供题目与解答的成对结构，规模由前两条合成来源承担。
 
@@ -164,7 +159,7 @@ token 数与文档数的比值同时给出平均文档长度：DCLM-Baseline 约
 
 图 10.1-4 是 Tulu 3 的 prompt 账本，按 general、knowledge recall、math reasoning、coding、safety & non-compliance、multilingual 和 precise instruction following 七类组织。候选池合计 23,327,961 条 prompt，实际进入 SFT 的是 939,344 条，进入 DPO 的是 425,145 条。两级筛选把候选池压到 4% 左右，说明后训练阶段的约束来自 prompt 的质量与去污染成本。
 
-单条来源的采样上限也写在表里：OpenMathInstruct 2 有 21,972,791 条候选，只取 50,000 条进 SFT、26,356 条进 DPO；Tülu 3 Persona MATH 的 149,960 条则全量进入 SFT。粉色标注的是 Tulu 3 自建的 persona 合成数据，其余是 OpenAssistant、WildChat、FLAN v2、Aya 等公开集合。
+单条来源的采样上限也写在表里：OpenMathInstruct 2 有 21,972,791 条候选，只取 50,000 条进 SFT、26,356 条进 DPO；Tülu 3 Persona MATH 的 149,960 条则全量进入 SFT。粉色标注的是 Tülu 3 账本中新建或改造的来源（Tülu 3 Hardcoded、Persona MATH / GSM / Algebra / Python / IF、CoCoNot、WildJailbreak、WildGuardMix、IF-augmented），其余是 OpenAssistant、WildChat、FLAN v2、Aya 等公开集合。
 
 图 10.1-2 到图 10.1-4 展示同一个模型家族在三个阶段的数据账本，规模沿 3.90T tokens → 843B tokens → 94 万条 prompt 逐级收缩。预训练负责覆盖通用语言和知识；中期训练用更高质量的小比例数据强化能力短板；后训练使用 SFT、DPO 与可验证任务数据，把模型行为约束到指令遵循、偏好对齐和可验证推理任务上。
 
@@ -189,8 +184,7 @@ Qwen 3 的公开材料也体现了这种阶段分工：预训练覆盖大规模�
 
 数学、科学和问答社区数据能提高结构化推理能力，但它们不是单纯“越多越好”。如果领域数据比例过高，模型可能牺牲通用写作、多语言或安全行为；如果过滤规则过窄，又会丢掉长尾知识和创造性表达。数据混合比例需要和目标评估一起调。
 
-> [!NOTE]
-> 通用文本提供语言结构、常识和广泛知识覆盖；特殊领域数据强化代码、数学、科学和业务流程等专业能力。两者的比例应随目标行为和评估指标调整。
+通用文本提供语言结构、常识和广泛知识覆盖；特殊领域数据强化代码、数学、科学和业务流程等专业能力。两者的比例应随目标行为和评估指标调整。
 
 
 ### 10.1.3 法律、许可与数据安全
@@ -206,16 +200,15 @@ Qwen 3 的公开材料也体现了这种阶段分工：预训练覆盖大规模�
 
 **版权与许可。**
 
-> [!NOTE]
-> **Shadow libraries 是训练数据的另一条来源**。生态包括 LibGen（2019 约 4M books）、Z-Library、Anna's Archive、Sci-Hub（2022 约 88M papers）等。这些来源在版权合规上普遍不可用于商业训练，但部分研究型项目（CommonPile 等）以 permissive-only 路线探索合法替代。Shadow library 在数据清单中应作为负面参照而非训练来源，与"模型团队的数据披露边界"放在同一节处理。
->
-> **Anthropic 版权诉讼和解（案件事实链）。** Bartz v. Anthropic PBC（Case No. 3:24-cv-05417，N.D. Cal.，原承办法官为 William Alsup）是 Andrea Bartz 等作者提起的集体诉讼。2025 年 6 月 23 日，法院就 fair use 作出 summary judgment：用合法取得的图书副本训练模型构成 fair use，把合法购买的纸书扫描留作模型训练库也构成 fair use，但下载并长期保存数百万本盗版书籍本身不构成 fair use（piracy 部分发回审判）。2025 年 8 月 26 日，Anthropic 同意支付 15 亿美元（约 48.2 万部作品）达成和解，是当时美国公开记录中金额最高的版权和解；2025 年 9 月 25 日法院作出 preliminary approval。
->
-> **Anthropic 版权诉讼和解（2026 年进展）。** Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官。2026 年 5 月 14 日后者举行 75 分钟 fairness hearing，对律师费明细、lead-plaintiff 服务费、开支分摊与未及时 opt-out 通知提出补充材料要求；2026 年 7 月 20 日 Judge Martínez-Olguín 作出 final approval，确认 <span>$</span>1.5B、482,460 部作品（claims rate 约 92.77%、约 <span>$</span>3,000/部）的条款公平合理，仍是美国公开记录中金额最高的版权和解；同时命令 Anthropic 在 final judgment 后 30 日内销毁所有 LibGen / PiLiMi 来源的盗版文件。
->
-> 该案与本节 shadow library 议题直接相关：争议核心是从盗版图书库获取语料能否被 fair use 覆盖，而购买并扫描同一批图书并不能豁免此前下载盗版副本的责任。
->
-> **周期性 dump 的投毒时间窗口**。Carlini 等人的 "Poisoning Web-Scale Training Datasets is Practical"（[arXiv:2302.10149](https://arxiv.org/abs/2302.10149)）提出 frontrunning poisoning：Wikipedia 这类周期性快照的语料，攻击者可以在 dump 截取的时刻之前注入内容，即使编辑随后被回滚，被污染的版本仍会进入 dump 并流入训练集。注入内容能造成什么后果，可以参考 Wallace 等人的 "Concealed Data Poisoning Attacks on NLP Models"（[arXiv:2010.12563](https://arxiv.org/abs/2010.12563)）：少量不含触发词的毒样本，就能让模型在输入出现 "James Bond" 时稳定输出指定的情感标签。这条针对 dump 时序窗口的攻击路径，与下文 250 份文档的后门研究互补：前者利用快照时间差，后者利用大规模数据中的统计小样本。
+**Shadow libraries 是训练数据的另一条来源。** 生态包括 LibGen（2019 约 4M books）、Z-Library、Anna's Archive、Sci-Hub（2022 约 88M papers）等。这些来源在版权合规上普遍不可用于商业训练，但部分研究型项目（CommonPile 等）以 permissive-only 路线探索合法替代。Shadow library 在数据清单中只作为负面参照登记，不进入训练来源。
+
+**Anthropic 版权诉讼和解（案件事实链）。** Bartz v. Anthropic PBC（Case No. 3:24-cv-05417，N.D. Cal.，原承办法官为 William Alsup）是 Andrea Bartz 等作者提起的集体诉讼。2025 年 6 月 23 日，法院就 fair use 作出 summary judgment：用合法取得的图书副本训练模型构成 fair use，把合法购买的纸书扫描留作模型训练库也构成 fair use，但下载并长期保存数百万本盗版书籍本身不构成 fair use（piracy 部分发回审判）。2025 年 8 月 26 日，Anthropic 同意支付 15 亿美元（约 48.2 万部作品）达成和解，是当时美国公开记录中金额最高的版权和解；2025 年 9 月 25 日法院作出 preliminary approval。
+
+**Anthropic 版权诉讼和解（2026 年进展）。** Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官。2026 年 5 月 14 日后者举行 75 分钟 fairness hearing，对律师费明细、lead-plaintiff 服务费、开支分摊与未及时 opt-out 通知提出补充材料要求；2026 年 7 月 20 日 Judge Martínez-Olguín 作出 final approval，确认 <span>$</span>1.5B、482,460 部作品（claims rate 约 92.77%、约 <span>$</span>3,000/部）的条款公平合理，仍是美国公开记录中金额最高的版权和解；同时命令 Anthropic 在 final judgment 后 30 日内销毁所有 LibGen / PiLiMi 来源的盗版文件。
+
+该案的争议核心是从盗版图书库获取语料能否被 fair use 覆盖，而购买并扫描同一批图书并不能豁免此前下载盗版副本的责任。
+
+**周期性 dump 的投毒时间窗口。** Carlini 等人的 "Poisoning Web-Scale Training Datasets is Practical"（[arXiv:2302.10149](https://arxiv.org/abs/2302.10149)）提出 frontrunning poisoning：Wikipedia 这类周期性快照的语料，攻击者可以在 dump 截取的时刻之前注入内容，即使编辑随后被回滚，被污染的版本仍会进入 dump 并流入训练集。注入内容能造成什么后果，可以参考 Wallace 等人的 "Concealed Data Poisoning Attacks on NLP Models"（[arXiv:2010.12563](https://arxiv.org/abs/2010.12563)）：少量不含触发词的毒样本，就能让模型在输入出现 "James Bond" 时稳定输出指定的情感标签。这条针对 dump 时序窗口的攻击路径，与下文 250 份文档的后门研究互补：前者利用快照时间差，后者利用大规模数据中的统计小样本。
 
 互联网上的大多数文本默认受版权保护，包括博客、新闻、书籍、论坛和代码。可用路径通常有三类：获得授权或购买数据；使用公版、Creative Commons 或 permissive license 数据；在具体司法辖区下评估 fair use。代码数据还要区分仓库许可证、依赖许可证、自动生成文件和 fork 重复。
 
@@ -229,7 +222,7 @@ Qwen 3 的公开材料也体现了这种阶段分工：预训练覆盖大规模�
 
 > **典型规模**：Anthropic 与英国 AI 安全研究所、Alan Turing Institute 合作的 "Poisoning Attacks on LLMs Require a Near-constant Number of Poison Samples"（[arXiv:2510.07192](https://arxiv.org/abs/2510.07192)）测量了后门所需的毒样本数量：250 份恶意文档就能在所有测试规模上植入可触发的后门行为，而其中最大的模型见过的干净数据是最小模型的 20 倍以上。换句话说，攻击成本随数据规模基本不变，比例增长不再成立。这个量级远小于任何一次网页爬取的样本数，因此来源审计、异常样本过滤和高风险来源隔离必须写进数据入口流程，作为训练前的基础约束。
 
-> [!WARNING]
+> [!IMPORTANT]
 > 法律和安全约束应在数据入口处记录。训练数据的来源、许可证、过滤规则和删除策略都需要可复核，模型出问题后再补救的成本通常更高。
 
 ### 10.1.4 互联网数据清洗
@@ -259,7 +252,7 @@ Qwen 3 的公开材料也体现了这种阶段分工：预训练覆盖大规模�
 
 CCNet 是把这三层串起来的早期公开方案，目标是从 Common Crawl 自动构建大规模高质量语料，尤其是为乌尔都语这类低资源语言补数据。它的三个部件依次是：按轻量归一化后的段落哈希做去重、用 fastText 语言识别只保留目标语言、再用一个在 Wikipedia 上训练的 KenLM 5-gram 模型按困惑度保留“看起来像 Wikipedia”的文档。多语言场景下，困惑度阈值不宜跨语言共用；低资源语言的参考语料更少，模型困惑度天然更高，需要按语言分位数校准。
 
-> [!NOTE]
+> [!WARNING]
 > 困惑度过滤不等同于“低分就好”。过低的困惑度可能代表模板化或重复文本，过高的困惑度可能代表噪声，也可能代表新领域、低资源语言或创造性表达。工程上通常会按语言和来源分桶校准阈值，再用下游验证集检查过滤是否伤害长尾能力。
 
 ## 10.2 数据智能筛选
@@ -380,8 +373,7 @@ $$
 
 这条 S 型曲线决定去重阈值。band 内部要求全部相等、band 之间只要一个命中，这种 and-or 结构把平缓的 $s$ 变成陡峭的门限。增大 $r$ 会提高单个 band 的全匹配门槛，曲线右移，只有更相似的文档才成为候选；增大 $b$ 会增加命中机会，曲线左移，更多中等相似度文档进入候选集。
 
-> [!NOTE]
-> Lee 等人在 arXiv:2107.06499 中使用的一组具体参数是： $n = 9000$ 个哈希函数（5-gram 文档签名），分成 $b = 20$ 个 band，每 band $r = 450$ 行（与本节「b 个 band、每 band r 行」约定一致；CS336 2026 Lecture 14 代码讲义 `lecture_14.py` 也是这套记号）。相变阈值 $\theta = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.993$ ：在这个相似度上，单个 band 全匹配的概率恰好是 $1/b$ ，于是候选碰撞概率为 $1 - (1 - 1/b)^b \approx 1 - 1/e \approx 0.63$ 。相似度高于 0.993 的文档对碰撞概率迅速趋近 1，低于 0.993 的则迅速趋近 0，这样就把全量 $O(N^2)$ 精确比对压缩成对少量候选对的验证；论文在候选对之上再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做一次精确过滤（论文 §4.2），把相变点定在更宽松的位置，让更多中等相似度候选进入二次比对。论文 §2.1 正是按这组参数，把「在 Common Crawl / C4 这类网页语料上抓到 Jaccard 接近 1 的近重复文档」的目标做成了可行操作。
+Lee 等人在 arXiv:2107.06499 中使用的一组具体参数是： $n = 9000$ 个哈希函数（5-gram 文档签名），分成 $b = 20$ 个 band，每 band $r = 450$ 行。相变阈值 $\theta = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.993$ ：在这个相似度上，单个 band 全匹配的概率恰好是 $1/b$ ，于是候选碰撞概率为 $1 - (1 - 1/b)^b \approx 1 - 1/e \approx 0.63$ 。相似度高于 0.993 的文档对碰撞概率迅速趋近 1，低于 0.993 的则迅速趋近 0，全量 $O(N^2)$ 精确比对由此压缩成对少量候选对的验证。进入候选集后，论文再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做一次精确过滤（论文 §4.2）：LSH 的 0.993 相变点作用在 5-gram shingle 的 Jaccard 上，负责把召回拉满；0.8 的二次阈值作用在成对精算的 Jaccard 与编辑相似度上，负责精度。两道门在同一相似度轴上前后接力。
 
 ![图 10.2-5 LSH band 与相似度关系](images/10-2-5-lsh-bands-threshold.png)
 
@@ -408,7 +400,7 @@ $$
 | 数据集 | 公开版本 / 论文 | 规模（tokens / 文档） | 来源构成 | 去重与过滤 |
 | --- | --- | --- | --- | --- |
 | The Pile | arXiv:2101.00027；HF `monology/pile-uncopyrighted` | ~334B tokens（GPT-NeoX tokenizer）；全局文档级去重后 ~207B tokens | 22 个来源混合：Common Crawl、Pile-CC、Books3、GitHub、arXiv、Wikipedia、StackExchange 等 | 全局文档级 exact-hash 去重；无模型质量分类器 |
-| FineWeb | arXiv:2406.17557；HF `HuggingFaceFW/fineweb` | 15T tokens | 96 个 Common Crawl dumps 拼接 | MinHash 文档级去重（5-gram、112 哈希、14 buckets、阈值 0.75）；自定义 PII 匿名；多种 quality 配置（FineWeb-Edu 教育分 ≥ 3；FineWeb-Edu-Score-2 教育分 ≥ 2） |
+| FineWeb | arXiv:2406.17557；HF `HuggingFaceFW/fineweb` | 15T tokens | 96 个 Common Crawl dumps 拼接 | MinHash 文档级去重（5-gram、112 哈希、14 buckets、阈值 0.75）；自定义 PII 匿名；多种 quality 配置（FineWeb-Edu 教育分 ≥ 3） |
 | DCLM-Baseline | arXiv:2406.11794；HF `mlfoundations/dclm-baseline-1.0` | 3.8T tokens（fastText 过滤后，论文公开口径）；DCLM-Pool 240T tokens / 200B documents（未过滤） | Common Crawl 单源（多个 crawl dump 拼接） | fastText 质量分类器（正例取 OpenHermes 2.5 + r/ExplainLikeImFive 高赞帖；负例取 RefinedWeb 随机子样）+ hash 去重 + 启发式过滤；DataComp-LM 流程标准化 |
 
 三套语料的设计取向不同：The Pile 优先广覆盖能力面，FineWeb 优先给大规模研究提供可控的 Common Crawl 处理链，DCLM-Baseline 把质量分类器当作主入口、用单一 crawl 池子保证过滤信号干净。这三种取向也直接影响下游如何配比混合：Pile 类多源语料需要 UniMax 这类 epoch cap 控制小来源；FineWeb 这种大规模同质语料可以直接按 token 数比例采样；DCLM 这类已带质量分的语料则适合按 fastText 分桶再混合。
@@ -417,7 +409,7 @@ $$
 
 *图 10.2-6 Marin token viewer 中的数据来源视图*
 
-图 10.2-6 是 Marin 语料的 token 分布视图：每根横条是一个数据集，横轴是该数据集的 token 数（单位 B），颜色按 web、multilingual、code、math、specialized 五类分组。最长的几根都是橙色的 web 类，`nemotron_cc_v2/medium_quality` 与 `nemotron_cc_v2_1/medium_high_quality_synthetic` 都在 2100B 上下；紫色的 multilingual 里 `finetranslations/multilingual` 约 1500B；深蓝的 code 类最大一条约 400B；粉色的 math 只有一条约 150B；浅蓝的 specialized 三条都在 100B 以下。
+图 10.2-6 是 Marin 语料的 token 分布视图：每根横条是一个数据集，横轴是该数据集的 token 数（单位 B），颜色按 web、multilingual、code、math、specialized 五类分组。最长的几根都是橙色的 web 类，`nemotron_cc_v2/medium_quality` 与 `nemotron_cc_v2_1/medium_high_quality_synthetic` 都在 2100B 上下；紫色的 multilingual 里 `finetranslations/multilingual` 约 1500B；深蓝的 code 类最大一条约 400B；粉色的 math 只有一条约 200B；浅蓝的 specialized 三条约 130B / 80B / 80B。
 
 同一张图里最大与最小来源相差二十倍以上，而它们覆盖的能力并不可比：网页负责规模与常识，代码与数学负责结构化推理，多语种负责语言覆盖。数据混合要在这张不可比的清单上分配采样概率，既保证多样性，也限制小来源的 epoch 次数。
 
@@ -441,10 +433,10 @@ RegMix 把数据混合当作小规模实验和回归建模问题。图 10.2-7 �
 
 图中这次拟合给出的最优比例是 22.8% / 67.0% / 10.2%，预测目标值 5.34，低于任何一次实际跑过的 proxy 结果。这个流程和 scaling law 很接近：都用一组便宜的小实验拟合一条曲线，再外推到没有跑过的配置上。
 
-DoReMi（[Xie et al., 2023, *DoReMi: Optimizing Data Mixtures Speeds Up Language Model Pretraining*, arXiv:2305.10429](https://arxiv.org/abs/2305.10429)，NeurIPS 2023）用另一个角度做同一件事：先训练一个 280M 的 reference model，再用一个相同规模、跑 Group DRO 的 proxy model 沿训练 trajectory 动态调整 domain 权重——内层对 domain 权重做 exponentiated gradient ascent，把 mass 推向当前 excess loss 最大的 domain；外层更新 proxy 参数。最后把这些学到的 domain 权重直接拿去训练一个 8B 模型。DoReMi 在 The Pile 上把 8B 模型的平均 few-shot downstream 准确率相对基线提升约 6.5 个百分点，并以约 2.6× 更少的 step 达到基线准确率；proxy 阶段的 mixture search 成本大约是 8B 最终训练的 8%。DoReMi 的关键特点是只动 domain weights，不动数据；这与 RegMix 在小模型上直接拟合最优比例的做法形成方法对照。
+DoReMi（[Xie et al., 2023, *DoReMi: Optimizing Data Mixtures Speeds Up Language Model Pretraining*, arXiv:2305.10429](https://arxiv.org/abs/2305.10429)，NeurIPS 2023）用另一个角度做同一件事：先训练一个 280M 的 reference model，再用一个相同规模、跑 Group DRO 的 proxy model 沿训练 trajectory 动态调整 domain 权重——内层对 domain 权重做 exponentiated gradient ascent，把 mass 推向当前 excess loss 最大的 domain；外层更新 proxy 参数。最后把这些学到的 domain 权重直接拿去训练一个 8B 模型。DoReMi 在 The Pile 上把 8B 模型的平均 one-shot 下游准确率相对基线提升约 6.5 个百分点，并以约 2.6× 更少的 step 达到基线准确率；proxy 阶段的 mixture search 成本大约是 8B 最终训练的 8%。DoReMi 的关键特点是只动 domain weights，不动数据；这与 RegMix 在小模型上直接拟合最优比例的做法形成方法对照。
 
-> [!NOTE]
-> **DoReMi / RegMix 类方法的两个飞跃假设**：(1) 回归模型在外推到最优点附近时不可靠——拟合小规模实验得到的 loss-vs-mix 函数在极值点附近可能失真，最优配比因此难以直接预测；(2) **small→large transfer**：在小模型上得到的最优 mix 在大模型上是否仍是最优？这是 RegMix 与传统数据混合经验（UniMax 等）相比仍未跨越的方法论门槛。
+> [!WARNING]
+> **DoReMi / RegMix 类方法依赖两个前提**：(1) **回归在最优点附近仍然准确**——拟合小规模实验得到的 loss-vs-mix 曲面在极值点附近可能失真，曲面预测的最优配比会偏离真实最优；(2) **small→large transfer**——小模型上的最优 mix 在大模型上未必仍是最优。两个前提同时成立，小实验选出的配比才能直接放大到大训练。
 
 ![图 10.2-8 数据混合方法比较](images/10-2-8-data-mixing-methods.png)
 
@@ -466,20 +458,19 @@ OpenThoughts 这类数据集用强 teacher model 为已有题目生成长推理�
 
 图上每一步都是一个可调旋钮：question 来源怎么选、去重和降采样留多少题、每题采样几条答案、用哪个 teacher、要不要按答案正确性过滤。注意题目数在采样这一步掉得最狠（math 从 80k 到 53k、code 从 60k 到 16k），而最终样本量靠最右侧的 ×16 补回来。下面这组 ablation 结论说明，这些旋钮里真正决定质量的并不是直觉上最显眼的那几个。
 
-> [!NOTE]
-> **OpenThoughts 的三条 ablation 结论**（[arXiv:2506.04178](https://arxiv.org/abs/2506.04178)）：
->
-> - **分数更高的模型未必是更好的 teacher**。QwQ-32B 在目标推理基准上的平均分低于 DeepSeek-R1，但用它蒸馏出的学生模型更强，最终 pipeline 选了 QwQ-32B。选 teacher 的依据是蒸馏出的学生分数，teacher 自己的榜单分数仅作参考。
-> - **同一道题多采几条，胜过多收几道题**。答案采样倍数的 ablation 取 1×、4×、16× 三档，16× 最好：对每个 question 用 teacher 采样 16 条答案，可以把一个数据源直接放大 16 倍；用更少的问题、每题标注更多次，效果与“更多问题、每题标注更少”持平甚至更好。
-> - **答案过滤没有带来增益**。作者试过多种验证与答案筛选方法，没有一种显著优于不过滤的基线，最终 pipeline 直接不做答案过滤。相对地，question 来源的质量更重要：只从排名最靠前的 1-2 个高质量来源取题，比刻意追求来源多样性效果更好。
->
-> 这三条结论共同决定了 OpenThoughts3-1.2M 的构造方式：先筛出约 7.5 万道高质量问题，再用 QwQ-32B 每题标注 16 次，得到 850K math + 250K code + 100K science 共 1.2M 条样本。
+**OpenThoughts 的三条 ablation 结论**（[arXiv:2506.04178](https://arxiv.org/abs/2506.04178)）：
+
+- **分数更高的模型未必是更好的 teacher**。QwQ-32B 在目标推理基准上的平均分低于 DeepSeek-R1，但用它蒸馏出的学生模型更强，最终 pipeline 选了 QwQ-32B。选 teacher 的依据是蒸馏出的学生分数，teacher 自己的榜单分数仅作参考。
+- **同一道题多采几条，胜过多收几道题**。答案采样倍数的 ablation 取 1×、4×、16× 三档，16× 最好：对每个 question 用 teacher 采样 16 条答案，可以把一个数据源直接放大 16 倍；用更少的问题、每题标注更多次，效果与“更多问题、每题标注更少”持平甚至更好。
+- **答案过滤没有带来增益**。作者试过多种验证与答案筛选方法，没有一种显著优于不过滤的基线，最终 pipeline 直接不做答案过滤。相对地，question 来源的质量更重要：只从排名最靠前的 1-2 个高质量来源取题，比刻意追求来源多样性效果更好。
+
+这三条结论共同决定了 OpenThoughts3-1.2M 的构造方式：先筛出约 7.5 万道高质量问题，再用 QwQ-32B 每题标注 16 次，得到 850K math + 250K code + 100K science 共 1.2M 条样本。
 
 ![图 10.2-10 SWE-smith 任务生成流程](images/10-2-10-swe-smith.png)
 
 *图 10.2-10 SWE-smith 任务生成流程*
 
-SWE-smith 代表半合成软件工程数据。图 10.2-10 的四段流程是：从真实仓库拿到源码与单元测试；用 SWE-agent 尝试安装依赖并跑通测试，再由开发者据此写出 Dockerfile，把仓库固化成一个可复现的环境镜像；在这个环境里用四种策略造任务——程序化改写代码、让语言模型直接引入 bug、组合多个已有 bug、以及镜像真实 PR；每个任务实例包含生成的 issue 描述、打了 bug 的 patch 和一组验证过的测试。
+SWE-smith 代表半合成软件工程数据。图 10.2-10 的四段流程是：从真实仓库拿到源码与单元测试；用 SWE-agent 尝试安装依赖并跑通测试，再由开发者据此写出 Dockerfile，把仓库固化成一个可复现的环境镜像；在这个环境里造任务，策略分五种——图中 Task Gen. Strategies 一列把两种语言模型策略合并画成 LM Generated 一个框：对函数做程序化变换（Procedural）、让语言模型在既有代码上引入 bug（LM Modify）、让语言模型凭接口重写函数（LM Rewrite）、反向演进真实 PR（PR Mirror）、合并同文件的多个 bug（Combine）；每个任务实例包含生成的 issue 描述、打了 bug 的 patch 和一组验证过的测试。
 
 环境镜像构建一次可以反复复用，这就是 128 个 GitHub 仓库能产出 50K 个任务的原因：昂贵的是环境，便宜的是任务。这类数据比纯文本问答更接近 agent 场景，但环境搭建、依赖安装和测试可靠性会成为主要成本。
 
@@ -491,17 +482,16 @@ SWE-smith 代表半合成软件工程数据。图 10.2-10 的四段流程是：�
 
 蓝色点是同图对照的公开模型。SWE-Hero-32B 的 62.2% 落在 GPT-OSS-120B（62.4%）旁边，而 SWE-Zero-14B 的 54.5% 已经超过 SERA-32B（54.2%）与 SWE-Lego-32B（52.6%）。执行反馈带来的几个点，和把模型放大一档带来的收益量级接近；代价是这部分轨迹必须逐仓库搭环境，成本远高于其余 287K 条。真实环境提供任务约束，强模型生成轨迹，过滤和执行检查控制质量，后训练数据因此需要同时做数据工程、评估工程和系统工程。
 
-> [!NOTE]
-> **公开 SWE 后训练数据集规模速查**：
->
-> | 数据集 | 规模 | 关键特征 |
-> | --- | --- | --- |
-> | OpenThoughts | 1.2M examples（OpenThoughts3-1.2M；850K math + 250K code + 100K science） | ablation 覆盖 62 个人工与合成来源（code 27 + math 21 + science 14，例如 StackExchange、NuminaMath），最终按 ablation 只保留每个领域排名最前的 1-2 个；75K 道题、teacher 为 QwQ-32B，每题采样 16 条响应 |
-> | SWE-smith | 50K tasks | 128 个 GitHub 仓库；LM 引入 bug 并生成 task |
-> | SWE-Zero | 300K trajectories | 150K GitHub PR（无需执行反馈）+ 强模型内部 world model |
-> | SWE-Hero | 13K trajectories | 需要执行反馈 |
-> | SWE-rebench | 21K tasks / 450K PRs | 3.4K GitHub 仓库，互动 Python SWE |
-> | SWE-ZERO-12M | 12M trajectories | SWE-rebench-v2 任务（32K executable + 120K nonexecutable） |
+**公开 SWE 后训练数据集规模速查。**
+
+| 数据集 | 规模 | 关键特征 |
+| --- | --- | --- |
+| OpenThoughts | 1.2M examples（OpenThoughts3-1.2M；850K math + 250K code + 100K science） | ablation 覆盖 62 个人工与合成来源（code 27 + math 21 + science 14，例如 StackExchange、NuminaMath），最终按 ablation 只保留每个领域排名最前的 1-2 个；75K 道题、teacher 为 QwQ-32B，每题采样 16 条响应 |
+| SWE-smith | 50K tasks | 128 个 GitHub 仓库；LM 引入 bug 并生成 task |
+| SWE-Zero | 300K trajectories | 150K GitHub PR（无需执行反馈）+ 强模型内部 world model |
+| SWE-Hero | 13K trajectories | 需要执行反馈 |
+| SWE-rebench | 21K tasks / 450K PRs | 3.4K GitHub 仓库，互动 Python SWE |
+| SWE-ZERO-12M | 12M trajectories | SWE-rebench-v2 任务（32K executable + 120K nonexecutable） |
 
 ## 10.3 数据评估与训练数据记忆痕迹
 
@@ -513,7 +503,7 @@ SWE-smith 代表半合成软件工程数据。图 10.2-10 的四段流程是：�
 
 *图 10.3-1 数据评估大模型记忆行为*
 
-图 10.3-1 给出这套探针的三步流程。第一步给整段输入文本逐 token 计算 surprisal 分数，图中 "Someone / tapped / on / my / front / door / and / both" 每个 token 下面的小柱状图就是候选分布；第二步挑出高分 token 遮成 `[MASK]`，把带空的段落做成一条填空提示交给被测模型；第三步比对模型填回的词与原词是否一致。图中给了两个对照：遮住人名 "Jack" 时模型填出 "stranger"，属于语言先验能给出的通顺替代；遮住 "radar" 时模型准确填回原词，而这个词无法从上下文推出。
+图 10.3-1 给出这套探针的三步流程。第一步给整段输入文本逐 token 计算 surprisal 分数，图中 "Someone / tapped / on / my / front / door / and / both" 每个 token 下面的小柱状图就是该 token 的 surprisal 分数；第二步挑出高分 token 遮成 `[MASK]`，把带空的段落做成一条填空提示交给被测模型；第三步比对模型填回的词与原词是否一致。图中给了两个对照：遮住人名 "Jack" 时模型填出 "stranger"，属于语言先验能给出的通顺替代；遮住 "radar" 时模型准确填回原词，而这个词无法从上下文推出。
 
 信息引导探针据此在只有文本接口的条件下审计训练数据，不需要访问模型权重或输出概率分布（[arXiv:2503.12072](https://arxiv.org/abs/2503.12072)）。它的度量基于香农信息论中的 surprisal：
 
@@ -546,9 +536,9 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 
 1. 同一份原始文本（如 Common Crawl 网页）被直接复用到预训练、中期训练、后训练三阶段时，会带来哪些相互冲突的副作用？请按三个阶段的数据账本（规模、标签强度、样本验证信号）逐条说明。
 2. 给出 HTML→text 这一步的三种实现（Common Crawl WET、resiliparse、trafilatura）在 CORE 评测上的差距，并解释为什么转换器选择会反映到下游分数上。
-3. URL 去重、文档级精确去重、子串去重与 embedding 去重四类粒度各自适合在数据管线的哪一段执行？对训练数据污染和记忆的影响分别是单调的吗？
-4. temperature sampling、DoReMi、UniMax、RegMix 四类 data mixing 做法分别动了哪一类变量（采样权重 / 域权重 / epoch cap / 回归目标）？为什么“小模型拟合最优配比 → 大模型外推”在 RegMix 与 DoReMi 上仍是未跨越的方法论门槛？
-5. self-instruct、UltraFeedback、Constitutional AI、verifier-driven 四类后训练合成数据各依赖什么类型的 verifier？给出每个 verifier 的失效边界，并说明为什么合成数据必须和验证器、人工抽查、去重、评估一起使用。
+3. 精确去重、Bloom Filter、MinHash + LSH 三档去重各自解决什么问题、留下什么代价？重复次数与模型记忆风险之间为什么是超线性关系？
+4. epoch 账本公式如何量化小来源被重复采样的次数？UniMax、RegMix、DoReMi 分别动了哪一类变量（epoch 上限 / 回归目标 / domain 权重）？为什么 RegMix 与 DoReMi 的结论依赖「回归在最优点附近准确」与「small→large transfer」两个前提？
+5. 后训练合成数据按 env → task → response → verifier 构造时，每一环失效会引入什么错误？对照 OpenThoughts、SWE-smith、SWE-Zero 三个数据集，说明合成数据与验证器、人工抽查、去重、能力评估一起使用的原因。
 
 ## 参考文献
 
@@ -567,12 +557,12 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 ## 来源与更新记录
 
 - 课程材料：CS336 2026 Lecture 13（数据来源、版权与公开数据集）与 Lecture 14（转换、过滤、去重、混合、后训练合成数据）slides/video。
-- 数据集规模：The Pile（arXiv:2101.00027、Pythia arXiv:2304.01373 的 token 口径）、C4（arXiv:1910.10683 与 HF `allenai/c4`）、LLaMA 1（arXiv:2302.13971 表 1）、FineWeb（arXiv:2406.17557）、Dolma（HF `allenai/dolma`）、DCLM（arXiv:2406.11794、HF `mlfoundations/dclm-baseline-1.0`）、Nemotron-CC（arXiv:2412.02595）、The Stack v2（arXiv:2402.19173、HF `bigcode/the-stack-v2`）；查阅日期：2026-09-05。
-- Common Crawl 单次 crawl 统计：Common Crawl 官方 crawl 公告（CC-MAIN-2026-17）；查阅日期：2026-09-05。
-- 过滤与去重方法：OpenWebMath（arXiv:2310.06786 表 2 的 MATH Algebra-Easy 对照：1.4B 模型在 14.7B OpenWebMath tokens 上 5.62%，相同 14.7B Pile/ProofPile tokens 2.81%，Pythia-1.4B 在 300B Pile tokens 上 3.93%）、phi-1（arXiv:2306.11644 §2.1 的 1.3B 模型 96K / 36K 步对照，HumanEval 12.19% → 17.68%；同篇 §3 与 abstract 给出 phi-1-small = 350M、HumanEval 45% 的更小版本）、arXiv:2202.06539（重复 10 次的序列被生成的频率约为出现 1 次序列的 1000 倍）、arXiv:2107.06499（论文 §4.2 的 $n = 9000$ 个 MinHash 函数 / 5-gram 文档签名、 $b = 20$ 个 band、每 band $r = 450$ 行，与本节「b 个 band、每 band r 行」约定一致；相变阈值 $\theta = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.993$；论文在候选对上再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做精确过滤）、UniMax（arXiv:2304.09151，§5.3 进一步 ablation 中 max-epoch $N \in \{1, 5, 10\}$ 的 TyDi QA 对照与 $N = 1$ 的默认设定）；查阅日期：2026-09-05。
-- 法律与数据安全：Bartz v. Anthropic PBC, Case No. 3:24-cv-05417 (N.D. Cal.) 公开报道与和解页面、arXiv:2302.10149、arXiv:2010.12563、arXiv:2510.07192；查阅日期：2026-09-05。
-- 后训练合成数据：OpenThoughts（arXiv:2506.04178 §4.1 的 27 code / 21 math / 14 science 来源与 §4.4 的 1× / 4× / 16× 采样 ablation、HF `open-thoughts/OpenThoughts3-1.2M`）、SWE-smith（arXiv:2504.21798，128 GitHub 仓库生成 50K+ 任务）、SWE-Zero（arXiv:2508.00923，300K trajectories / 150K PRs / 13K SWE-Hero projects；OpenHands scaffold 与 Qwen3-Coder-480B distill）、SWE-rebench（arXiv:2505.20411）、SWE-ZERO-12M（HF `AlienKevin/SWE-ZERO-12M-trajectories`，32K 可执行 + 120K 不可执行 SWE-rebench-v2 任务）；查阅日期：2026-09-05。
-- 训练数据评估：信息引导探针（arXiv:2503.12072，参考模型为 BERT-110M、探针形式为 cloze 填空）；查阅日期：2026-09-05。
-- CommonPile 数据集（arXiv:2506.05209、HF `common-pile/common-pile`）；查阅日期：2026-09-05。
-- DeepSeek V3 训练语料：arXiv:2412.19437 表 1 报告 14.8T tokens；查阅日期：2026-09-05。
+- 数据集规模：The Pile（arXiv:2101.00027、Pythia arXiv:2304.01373 的 token 口径）、C4（arXiv:1910.10683 与 HF `allenai/c4`）、LLaMA 1（arXiv:2302.13971 表 2）、FineWeb（arXiv:2406.17557）、Dolma（HF `allenai/dolma`）、DCLM（arXiv:2406.11794、HF `mlfoundations/dclm-baseline-1.0`）、Nemotron-CC（arXiv:2412.02595）、The Stack v2（arXiv:2402.19173、HF `bigcode/the-stack-v2`）；查阅日期：2026-09-22。
+- Common Crawl 单次 crawl 统计：Common Crawl 官方 crawl 公告（CC-MAIN-2026-17）与官方 about 页面（约每月发布一次、每次通常超过 20 亿网页、归档总量超过 10 PiB）；查阅日期：2026-09-22。
+- 过滤与去重方法：OpenWebMath（arXiv:2310.06786 表 2 的 MATH Algebra-Easy 对照：1.4B 模型在 14.7B OpenWebMath tokens 上 5.62%，相同 14.7B Pile/ProofPile tokens 2.81%，Pythia-1.4B 在 300B Pile tokens 上 3.93%）、phi-1（arXiv:2306.11644 §2.1 的 1.3B 模型 96K / 36K 步对照，HumanEval 12.19% → 17.68%；同篇 abstract 给出 phi-1-small = 350M、HumanEval 45% 的更小版本）、arXiv:2202.06539（重复 10 次的序列被生成的频率约为出现 1 次序列的 1000 倍）、arXiv:2107.06499（论文 §4.2 的 $n = 9000$ 个 MinHash 函数 / 5-gram 文档签名、 $b = 20$ 个 band、每 band $r = 450$ 行，与本节「b 个 band、每 band r 行」约定一致；相变阈值 $\theta = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.993$；论文在候选对上再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做精确过滤）、UniMax（arXiv:2304.09151，§5.3 进一步 ablation 中 max-epoch $N \in \{1, 5, 10\}$ 的 TyDi QA 对照与 $N = 1$ 的默认设定）；查阅日期：2026-09-22。
+- 法律与数据安全：Bartz v. Anthropic PBC, Case No. 3:24-cv-05417 (N.D. Cal.) 公开报道与和解页面、arXiv:2302.10149、arXiv:2010.12563、arXiv:2510.07192；查阅日期：2026-09-22。
+- 后训练合成数据：OpenThoughts（arXiv:2506.04178 §4.1 的 27 code / 21 math / 14 science 来源与 §4.4 的 1× / 4× / 16× 采样 ablation、HF `open-thoughts/OpenThoughts3-1.2M`）、SWE-smith（arXiv:2504.21798，128 GitHub 仓库生成 50K+ 任务）、SWE-Zero（arXiv:2604.01496，300K trajectories / 150K PRs / 13K SWE-Hero projects；OpenHands scaffold 与 Qwen3-Coder-480B distill）、SWE-rebench（arXiv:2505.20411）、SWE-ZERO-12M（HF `AlienKevin/SWE-ZERO-12M-trajectories`，32K 可执行 + 120K 不可执行 SWE-rebench-v2 任务）；查阅日期：2026-09-22。
+- 训练数据评估：信息引导探针（arXiv:2503.12072，参考模型为 BERT-110M、探针形式为 cloze 填空）；查阅日期：2026-09-22。
+- CommonPile 数据集（arXiv:2506.05209、HF `common-pile/common-pile`）；查阅日期：2026-09-22。
+- DeepSeek V3 训练语料：arXiv:2412.19437 abstract 与正文报告 14.8T tokens；查阅日期：2026-09-22。
 - 状态：模型、数据集规模与法律进展变化较快，按上述论文与官方页面的新版本更新。

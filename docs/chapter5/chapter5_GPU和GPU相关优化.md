@@ -19,11 +19,11 @@
 
 ## 5.1 GPU 的起源：图形处理器
 
-本节回答三个前置问题：GPU 为什么会从图形处理器演化成 AI 训练与推理的核心加速器，CPU 和 GPU 在设计目标上各偏向哪一端，以及 A100/H100/H200/B200 四代硬件在 SM 数、HBM 容量与带宽、L2 上有什么量级差异。读完后读者应能把一张规格表转译成「这一代解决了上一代什么瓶颈」的判断，建立数量级感和瓶颈判断而非背参数。
+本节回答三个前置问题：GPU 为什么会从图形处理器演化成 AI 训练与推理的核心加速器，CPU 和 GPU 在设计目标上各偏向哪一端，以及 A100/H100/H200/B200 四代硬件在 SM 数、HBM 容量与带宽、L2 上有什么量级差异。读完后读者应能把一张规格表转译成「这一代解决了上一代什么瓶颈」的判断，建立数量级感。
 
 在深度学习概念没有火起来之前，GPU 更常被理解为图形处理器。图形渲染天然包含大量相似的小计算：同一套几何和像素规则要重复应用到许多顶点、三角形和像素上。这种 workload 正好适合用大量简单计算单元并行处理。
 
-以 3D 模型为例，模型表面通常由许多三角形组成。系统不需要把每个像素点都预先存下来，而是保存顶点、边和材质等紧凑信息，再在渲染时并行计算中间像素和光照结果。
+以 3D 模型为例，模型表面通常由许多三角形组成。系统保存顶点、边和材质等紧凑信息，渲染时并行计算中间像素和光照结果。
 
 ![图 5.1-1 3D model 与三角形计算](images/5-1-1-3d-model-triangles.png)
 
@@ -61,9 +61,6 @@ GPU 的历史背景只需要抓住一条主线：它最初为图形渲染中的�
 
 在进入 A100 的剖面细节前，可以先把 **A100（Ampere）/ H100（Hopper）/ H200（Hopper refresh）/ B200（Blackwell）** 放在同一张表里比较。对写 kernel、看 profiler 和理解 roofline 来说，最值得先记住的是下面这些量级差异。
 
-> [!IMPORTANT]
-> **口径声明（dense / sparse / per-SM / per-GPU）**：本表所有数字默认指 **dense 训练口径（无 2:4 结构化稀疏加速）的整卡（per-GPU）峰值**；启用 2:4 结构化稀疏时 A100/H100 公开 datasheet 在 "with sparsity" 列单独给出 2× 系数，本章不另列。SM 数、HBM 容量、HBM 带宽、L2 容量是每颗 GPU 的总资源；FP32 / Tensor Core 峰值在表内默认按整卡口径。H100 BF16 dense ≈ 989.5 TFLOP/s、FP8 dense ≈ 1,979 TFLOP/s 是 H100 自身 datasheet 的整卡峰值；其他章节若出现 H100 BF16 数字，应先核对是否为同一口径。H200 与 B200 行列只为 §5.1.3 与 §5.8 提供量级参考；本章核心范围以 A100 为基线讲 SM 与 Tensor Core，H100/H200/B200 作为代际对照。
-
 | 指标 | A100 | H100 | H200 | B200 |
 | --- | --- | --- | --- | --- |
 | SM 数 | 108 | 132 | 132 | 单 GB100 die 物理 80 SM、启用 74 SM；B200 全封装 2 个 GB100 die，启用 SM 总数 = 148（74 × 2，部分 die 内 SM 被禁用以保良率）；每 SM 128 个 FP32 core，2 个 die 全封装 18,944 个 FP32 CUDA core（[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) + TechInsights GB100 teardown） |
@@ -73,14 +70,14 @@ GPU 的历史背景只需要抓住一条主线：它最初为图形渲染中的�
 | HBM 容量 | 80 GB HBM2e | 80 GB HBM3 | 141 GB HBM3e | HGX B200 软件可见 = 180 GB HBM3e（[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) 上限 180 GB；物理 HBM3e 8 stack × 24 GB = 192 GB raw，扣除 ECC/冗余后软件可见 180 GB）；GB200 NVL72 按总 HBM3e 13.4 TB / 72 GPU 反推 186 GB/GPU，详见 [第 2 章 §2.4 计算效率](../chapter2/chapter2_pytorch与资源核算.md) 与 [第 7 章 §7.1.4 GPU、TPU 和数据中心拓扑](../chapter7/chapter7_分布式训练.md) |
 | HBM 带宽量级 | 2 TB/s | 3.35 TB/s | ~4.8 TB/s | 8 TB/s（HGX B200 datasheet 单 GPU 标 7.7 TB/s；GB200 NVL72 标 8 TB/s/GPU，跨章节口径见上） |
 
-从编程角度看，可以把它们理解成同一类 GPU 执行模型的几代演化：**A100 是理解 Ampere 时代 kernel 优化的基线，H100 增强了 shared memory、异步执行和 FP8 路径，H200 在 H100 计算能力上把显存换成更大带宽的 HBM3e，B200 则把 HBM/L2 容量和 Blackwell 低精度路径再往前推了一代**。上表数值均为 dense 训练口径；若启用结构化稀疏（Structured Sparsity，俗称 2:4 sparsity），Tensor Core 路径理论峰值翻倍——A100/H100 公开 datasheet 在 "with sparsity" 一列单独列出 2× 系数（[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)）。
+从编程角度看，可以把它们理解成同一类 GPU 执行模型的几代演化：**A100 是理解 Ampere 时代 kernel 优化的基线，H100 增强了 shared memory、异步执行和 FP8 路径，H200 在 H100 计算能力上把显存换成更大带宽的 HBM3e，B200 则把 HBM/L2 容量和 Blackwell 低精度路径再往前推了一代**。上表数值均为 dense 训练口径；若启用结构化稀疏（Structured Sparsity，俗称 2:4 sparsity），Tensor Core 路径理论峰值翻倍——A100/H100 公开 datasheet 在 "with sparsity" 一列单独列出 2× 系数（[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)）。表内 SM 数、HBM 容量、HBM 带宽、L2 容量为每颗 GPU 的总资源，FP32 / Tensor Core 峰值为整卡 dense 口径；H100 BF16 dense ≈ 989.5 TFLOP/s、FP8 dense ≈ 1,979 TFLOP/s 即该口径下的整卡峰值。
 
 新一代硬件还引入了两个会影响 kernel 设计的特性：
 
 - **H100/B200 的 thread block clusters**：允许更大粒度的协作和 distributed shared memory。
 - **B200 的 TMEM（tensor memory）**：位于寄存器与 shared memory 之间，主要服务 Tensor Core 路径，对高层程序员通常不可直接见。
 
-硬件示例不能当作通用常数。A100、H100、B200 会共同出现，但每次都要说明它是在讲基线剖面、Hopper 特性，还是 Blackwell 新增能力。学习这些规格时要建立数量级和瓶颈判断，不需要背某个 SKU 的完整参数表。
+A100、H100、B200 在后文共同出现，分别承担基线剖面、Hopper 特性和 Blackwell 新增能力的参照。学习这些规格时要建立数量级和瓶颈判断，无须背某个 SKU 的完整参数表。
 
 顺着本章的学习顺序看，后面的优化技巧都可以落回同一条链路：
 
@@ -97,13 +94,13 @@ GPU 的历史背景只需要抓住一条主线：它最初为图形渲染中的�
 
 *图 5.1-3 GPU 板卡结构*
 
-完整的多层拆解（板卡 PCB / GA100 芯片宏观架构 / SM 内部结构 / Tensor Core 数据路径）属于板级百科，与本章主线（数据移动与片上复用）相关度较低；本节只保留支撑 SM、warp 和 shared memory 分析的三层结论：
+图 5.1-3 给出板卡层面的组件（显存、供电、显示接口、金手指与 PCB）。顺着板上的显卡核心往里看，支撑 SM、warp 和 shared memory 分析的关键规格分三层：
 
 - **顶层数字**：A100 = 108 SM × 64 FP32 core/SM + 4 Tensor Core/SM + 80 GB HBM2e + 2 TB/s HBM 带宽（与 §5.1.3 硬件表一致）。
 - **关键 SM 内部单元**：CUDA core（FP32 ALU）、Tensor Core（FP16/BF16/INT8/INT4/TF32 矩阵乘）、register file、warp scheduler、shared memory 与 L1 cache。
 - **内存层次**：HBM（global，2 TB/s） → L2 cache（40 MB） → shared memory（手动管理） → register file（每线程 255 个） → SIMT warp 调度器通过 warp 切换隐藏延迟。
 
-下面把 GA100 拆成三个粒度，作为 SM、warp 与 shared memory 抽象的物理参照。完整多层结构图与板级实物图已收入对应 `images/` 子目录；§5.2 SM 执行模型沿用这三个抽象。
+下面把 GA100 拆成三个粒度，作为 SM、warp 与 shared memory 抽象的物理参照。§5.2 SM 执行模型沿用这三个抽象。
 
 #### GA100 芯片宏观拓扑
 
@@ -162,7 +159,7 @@ SM 同时管理**数千个线程**，决定哪个线程在何时使用哪个计�
 SM 内部有 **4 条独立的指令流水线**，每个时钟周期可以同时发射 4 条不同指令给不同的 warp（线程束）。
 
 #### 数据缓存与共享
-SM 内置 **192 KB 的 L1 缓存/共享内存**，供本 SM 内所有 CUDA 核心快速存取数据，延迟比全局显存低约 100 倍。
+SM 内置 **192 KB 的 L1 缓存/共享内存**，供本 SM 内的线程快速存取数据；其访问延迟在几十个周期量级，比全局显存的约 500 周期低一个数量级。
 
 ---
 
@@ -228,8 +225,8 @@ GPU 内存层级的核心规律是：**越靠近 SM，容量越小、速度越�
 |------|------------|
 | **物理位置** | GPU 芯片外的 HBM2e 显存堆栈 |
 | **容量** | A100：40 GB/80 GB |
-| **带宽** | **2,039 GB/s** (A100) |
-| **延迟** | ~500 GPU 周期 (~250 ns) |
+| **带宽** | **2,039 GB/s**（A100 80GB SXM；40GB HBM2 版为 1,555 GB/s） |
+| **延迟** | ~500 GPU 周期 |
 | **编程控制** | **手动管理** (`cudaMalloc`) |
 | **可见性** | 所有线程可访问 |
 
@@ -245,8 +242,8 @@ GPU 内存层级的核心规律是：**越靠近 SM，容量越小、速度越�
 |------|------------|
 | **物理位置** | **GPU 芯片内，所有 SM 共享** |
 | **容量** | **40 MB** (A100) |
-| **带宽** | ~5.5 TB/s（NVIDIA Ampere 架构白皮书披露相对 V100 提升约 2.3×，V100 L2 带宽约 2.4 TB/s） |
-| **延迟** | ~200 周期 (~100 ns) |
+| **带宽** | **5120 Bytes/clk** 读带宽，约为 V100 的 2.3×（A100 分区 crossbar 结构） |
+| **延迟** | ~200 周期 |
 | **编程控制** | **自动管理** (硬件控制) |
 | **可见性** | 所有 SM 的所有线程 |
 
@@ -263,8 +260,8 @@ L2 由硬件自动管理，程序员通常不直接控制具体缓存项。优�
 |------|------------|
 | **物理位置** | **每个 SM 内部** |
 | **容量** | **192KB/SM** (A100, 可配置) |
-| **带宽** | **1TB/SM** |
-| **延迟** | **20-40周期** (~10-20ns) |
+| **带宽** | **128 bytes/周期**（32 bank × 4 bytes，无 bank conflict） |
+| **延迟** | **20-40 周期** |
 | **编程控制** | **完全手动** (`__shared__`) |
 | **可见性** | **Block 内所有线程可见** |
 
@@ -296,7 +293,7 @@ shared memory 容量有限，使用过多会降低同一 SM 上能同时驻留�
 |------|------------|
 | **物理位置** | **SM 内统一寄存器文件**（每个线程按 thread ID 分配私有寄存器条目） |
 | **容量** | **256 KB/SM** (A100) |
-| **带宽** | **10 TB/SM** (理论) |
+| **带宽** | **单周期供给**（warp 操作数直读 register file，无 cache 层级） |
 | **延迟** | **1 周期** (零开销) |
 | **编程控制** | **完全自动** (编译器分配) |
 | **可见性** | **线程私有** |
@@ -350,16 +347,13 @@ GPU 和 CPU 的内存系统差异可以概括如下：
 
 本节做对照，不展开 TPU 训练栈。本节回答两个前置问题：TPU 与 GPU 在「快矩阵乘法 + 快片上内存 + 慢但大的 HBM」这条主线上是否同构，以及 TPU 的「少而大」矩阵单元与 GPU 的「多而小」Tensor Core 在矩阵乘法粒度上的差别如何影响 kernel 设计。读完后读者应能在看到「TensorCore」「MXU」时判断语境（TPU 处理器级单元 vs GPU SM 内部矩阵电路），并把 MXU 的 systolic array 形状当作 batch / feature 维度对齐的硬性约束。
 
-**TPU** 是 Google 自 2015 年起研发的 ASIC 加速器，目标 workload 更集中在机器学习中的矩阵乘法和张量程序。本节只用 TPU 做对照，帮助读者识别另一条加速器设计路线：GPU 更通用、更灵活，TPU 更偏向少数更大的矩阵乘法单元和配套网络。
+**TPU** 是 Google 的机器学习 ASIC 加速器，2015 年起在内部数据中心部署，2016 年 5 月在 Google I/O 首次公开；目标 workload 更集中在矩阵乘法和张量程序。它帮助读者识别另一条加速器设计路线：GPU 更通用、更灵活，TPU 更偏向少数更大的矩阵乘法单元和配套网络。
 
 ![图 5.4-1 TPU abstract model](images/5-4-1-tpu-abstract-model.png)
 
 *图 5.4-1 TPU abstract model*
 
 ### 5.4.1 TPU 与 GPU 的相似性
-
-> [!NOTE]
-> **本节对应本章 TPU 核心范围**：核心要点是 GPU 多而小、TPU 少而大，二者矩阵乘法吞吐相近；互联网络差异和 MXU 几何细节放 §5.4.2 / §5.4.3 补充。本节把高阶结论放在最前面，便于读者把 TPU 放回 GPU 对照系。
 
 TPU 和 GPU 在高层结构上很像：都有轻量控制逻辑、矩阵乘法硬件、向量/逐元素路径、片上高速内存和芯片外 HBM。它们的共同目标都是让大规模矩阵运算尽可能靠近片上高速存储完成。
 
@@ -371,21 +365,15 @@ TPU 和 GPU 在高层结构上很像：都有轻量控制逻辑、矩阵乘法�
 
 ### 5.4.2 MXU 与 Tensor Core 计数对比
 
-> [!NOTE]
-> **本节为补充内容**：§5.4.1 已给出 TPU vs GPU 的高阶对照；MXU 尺寸、TensorCore 计数、MXFP8 / NVFP4 缩放因子块大小等数字来自 Google Cloud TPU v5p 文档与 OCP Microscaling Formats 规范等一手来源。读者若只关心核心对照，读 §5.4.1 即可；本节和 §5.4.3 提供对照所需的硬件粒度。
-
 TPU 的 MXU（Matrix Multiply Unit）通常是 $128 \times 128$ 的 systolic array，每个 cycle 完成一块 $128 \times 128$ 矩阵乘。配套的 Vector Unit 负责非矩阵乘法操作（LayerNorm、Softmax、embedding lookup、elementwise 算子）。"TPU TensorCore" 在很多材料里指包含 MXU + Vector Unit + 片上内存的处理器级单元；NVIDIA GPU 语境里的 Tensor Core 通常指 SM 内部的较小矩阵乘法单元（不同代际尺寸不同，例如 Hopper Tensor Core 支持 FP8）。
 
-实际计数方式也常被混淆。每颗 TPU v5p 芯片包含 **4 个 TensorCore**（TPU 语境下，"TensorCore" 指处理器级单元，约等于 GPU 的 SM），每个 TensorCore 内部含 **4 个 MXU**（ $128 \times 128$ systolic array）、1 个 Vector Unit 和 1 个 Scalar Unit，合计**每个 TensorCore 共 6 个单元、每芯片 24 个单元（其中 16 个 MXU）**（[Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p)）。这与"一颗 H100 = 132 SM，每 SM 4 个 Tensor Core（矩阵乘法单元），合计 528 个 Tensor Core" 的多而小路线形成对照：TPU 走"少而大"，GPU 走"多而小"。看到"TFLOP/s"时需要先确认它是按 MXU 周期计算还是按 SM 整体平均计算，二者差几个数量级。
+实际计数方式也常被混淆。每颗 TPU v5p 芯片包含 **2 个 TensorCore**（TPU 语境下，"TensorCore" 指处理器级单元，约等于 GPU 的 SM），每个 TensorCore 内部含 **4 个 MXU**（ $128 \times 128$ systolic array）、1 个 Vector Unit 和 1 个 Scalar Unit，合计**每芯片 12 个单元（其中 8 个 MXU）**；配套规格为单芯片 BF16 峰值 **459 TFLOP/s**、HBM **95 GiB**、带宽 **2765 GB/s**、整 pod **8960** 颗芯片（[Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p)）。这与"一颗 H100 = 132 SM，每 SM 4 个 Tensor Core（矩阵乘法单元），合计 528 个 Tensor Core" 的多而小路线形成对照：TPU 走"少而大"，GPU 走"多而小"。看到"TFLOP/s"时先确认它是单 MXU、单芯片还是整 pod 的口径。
 
-Canonical batch floor 也由 MXU 形状决定。 $128 \times 128$ 的 systolic array 要求输入张量至少有一维是 128 的倍数；不足时 MXU 会被 padding 填满，浪费算力。Google Cloud TPU 性能文档把"feature dim 128 整倍数"列为高效 MXU 利用的硬性 padding 要求；batch sweep 实验中实际可运行的下限约是 64，是 XLA 编译器在硬件约束下的实际下限（tpu tensor core refuses to accept anything smaller than a 64 dimensional input there），与 MXU 几何学上的 128 不属同一维度。GPU 一侧对应的是 warp size = 32（kernel launch 要求每个 block 的线程数是 32 的倍数）与 SM warp 驻留上限（典型 64 warp），它和 TPU 的 MXU batch floor 分别由 SIMT 调度模型与 systolic array 几何形状决定，不能直接换算。
+Canonical batch floor 也由 MXU 形状决定。 $128 \times 128$ 的 systolic array 要求输入张量至少有一维是 128 的倍数；不足时 MXU 会被 padding 填满，浪费算力。Google Cloud TPU 性能文档把"feature dim 128 整倍数"列为高效 MXU 利用的硬性 padding 要求；batch sweep 实验中实际可运行的下限约是 64，是 XLA 编译器在硬件约束下的实际下限（tpu tensor core refuses to accept anything smaller than a 64 dimensional input there），与 MXU 几何学上的 128 不属同一维度。GPU 一侧对应的是 warp size = 32（线程按 32 个一组编成 warp 调度；CUDA 指南建议 block 线程数取 32 的倍数，以避免尾部 under-populated warp 浪费算力）与 SM warp 驻留上限（典型 64 warp），它和 TPU 的 MXU batch floor 分别由 SIMT 调度模型与 systolic array 几何形状决定，不能直接换算。
 
 ### 5.4.3 TPU 网络拓扑与 pod 视角
 
-> [!NOTE]
-> **本节为补充内容**：§5.4.1 已点出 TPU 与 GPU 的「互联网络差异会在分布式训练章节展开」。本节给出 TPU pod 的硬件拓扑与编译抽象，相关硬件拓扑对照见 [第 7 章 §7.1.4 GPU、TPU 和数据中心拓扑](../chapter7/chapter7_分布式训练.md)。
-
-TPU pod 把多颗 TPU 芯片用高带宽、低延迟的专用互联（典型拓扑为 2D / 3D torus 或 mesh）组织在一起。pod 内任意两颗 TPU 之间的 all-reduce / all-gather 都走同一套互联，因此模型并行可以放到比 NVLink 域更大的范围。TPU 程序（XLA / jax.jit / pjrt）通常让编译器决定 collective 路径与通信 / 计算重叠，因此使用者感受到的"网络拓扑"是被编译器抽象过的。
+TPU pod 把多颗 TPU 芯片用高带宽、低延迟的专用互联（典型拓扑为 2D / 3D torus 或 mesh）组织在一起。pod 内任意两颗 TPU 之间的 all-reduce / all-gather 都走同一套互联，因此模型并行可以放到比 NVLink 域更大的范围。TPU 程序（XLA / jax.jit / pjrt）通常让编译器决定 collective 路径与通信 / 计算重叠，因此使用者感受到的"网络拓扑"是被编译器抽象过的；硬件拓扑对照见 [第 7 章 §7.1.4 GPU、TPU 和数据中心拓扑](../chapter7/chapter7_分布式训练.md)。
 
 与 GPU 对照时要注意：GPU 的 NVLink / NVSwitch 把节点内 8 张 GPU 拉成高速域，跨节点则退到 InfiniBand / RoCE；TPU pod 把 pod 内所有芯片视为同等距离的 mesh / torus。两种设计各有取舍：GPU 更适合异构 cluster（节点内高速、节点间相对慢），TPU pod 更适合大模型单机扩展到数千芯片的整段高速域。
 
@@ -407,15 +395,17 @@ TPU pod 把多颗 TPU 芯片用高带宽、低延迟的专用互联（典型拓�
 
 *图 5.5-2 计算速度扩展快于内存和互联扩展*
 
-1980-2000年遵循**登纳德缩放定律**，即晶体管缩小，频率提升，功耗下降的趋势发展，但是**现状**是单线程性能**2000年后趋于平缓**，无法依靠频率提升。**现代扩展方式**是**并行扩展**（增加SM数量），从K20到H100，整数运算性能呈**超指数增长**（1-10万倍提升）。
+1980-2000 年遵循**登纳德缩放定律**：晶体管尺寸缩小，频率随之提升，功耗反而下降。2000 年后单线程性能趋于平缓，频率提升让位于**并行扩展**——通过增加 SM 数量提高整卡吞吐。
 
-但是其中的**核心矛盾**还没有解决---**内存扩展速度远低于计算扩展**。计算性能（灰线）是10万倍提升；内存带宽（绿线）大约100倍提升（GDDR-HBM2E）；互联带宽（蓝线）增长最缓慢。
+图 5.5-2 的横轴覆盖 1996-2023 年，纵轴是以早期硬件为基准的归一化倍数，图上标注给出 20 年的扩展账本：硬件峰值 FLOPs（灰线）增长约 **60,000 倍**（每 2 年约 3.0×），DRAM 带宽（绿线）增长约 **100 倍**（每 2 年约 1.6×），互联带宽（蓝线）增长约 **30 倍**（每 2 年约 1.4×）；GDDR3/4/5 与 HBM/HBM2/HBM2E 对应绿线数据点，PCIe 与 NVLink 对应蓝线数据点。
+
+**核心矛盾**是内存扩展速度远低于计算扩展：灰线与绿线、蓝线的间距随年份不断拉开，喂饱计算单元所需的数据供给能力越来越跟不上算力增长。
 
 ![图 5.5-3 roofline model](images/5-5-3-roofline-model.png)
 
 *图 5.5-3 roofline model*
 
-这是一个屋顶线模型，横轴是**操作强度（Operational Intensity）**，表示计算与数据移动的比率。当操作强度高时，意味着计算设备在进行大量计算而数据移动相对较少；当操作强度低时，意味着数据移动占主导。纵轴是**吞吐量（Throughput）**，表示计算设备每秒可以完成的浮点运算次数。
+图 5.5-3 是 roofline 模型，横轴是**算术强度**（图中标作 Operational Intensity），表示 FLOPs 与数据搬运字节数的比率。算术强度高时，计算设备在进行大量计算而数据移动相对较少；算术强度低时，数据移动占主导。纵轴是**吞吐量（Throughput）**，表示计算设备每秒可以完成的浮点运算次数。
 
 不同颜色的线代表不同的内存结构：
 
@@ -424,20 +414,20 @@ TPU pod 把多颗 TPU 芯片用高带宽、低延迟的专用互联（典型拓�
 3. **GPU main memory（GPU主内存，黄线）**：速度较慢，但容量更大，适用于存储大量数据。
 4. **CPU main memory（CPU主内存，绿线）**：速度更慢，因为CPU内存访问速度通常低于GPU内存。
 
-它们到达的屋顶（内存墙）
+各条斜线向上延伸，最终到达的屋顶（内存墙）：
 
 1. **GPU ALU throughput**：表示GPU的算术逻辑单元在理想情况下的最大吞吐量。
 2. **CPU ALU throughput**：表示CPU的算术逻辑单元在理想情况下的最大吞吐量。
 
-随着 **arithmetic intensity** 增加，kernel 可以把同一次数据搬运摊到更多 FLOPs 上，吞吐量会沿着带宽斜线升高；当计算单元已经被喂饱后，曲线进入平台区，继续增加每 byte 的计算量也无法超过硬件峰值。寄存器和 shared memory 的带宽更高，斜线更靠上；CPU main memory 或 GPU HBM 的带宽较低，对 memory-bound kernel 的限制更明显。
+随着**算术强度**增加，kernel 可以把同一次数据搬运摊到更多 FLOPs 上，吞吐量会沿着带宽斜线升高；当计算单元已经被喂饱后，曲线进入平台区，继续增加每 byte 的计算量也无法超过硬件峰值。寄存器和 shared memory 的带宽更高，斜线更靠上；CPU main memory 或 GPU HBM 的带宽较低，对 memory-bound kernel 的限制更明显。
 
-把 roofline 写成最简形式，就是：
+把 roofline 写成最简形式，推导只用两条物理约束：kernel 每秒能从内存搬进的字节数上限是内存带宽，把算术强度（每 byte 对应的 FLOPs）乘上这个搬运速率，就得到访存一侧的可达算力；同时任何 kernel 的执行速度也跑不过硬件峰值算力。取二者较小值：
 
 $$
 \text{attainable FLOPs/s} \le \min(\text{peak FLOPs/s},\ \text{arithmetic intensity}\times \text{memory bandwidth})
 $$
 
-其中 arithmetic intensity 是 FLOPs / bytes。逐元素 ReLU、GeLU 这类算子通常搬运一次数据只做少量计算，容易落在 memory-bound 区域；大矩阵乘法通过数据复用把每个 byte 对应的 FLOPs 拉高，更容易靠近 compute-bound 屋顶。
+其中算术强度（arithmetic intensity）是 FLOPs / bytes。逐元素 ReLU、GeLU 这类算子通常搬运一次数据只做少量计算，容易落在 memory-bound 区域；大矩阵乘法通过数据复用把每个 byte 对应的 FLOPs 拉高，更容易靠近 compute-bound 屋顶。
 
 后面所有优化手段都可以放回这个框架里理解：fusion 减少中间读写，recomputation 用额外 FLOPs 换带宽，tiling 增加 shared memory 复用，FlashAttention 避免把完整注意力矩阵写回 HBM。
 
@@ -447,10 +437,9 @@ Roofline 给出的训练判断很直接：低 arithmetic intensity 的算子先�
 
 ## 5.6 性能优化技术
 
-本节回答一个前置问题：当 kernel 受限于内存带宽而不是算力时，有哪些在不同层级上减少 HBM 往返的工程手段。具体要按六条线索推进——避免串行执行（control divergence）、低精度（low precision）、算子融合（operator fusion）、重计算（recomputation）、内存合并（memory coalescing）和分块（tiling）——每条都看它针对的瓶颈、收益机制，以及在什么条件下反而无效或负收益。读完后读者应能把任何一段 kernel 改进意见拆到这六条里归类，并理解 FlashAttention 是这套思路在 attention 上的集中体现。
+本节回答一个前置问题：当 kernel 的瓶颈落在内存带宽一侧、或 SIMT 执行效率不足时，有哪些工程优化线索。具体按六条推进——避免串行执行（control divergence）、低精度（low precision）、算子融合（operator fusion）、重计算（recomputation）、内存合并（memory coalescing）和分块（tiling）——其中 control divergence 针对 SIMT 利用率，其余五条围绕字节流量与数据复用；每条都看它针对的瓶颈、收益机制，以及在什么条件下反而无效或负收益。读完后读者应能把任何一段 kernel 改进意见拆到这六条里归类，并理解 FlashAttention 是这套思路在 attention 上的集中体现。
 
-> [!NOTE]
-> **Per-kernel 算术强度速查（H100 dense BF16 口径）**：按 BF16 输入/输出各 2 bytes 计，ReLU 等单指令逐元素算子约 0.25 FLOPs/byte（1 次运算、4 bytes 读写），落在 memory-bound 区域；GeLU（tanh 近似，约 20 FLOPs/element）约 5 FLOPs/byte，仍 memory-bound；Softmax（按 5MN 读 / 3MN 写 + 几次 reduction 估算）约 1-3 FLOPs/byte；matvec（`B=1`）约 1 FLOP/byte，仍 memory-bound；matmul（`B ≥ 295`）compute-bound（H100 roofline：约 989.5 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs/byte）。若 kernel 使用 FP32 中间张量，读写字节数翻倍，算术强度相应减半。这条 [判定线](https://jax-ml.github.io/scaling-book/roofline/)决定了 kernel fusion / tiling 能否把执行从 memory-bound 推到 compute-bound。
+把常用 kernel 代入这条判据，得到下面的算术强度速查（H100 dense BF16 口径，按 BF16 输入/输出各 2 bytes 计）：ReLU 等单指令逐元素算子约 0.25 FLOPs/byte（1 次运算、4 bytes 读写），落在 memory-bound 区域；GeLU（tanh 近似，约 20 FLOPs/element）约 5 FLOPs/byte，仍 memory-bound；softmax（按 5MN 读 / 3MN 写 + 几次 reduction 估算）约 1-3 FLOPs/byte；matvec（batch $B = 1$）约 1 FLOP/byte；matmul 在 batch $B \ge 295$ 时转为 compute-bound——H100 的转折点 = 989.5 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs/byte（见 [JAX scaling book: roofline](https://jax-ml.github.io/scaling-book/roofline/)）。kernel 使用 FP32 中间张量时读写字节数翻倍，算术强度相应减半；速查值决定 kernel fusion / tiling 能否把执行从 memory-bound 推到 compute-bound。
 
 ### 5.6.1 避免串行执行
 
@@ -468,7 +457,7 @@ if (x < 4) {
 Z; // 无论条件是否成立都会执行
 ```
 
-GPU采用SIMT（单指令多线程）执行架构，**同一线程束（Warp）内的所有线程必须同步执行相同指令**（仅操作数据不同）。现代GPU中，一个Warp通常包含32个线程（NVIDIA）或64个线程（AMD）。
+GPU 采用 SIMT（单指令多线程）执行架构，**同一线程束（Warp）内的所有线程同步执行相同指令**（仅操作数据不同）。NVIDIA GPU 的 warp 固定包含 32 个线程；AMD GPU 中与 warp 对应的执行小组称为 wavefront，包含 64 个线程。
 
 当 Warp 内的线程遇到条件分支时，若部分线程满足 `x < 4` 走 `if` 路径，另一部分满足 `x >= 4` 走 `else` 路径，便发生了**分支发散（Branch Divergence）**。
 
@@ -527,7 +516,7 @@ FP16 数据只占 FP32 一半的寄存器空间，同样 256 KB 寄存器文件�
 
 以 175B 参数为例，单看权重，FP32 约为 700 GB，BF16/FP16 约为 350 GB。真实训练还要加上梯度、optimizer states 和 activation，因此 dtype 只是资源账本中的一项，但它会直接影响显存容量和 HBM 带宽压力。
 
-我们可以进行简单的**带宽计算**，假设 HBM2e 带宽 2 TB/s，那么 **FP32** 下每秒传输 500 亿个参数；**BF16** 下每秒传输 **1000 亿个参数**（翻倍）。
+按带宽直接换算：假设 HBM2e 带宽 2 TB/s，**FP32** 权重每参数 4 bytes，每秒可传输 $2\times10^{12}/4 = 5\times10^{11}$ 个参数，约 **5,000 亿**；**BF16** 每参数 2 bytes，每秒约 **1 万亿**个参数，是 FP32 的两倍。
 
 所以低精度下加载权重时间**成倍减小**；缓存命中率提升（同样缓存容量，存的数据更多），显存可容纳更大模型。同一参数量的 BF16 权重约为 FP32 的一半：175B 模型 BF16 权重约 350 GB，65B 模型 BF16 权重约 130 GB；后者超过单卡 80 GB HBM，需要张量并行 / 流水线并行 / 量化 / ZeRO-3 切分等手段才能跑得起来。
 
@@ -555,7 +544,7 @@ Tensor Core 是 NVIDIA 为低精度矩阵乘设计的**专用电路**，可以�
 
 #### 提速机制四：并行度提升（同样芯片面积，计算单元翻倍）
 
-**芯片面积优化**，之前提到过精度越高的运算单元占用面积更大。按 GA100 整 die 826 mm²、平均分配到 6,912 个 FP32 CUDA 核心这一粗略估计，单个 FP32 核心约占 0.12 mm²；FP16 / INT8 路径的电路复杂度随位宽下降，相应单核心面积也按比例缩小，可在相同 die 上集成更多计算单元（NVIDIA 未公开 per-core 面积具体数字，0.1 / 0.05 / 0.025 mm² 仅为粗略量级参考）。
+**芯片面积账本**：精度越高的运算单元占用面积越大。按 GA100 整 die 826 mm²、共 6,912 个 FP32 CUDA core 均摊估算，单个 FP32 core 约占 0.12 mm²（整 die 面积同时包含 Tensor Core、缓存与控制逻辑，该数字是把这部分面积一并均摊后的平均值）。FP16 / INT8 路径的电路复杂度随位宽下降，相同 die 可以集成更多低精度计算单元。
 
 同时还有独特的**架构设计**。A100 的 SM 中，Tensor Core 复用寄存器文件；**FP32 模式**下 64 个 CUDA 核心活跃，每周期 64 次 FMA；**FP16 模式**下 64 个 CUDA 核心 + 4 个 Tensor Core 活跃，每周期 64 次 FMA + 1024 次矩阵运算。
 
@@ -575,12 +564,12 @@ Tensor Core 是 NVIDIA 为低精度矩阵乘设计的**专用电路**，可以�
 > **六条技巧的负面条件**：低精度、fusion、recomputation、coalescing、tiling、控制发散都不是「永远更快的银弹」。
 > - **低精度**：当 kernel 已是 compute-bound 且 dtype 已经被硬件路径吃满时，再切更低精度不会带来吞吐收益，反而可能因 loss scaling / 累加器精度不足引入数值漂移。
 > - **算子融合**：当算子本身已经接近 Tensor Core 峰值，再 fuse 进去只会把瓶颈从内存搬到算力上；fusion 也不能跨 collective / control flow。
-> - **重计算**：当 activation 本身不大或 kernel 主要受算力而非带宽限制时，recomputation 只会增加 FLOPs 而不减少 HBM 往返，反而变慢。
+> - **重计算**：当 activation 本身不大或 kernel 已受算力限制、带宽尚未吃满时，recomputation 只会增加 FLOPs 而不减少 HBM 往返，反而变慢。
 > - **内存合并**：当数据布局天然就是 row-major 且 block 大小对齐 cache line 时，coalescing 已经发生，进一步重排索引不会带来收益，只会增加代码复杂度。
 > - **分块（tiling）**：tile size 选得过大导致寄存器溢出到 local memory（即 HBM 路径），或过小导致算力空转、kernel launch / 调度开销占比过大时，tiling 会反向拖慢执行。
 > - **避免控制发散**：当分支条件在 warp 内高度一致时，发散开销本就接近零；硬把分支压平成 predication / 查表只会让代码更难维护而不会变快。
 >
-> 每条技巧都先要回答「当前 kernel 受 memory-bound 还是 compute-bound 限制」，再决定要不要上 —— roofline 与操作强度这条主线的核心判断正是「FLOPs 不是 runtime」。
+> 每条技巧都先要回答「当前 kernel 受 memory-bound 还是 compute-bound 限制」，再决定要不要上——roofline 与算术强度这条主线以可达 FLOPs/s 为判断依据，kernel 的实际 runtime 由瓶颈一侧的资源决定。
 
 ### 5.6.3 算子融合（Operator Fusion）
 
@@ -627,7 +616,7 @@ kernel fusion 把多个连续操作合并进一个 CUDA kernel，减少中间结
 
 **重计算的核心思想**：不把所有中间 activation 都写回 global memory，而是在反向传播需要时从保留的输入或 checkpoint 重新前向计算一遍。这样做增加了 FLOPs，但减少了 activation 的读写压力。
 
-总的来说，这里的重计算不存储 $S_1$ 和 $S_2$，而是在反向传播中重新计算。它是在计算时间成本与内存读写成本之间做权衡；当计算成本小于读写成本时，重计算往往更划算。
+总的来说，重计算丢弃 $S_1$ 与 $S_2$ 的保存，在反向传播中重新算一遍；它权衡的是计算时间与内存读写成本，计算成本小于读写成本时更划算。
 
 用这个例子的账本：重计算可以把内存访问从 8 次降到 5 次，代价是反向时重新计算这三个 $\mathrm{sigmoid}$ 。当 kernel 主要受 memory bandwidth 限制时，用额外 compute 换更少的 global memory 访问往往更划算。
 
@@ -729,32 +718,31 @@ tile size 需要同时满足几类约束：放得进 shared memory 和寄存器�
 
 ## 5.7 FlashAttention
 
-本节回答一个前置问题：标准 attention 在序列长度 $N$ 时产生的 $N \times N$ 中间矩阵如何被「分块 + online softmax」搬到片上 SRAM 完成，从而避免完整 attention matrix 的 HBM 往返。具体要按四节看：V1 的核心 IO 思路、online softmax 的数学等价性、V2 在 V1 基础上把串行依赖改写成空间并行、V3 在 Hopper 上用 WGMMA 异步流水线和 FP8 把 Tensor Core 喂到接近峰值。读完后读者应能把 FlashAttention 的演进放回 §5.6 的六条优化线索，并理解每代分别解决了哪一类「算力空转」的根因。
+本节回答一个前置问题：标准 attention 在序列长度 $N$ 时产生的 $N \times N$ 中间矩阵如何被「分块 + online softmax」搬到片上 SRAM 完成，从而避免完整 attention matrix 的 HBM 往返。具体要按四节看：V1 的核心 IO 思路、online softmax 的数学等价性、V2 在 V1 基础上打开序列维并行、压掉非 matmul 开销、V3 在 Hopper 上用 WGMMA 异步流水线和 FP8 把 Tensor Core 喂到接近峰值。读完后读者应能把 FlashAttention 的演进放回 §5.6 的六条优化线索，并理解每代分别解决了哪一类「算力空转」的根因。
 
-![图 5.7-1 FlashAttention V1 原理图](images/5-7-1-flashattention-v1-overview.png)
+![图 5.7-1 标准 attention 的计算组成](images/5-7-1-flashattention-v1-overview.png)
 
-*图 5.7-1 FlashAttention V1 原理图*
+*图 5.7-1 标准 attention 的计算组成*
 
-标准 attention 在序列长度为 $N$ 时需要计算 $N \times N$ 的 score 矩阵，FLOPs 和中间结果规模都是二次增长。系统问题在于：这些中间矩阵是否需要完整写回 HBM，再从 HBM 读回来？
+图 5.7-1 给出标准 attention 的计算组成：attention scores 由 $Q$ 与 $K$ 的内积生成（图中为 3 组全配对形式，形状 $3 \times n \times n$ ），中间隔一次 softmax，再与 $V$ 加权得到 $n \times d$ 输出。序列长度为 $N$ 时 score 矩阵是 $N \times N$ ，FLOPs 和中间结果规模都二次增长。系统问题在于：这些中间矩阵是否必须完整写回 HBM，再从 HBM 读回来？
 
 FlashAttention 的 attention 渐进 FLOPs 仍然是 $O(N^2)$ 。它改变的是数据移动方式：用 tiling 把 $QK^{\mathrm{T}}$ 、online softmax 和与 $V$ 的累积计算放到片上 SRAM / shared memory 路径里完成。
 
 这样可以避免显式 materialize 完整 attention matrix 并写回 HBM，减少 HBM 访问，提高数据复用，让 attention 更接近高 arithmetic intensity 的 kernel。
 
-> [!NOTE]
-> FlashAttention 在数学上与标准 attention 等价（除浮点误差外），属于精确重排而非近似计算。可以运行 [flash_attention.ipynb](examples/flash_attention.ipynb)，对比 FlashAttention 和标准 attention 的计算结果差异。
+FlashAttention 在数学上与标准 attention 完全等价（仅差浮点舍入），输出与标准 attention 逐元素一致。可运行 [flash_attention.ipynb](examples/flash_attention.ipynb) 对比两者的计算结果。
 
 
-![图 5.7-2 FlashAttention 的运行时间和显存占用](images/5-7-2-flashattention-runtime-memory.png)
+![图 5.7-2 FlashAttention 的内存层级与分块数据通路](images/5-7-2-flashattention-runtime-memory.png)
 
-*图 5.7-2 FlashAttention 的运行时间和显存占用*
+*图 5.7-2 FlashAttention 的内存层级与分块数据通路*
 
-图 5.7-2 同时比较 wall time 和 memory footprint。FlashAttention 的关键优势是显著降低 attention 中间结果的显存占用；在长序列场景下，这通常比减少少量非 matmul FLOPs 更重要。
+图 5.7-2 左侧给出内存层级的带宽与容量：GPU SRAM 约 19 TB/s、20 MB，GPU HBM 约 1.5 TB/s、40 GB，CPU DRAM 约 12.8 GB/s、超过 1 TB——SRAM 带宽比 HBM 高约一个数量级，容量却小约三个数量级。右侧是分块数据通路： $Q$ 、 $K^{\mathrm{T}}$ 、 $V$ 逐块 Copy 进 SRAM，计算块在 SRAM 上完成（Compute Block on SRAM），输出写回 HBM（Output to HBM）；图中 $QK^{\mathrm{T}}$ 的 $N \times N$ 区域用虚线画出并标注 outer / inner 两层循环，完整中间矩阵不进入 HBM 往返。长序列下 attention 的显存占用从 $O(N^2)$ 降到 $O(N \cdot d)$ ，这比节省少量非 matmul FLOPs 更重要。
 
 
 ### 5.7.1 FlashAttention V1 计算原理
 
-其中 $Q, K, V \in \mathbb{R}^{N \times d}$ ， $N$ 行表示 token， $d$ 列表示 token 的特征维度；索引 $i \in \{1,\dots,N\}$ 、 $j \in \{1,\dots,d\}$ 。下面展示的是带 causal mask 的底层计算过程：
+记 $Q, K, V \in \mathbb{R}^{N \times d}$ ： $N$ 行是 token， $d$ 列是 token 的特征维度； $i$ 与 $j$ 分别是 $Q$ 块与 $K,V$ 块的序号。分块后 $Q$ 块含 $B_r$ 行、 $K,V$ 块含 $B_c$ 行，行数按 SRAM 容量选取，让中间 score 块与统计量整块驻留片上。循环维护三个统计量：当前最大值 $m_i$ 、归一化因子 $l_i$ 与输出累积 $O_i$ 。下面展示带 causal mask 的底层计算过程：
 
 ![图 5.7-3 FlashAttention 前向传播](images/5-7-3-flashattention-forward.png)
 
@@ -781,16 +769,12 @@ for each Q block i:
         if causal and i == j:
             apply mask to S_{ij}
 
-        // softmax 累加 -> 归约
+        // online softmax 累加（O_i 保持未归一化累积）
         update m_i, l_i, O_i(online softmax)
 
+    O_i = O_i / l_i    // 内循环结束后统一归一化
     write O_i to HBM
 ```
-
-
-> [!NOTE]
-> FlashAttention V1 要分块，是因为直接计算 $QK^T$ 会生成 $N \times N$ 中间矩阵，长序列下无法一次性放入高速缓存，并会频繁访问 HBM。分块计算让 kernel 在 SRAM 中处理可容纳的小块，同时进行 online softmax 累加，从而减少全局内存访问并保持数值稳定。
-
 
 具体举例：
 
@@ -819,8 +803,9 @@ O_i = exp(m_i - m_new) * O_i
   + exp(S_{ij} - m_new) @ V_j
 
 m_i = m_new
-O_i = O_i / l_i
 ```
+
+内循环只更新未归一化的累积量 $O_i$ 与统计量 $m_i$ 、 $l_i$ ；内循环结束后执行一次 $O_i = O_i / l_i$ 完成归一化，与逐步归一化在数学上等价。
 
 因此，online softmax 是 FlashAttention V1 在不显式构造完整 attention matrix 的情况下仍保持精确 attention 语义的关键组件。
 
@@ -830,14 +815,15 @@ O_i = O_i / l_i
 
 FlashAttention V1 通过分块和在线 softmax 解决了注意力计算的显存瓶颈，但其循环顺序和并行策略并未充分发挥现代 GPU（尤其是 A100 及后续架构）中矩阵乘法（Tensor Core）的峰值吞吐能力。V2 在保持 V1 核心思想的基础上，对算法进行了深度重构，实现了**更高效的并行**与**更低的非矩阵乘法开销**。
 
-#### FlashAttention V2 的核心改进：分块并行化处理 Q
+#### FlashAttention V2 的核心改进：序列并行、warp 分工与更少的非矩阵乘开销
 
 在 FlashAttention V1 中，计算采用**外循环遍历 $Q$ 块、内循环遍历 $K, V$ 块**的方式。对于每个 $Q_i$ ，算法依次加载所有 $K_j, V_j$ 块，并通过 online softmax 逐步累积注意力结果。这避免了显式构造完整 attention matrix，也减少了 HBM 访问，但跨 tile 的 max、exp、rescale 会穿插在 matmul 之间，形成较强的数据依赖链。
 
 FlashAttention V2 保留了单个线程块视角下 $Q$ 外层、 $K, V$ 内层的基本数据加载顺序，优化重点在于重构并行策略与归约方式，以缓解上述`数据依赖链`带来的性能问题：
 
-- 将原先“一个 $Q_i$ 对应一个线程块串行扫描所有 $K, V$ ”的方式，改为对同一 $Q_i$ 在 $K, V$ 维度进行切分，并由多个线程块并行处理；
-- 保留 online softmax 的数学形式，但通过**分块并行计算 + 跨线程块归约**，把原本沿 $K, V$ 维度的串行依赖尽量转化为并行计算和末端归约。
+- **序列维并行**：V1 只在 batch 和 head 维度并行，同一序列的 $Q$ 块由单个线程块串行扫描；V2 把序列长度也加入调度，每个线程块只负责一个 $Q$ 行块。前向各块之间无需通信，反向对 $dQ$ 的跨块累加用 atomic add 完成（[FlashAttention-2 论文 §3](https://arxiv.org/abs/2307.08691)）。
+- **块内分工从 split-K 换成 split-Q**：V1 在单个线程块内沿 $K, V$ 维把工作切给多个 warp，各 warp 写入 shared memory、同步后再相加；V2 改为沿 $Q$ 行切分，每个 warp 独立计算输出的一部分，warp 之间无需通信。
+- **减少非 matmul FLOPs**：A100 上非矩阵乘运算的执行速率只有约 19.5 TFLOP/s，FP16 Tensor Core 矩阵乘是 312 TFLOP/s，执行相同 FLOPs 数量的非矩阵乘要慢约 16 倍；V2 让 $O_i$ 保持未归一化累积，只在循环最末乘一次归一化因子，把 exp 和 rescale 移出内循环热路径。
 
 
 ```text
@@ -876,17 +862,13 @@ for each Q block i in parallel:              // V2 的核心：Q 维度并行
 
 **V1 -> V2 性能提升的原因：**
 
-- **降低非矩阵计算对执行的干扰**：在 V1 中，每处理一个 $K, V$ 块，都需要对当前 $Q_i$ 的统计量（ $m_i, l_i$ ）进行在线更新，并对累积输出执行重缩放操作。这些标量、向量运算会频繁穿插在矩阵乘法之间，形成计算数据依赖链。
+- **非矩阵乘开销被压掉**：非矩阵乘运算在 A100 上只有约 19.5 TFLOP/s 的执行速率，FP16 Tensor Core 矩阵乘是 312 TFLOP/s，执行相同 FLOPs 数量的非矩阵乘要慢约 16 倍。V2 尽量把 exp、rescale 和归一化移出内循环——只在循环最末乘一次归一化因子完成输出归一化——让内循环以矩阵乘为主（[FlashAttention-2 论文](https://arxiv.org/abs/2307.08691)）。
+- **并行度扩大且免通信**：V1 的并行只覆盖 batch 与 head，同一序列内的 $Q$ 块由一个线程块串行处理；V2 把序列维也铺开，前向各线程块互不依赖、无需通信，块内 warp 沿 $Q$ 行分工也不需要 shared memory 同步。
+- **Tensor Core 利用率提高**：重缩放与标量更新不再穿插在 matmul 之间，更多矩阵乘可以连续排布到不同 SM 上执行，Tensor Core 空转等待的时间随之缩短。
 
-- **把串行依赖转成并行工作**：V2 的 online softmax 数学操作仍然存在，量级仍接近 $T_q \times T_{\text{kv}}$ 。收益来自把原本沿 $K,V$ 维度的串行依赖转化为并行计算和末端归约，减少非 matmul 操作对执行调度的阻塞。
+> [!WARNING]
+> **SM 的整体占用率（occupancy）不等同于计算单元利用率（utilization）**。线程块填满 SM 后，若数据加载与计算之间仍在同步等待，Tensor Core 等执行单元照样空闲——只看 occupancy 会漏判这类 stall。FlashAttention V3 针对的正是这种等待：用异步执行与流水线把计算和数据传输重叠起来。
 
-- **提升 Tensor Core 利用率**： $Q_i K_j^{\mathrm{T}}$ 和 $P_{ij} V_j$ 本身始终是矩阵乘法。V1 中 online softmax 的逐块依赖会让 matmul 与标量更新交替执行；V2 通过增加并行线程块，让更多 matmul 可以在不同 SM 上同时进行。
-
-> [!NOTE]
-> **SM 的整体占用率并不等同于实际计算单元利用率（utilization）**。即使线程块已充分填满 SM，如果数据加载与计算之间存在同步等待，Tensor Core 等执行单元仍可能空闲。FlashAttention V3 正是在这一背景下通过异步执行与流水线机制提升计算和数据传输的重叠程度。
-
-> [!NOTE]
-> V1 到 V2 的关键变化是把 online softmax 的时间串行依赖改写成更容易并行的空间划分，FLOPs 总量并没有成为主要变化点。
 
 #### 分块大小与硬件适配
 
@@ -991,12 +973,12 @@ FlashAttention V3 是算法与硬件协同设计的案例：异步 WGMMA 流水�
 
 ## 5.8 KV cache：HBM 上的另一笔账
 
-本节做连线，不展开推理系统本身。本节回答一个前置问题：KV cache 作为「HBM 上的一笔账」如何与本章的主线（数据移动）合流。具体要看清 KV cache 的字节公式、与单卡 HBM 容量的硬上限、与 FlashAttention 在 IO 层面的分工。完整 PagedAttention、prefix sharing、RadixAttention 等调度与分页细节放在 [第 9 章 §9.5.2 PagedAttention](../chapter9/chapter9_推理系统.md)。读完后读者应能把 KV cache 的容量估算放回 roofline 与内存账本里。
+本节做连线，不展开推理系统本身。本节回答一个前置问题：KV cache 作为「HBM 上的一笔账」如何与本章的主线（数据移动）合流。具体要看清 KV cache 的字节公式、与单卡 HBM 容量的硬上限、与 FlashAttention 在 IO 层面的分工。完整 PagedAttention、prefix sharing、RadixAttention 等调度与分页细节放在 [第 9 章 §9.5.2 PagedAttention：把 KV cache 当分页内存管理](../chapter9/chapter9_推理系统.md)。读完后读者应能把 KV cache 的容量估算放回 roofline 与内存账本里。
 
 KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量、带宽强耦合，是 inference 这条主线必须带过的资源账本。完整机制放在 [第 9 章 §9.1.1 训练看全序列，推理逐 token 生成](../chapter9/chapter9_推理系统.md) 与 [第 9 章 §9.5.2 PagedAttention：把 KV cache 当分页内存管理](../chapter9/chapter9_推理系统.md)，本节只列三个判断点：
 
 - **字节账本**：KV cache 在 prefill 阶段被一次性写入 HBM，总量按 `batch × seq_len × n_layers × 2 × n_kv_heads × head_dim × dtype_bytes` 计算（`2 ×` 表示 K 与 V 各一份；MQA/GQA/MLA/CLA 改变的是 `n_kv_heads`，字节数随该路径变少）。
-- **瓶颈来源**：单卡 HBM（80 GB / 141 GB / 192 GB 等）很快成为硬上限；剩余路径是切到多卡并行（TP/PP/CP）、压缩（量化、稀疏、GQA、MQA、MLA、CLA）或换 KV cache 调度（PagedAttention、prefix sharing、RadixAttention）。
+- **瓶颈来源**：单卡 HBM（80 GB / 141 GB / 180 GB 等）很快成为硬上限；剩余路径是切到多卡并行（TP/PP/CP）、压缩（量化、稀疏、GQA、MQA、MLA、CLA）或换 KV cache 调度（PagedAttention、prefix sharing、RadixAttention）。
 - **与 FlashAttention 的分工**：FlashAttention 解决的是 attention forward / backward 的 IO 访问模式（把 $QK^T$ 留在 SRAM，KV 矩阵不需要写回 HBM）；PagedAttention 解决的是 generation 阶段 KV cache 在 HBM 上的分页、碎片和共享问题。FlashAttention 让 prefill 与 backward 更快，PagedAttention 让多请求共享 KV cache 时不浪费显存；两者的完整对比与实现细节在第 9 章合流。
 
 ## 5.9 参考文献
@@ -1008,11 +990,11 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 
 ## 本章总结与下章衔接
 
-本章的主线是“数据移动决定实际速度”。硬件表建立数量级（A100/H100/H200/B200 在 SM 数、HBM 容量与带宽、L2、TMEM 上的差异），roofline 把 compute-bound / memory-bound 拆成单一判据，六条优化技巧（control divergence、低精度、fusion、recomputation、coalescing、tiling）共同把内存往返次数压下去；FlashAttention 是这套思路在 attention 上的集中体现。
+本章的主线是“数据移动决定实际速度”。硬件表建立数量级（A100/H100/H200/B200 在 SM 数、HBM 容量与带宽、L2、TMEM 上的差异），roofline 把 compute-bound / memory-bound 拆成单一判据，六条优化技巧（control divergence、低精度、fusion、recomputation、coalescing、tiling）分别针对 SIMT 利用率、字节流量与数据复用；FlashAttention 是这套思路在 attention 上的集中体现。
 
 下章进入 [第 6 章 GPU 高性能编程](../chapter6/chapter6_GPU高性能编程.md)：把硬件原理落到 benchmark / profiler / Triton / PTX 的可执行工具链上，从“知道原则”过渡到“能在代码里验证原则”。
 
 ## 来源与更新记录
 
 
-- 本节硬件数字（B200 L2 ≈ 63 MB/GB100 die、GB200 superchip package 126 MB、HGX B200 HBM3e 软件可见 180 GB / 物理 192 GB raw、OCP MXFP8 / MXFP4 每 32 元素共享一个 E8M0 scale factor、NVIDIA Blackwell NVFP4 每 16 元素共享一个 E4M3 microexponent scale、TPU v5p 每芯片 4 个 TensorCore × 4 个 MXU = 16 MXU、MXU 128×128 systolic array、batch 64 / feature 128 padding）以 NVIDIA Blackwell tuning guide、NVIDIA H100 datasheet、NVIDIA A100 whitepaper（INT4 Tensor Core 1248/2496 TOPS、FP32 CUDA core 总数 6912、SM 108、die 826 mm²、7nm N7）、OCP Microscaling Formats specification 与 Google Cloud TPU v5p 文档为一手出处。MXFP4 与 NVFP4 在元素块大小上不同：OCP MX 规范定义 MXFP4 为 32 元素块 + E8M0 缩放；NVIDIA Blackwell 实际部署的 4-bit 路径是 NVFP4 变体（16 元素块 + E4M3 microexponent + 每张量额外 FP32 全局缩放）。笔记中"MXFP4 / 1 per 16"指 NVIDIA Blackwell NVFP4 部署口径，不是 OCP MXFP4 规范的块大小。H100 SXM 的 FP32 (vector) CUDA Core 整卡峰值 = 67 TFLOP/s（H100 PCIe 版 = 51 TFLOP/s，差异来自 TDP 与 boost clock），§5.6.2 表中 FP8 行的「约 30×」按 H100 SXM 自身 Tensor Core FP8 dense 1,979 TFLOP/s ÷ H100 SXM FP32 CUDA Core 67 TFLOP/s 算出。FlashAttention V3 FP8 attention 的 matmul 累加器为 FP32、中间 softmax 统计量（ $m_i, l_i$ ）保留在 FP32（参考 [FlashAttention-3 论文 §3.1-3.2](https://arxiv.org/abs/2407.08608)）；本章已据此修正 5.7.3 与 5.7.4 中的累加器精度描述。查阅日期：2026-09-16。
+- 本节硬件数字（B200 L2 ≈ 63 MB/GB100 die、GB200 superchip package 126 MB、HGX B200 HBM3e 软件可见 180 GB / 物理 192 GB raw、OCP MXFP8 / MXFP4 每 32 元素共享一个 E8M0 scale factor、NVIDIA Blackwell NVFP4 每 16 元素共享一个 E4M3 microexponent scale、TPU v5p 每芯片 2 个 TensorCore × 4 个 MXU = 8 MXU、单芯片 BF16 459 TFLOP/s、HBM 95 GiB、带宽 2765 GB/s、整 pod 8960 颗芯片、MXU 128×128 systolic array、batch 64 / feature 128 padding）以 NVIDIA Blackwell tuning guide、NVIDIA H100 datasheet、NVIDIA A100 whitepaper（INT4 Tensor Core 1248/2496 TOPS、FP32 CUDA core 总数 6912、SM 108、die 826 mm²、7nm N7、L2 读带宽 5120 Bytes/clk）、OCP Microscaling Formats specification 与 Google Cloud TPU v5p 文档为一手出处。MXFP4 与 NVFP4 在元素块大小上不同：OCP MX 规范定义 MXFP4 为 32 元素块 + E8M0 缩放；NVIDIA Blackwell 实际部署的 4-bit 路径是 NVFP4 变体（16 元素块 + E4M3 microexponent + 每张量额外 FP32 全局缩放）。笔记中"MXFP4 / 1 per 16"指 NVIDIA Blackwell NVFP4 部署口径，不是 OCP MXFP4 规范的块大小。H100 SXM 的 FP32 (vector) CUDA Core 整卡峰值 = 67 TFLOP/s（H100 PCIe 版 = 51 TFLOP/s，差异来自 TDP 与 boost clock），§5.6.2 表中 FP8 行的「约 30×」按 H100 SXM 自身 Tensor Core FP8 dense 1,979 TFLOP/s ÷ H100 SXM FP32 CUDA Core 67 TFLOP/s 算出。FlashAttention V3 FP8 attention 的 matmul 累加器为 FP32、中间 softmax 统计量（ $m_i, l_i$ ）保留在 FP32（参考 [FlashAttention-3 论文 §3.1-3.2](https://arxiv.org/abs/2407.08608)）；本章已据此修正 5.7.3 与 5.7.4 中的累加器精度描述。A100 L2 读带宽约为 V100 的 2.3×（NVIDIA Ampere in-depth blog）；TPU 2015 年起在 Google 内部数据中心部署、2016 年 5 月在 Google I/O 首次公开（Wikipedia TPU 条目）。查阅日期：2026-09-22。

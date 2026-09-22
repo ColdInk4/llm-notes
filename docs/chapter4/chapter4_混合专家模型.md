@@ -56,7 +56,7 @@ DeepSeek、Kimi、Qwen、GLM、MiMo 等模型族都探索过 MoE 架构。MoE �
 
 MoE 通过将原本的单一前馈网络（如 MLP/FFN）替换为由多个并行子网络组成的 expert 集合，并通过 routing 在每次计算中仅激活少数 experts。其核心思想是：模型总体包含大规模参数，但每个输入只使用其中一小部分 experts，使得**容量大但计算稀疏**。
 
-> [!NOTE]
+> [!WARNING]
 > MoE 的优势通常出现在参数规模、数据量和系统实现都足够大的场景。小模型、低通信带宽或 routing 不稳定时，MoE 可能不如同预算 dense 模型。
 
 ### 4.1.1 路由机制与负载均衡
@@ -68,9 +68,6 @@ MoE 通过将原本的单一前馈网络（如 MLP/FFN）替换为由多个并�
 > [!NOTE]
 > “专家”这个名字容易让人联想到医疗专家、法律专家或财经专家，但大规模 MoE 里的 expert 通常不是这种人类语义标签。更常见的现象是某些 token 类型、符号、语言片段或表示模式更容易落到某些专家上；能否形成稳定可解释分工，取决于表示空间、路由约束、负载均衡和训练数据共同作用。
 
-> [!NOTE]
-> 早期也有尝试用强化学习优化离散路由，即把路由视为策略学习问题。但由于梯度方差、训练稳定性与计算成本较高，这条路线很少成为大规模 MoE LLM 的默认方案。
-
 常见 routing 方式可以概括为四类。**top-k routing** 让 token 选择得分最高的 k 个 experts，是 GShard、Switch Transformer、Mixtral、DeepSeek、Qwen MoE 等工作的常见基线；**hash routing** 用非学习规则把 token 分到 experts，稳定、便宜，但表达能力受限。
 **matching routing** 把 routing 看成匹配问题，理论上能更全局地平衡 experts，但工程复杂度更高；**RL routing** 则因为梯度方差、系统成本和稳定性问题，较少成为大规模默认方案。
 
@@ -78,9 +75,9 @@ MoE 通过将原本的单一前馈网络（如 MLP/FFN）替换为由多个并�
 
 *图 4.1-1 常见 MoE routing 选择方向*
 
-图 4.1-1 把 routing 写成一个 token-expert score 矩阵。token-choice routing 沿 expert 维度为每个 token 取 top-k，保证 token 侧覆盖更自然；expert-choice routing 沿 token 维度为每个 expert 取 top-k，容量更容易受控；global routing 试图一次性求出整张矩阵上的分配。
+图 4.1-1 分上下两栏对比常见 routing 变体。上栏是 Top-k routing（图中画的是 Top-2 情形）：router 给出每个 expert 的选择概率（token "The" 对 FFN1 是 $p = 0.65$、FFN2 是 $p = 0.3$），每个 token 取分数最高的 k 个 FFN 并行计算，两路输出经 Add + Normalize 合并；旁注按 k 列出 Switch Transformer（k=1）、Gshard / Grok / Mixtral（k=2）、Qwen / DBRX（k=4）、DeepSeek（7），标为 "Used in most MoEs"。下栏是 Hash routing：token 不看 router 分数，直接由 Hash Function 查表落到固定 FFN（图中 "The" → FFN2、"Dog" → FFN4），旁注标为 "Common baseline"，并注明出处 [Fedus et al 2022]。
 
-这个矩阵视角能解释后面的系统问题：无论选择方向如何，最终都要把 token 重排到 expert batch 中，负载倾斜会直接变成设备等待和通信尾延迟。
+两类的共同账本在后面反复出现：无论按分数还是按哈希选，最终都要把 token 重排到对应 expert 的计算批次里，负载倾斜会直接变成设备等待和通信尾延迟。
 
 从选择方向看，路由还可以拆成三种更具体的形式：
 
@@ -113,13 +110,13 @@ per-expert balancing 和 per-device balancing 解决两个层级的问题。前�
 
 这个流程说明 router 的核心工作是“打分和调度”。experts 是否形成可解释分工，取决于训练数据、表示空间、负载约束和系统调度共同作用，通常不能直接解释成人类意义上的主题分类。
 
-从系统角度看，最容易被低估的是第 3 步和第 5 步：dispatch 会把同一个 batch 的 token 打散到不同 experts，combine 又必须按原 token 顺序还原。experts 分布在多 GPU 上时，这两步会变成 all-to-all 通信；如果热门 expert 过载，即使单个 expert FFN 很快，整层也会被最慢 expert 拖住。因此学习 MoE 时应同时看 routing 质量、load balancing、通信开销和数值稳定性。all-to-all 的实现、EP/ETP/EDP 拓扑选择、1F1B A2A Overlap 等调度技巧在 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md) 展开。
+从系统角度看，最容易被低估的是第 3 步和第 5 步：dispatch 会把同一个 batch 的 token 打散到不同 experts，combine 又必须按原 token 顺序还原。experts 分布在多 GPU 上时，这两步会变成 all-to-all 通信；如果热门 expert 过载，即使单个 expert FFN 很快，整层也会被最慢 expert 拖住。因此学习 MoE 时应同时看 routing 质量、load balancing、通信开销和数值稳定性。all-to-all 的实现与 EP / ETP / EDP 拓扑选择在 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md) 展开。
 
 ![图 4.1-2 基于 per-expert bias 的负载均衡](images/4-1-2-per-expert-bias-balancing.png)
 
 *图 4.1-2 基于 per-expert bias 的负载均衡*
 
-图 4.1-2 用纵轴的 $b_i$ 曲线演示 per-expert bias 的在线更新：横轴是训练步、纵轴是 expert $i$ 的偏置值；近期 token 比例 $f_i$ 高于平均 $\bar{f}$ 的 expert 偏置向下走、 $f_i$ 低于 $\bar{f}$ 的 expert 偏置向上走，多条曲线收敛到相似水平说明负载被拉平。配套更新式与「 $s_{i,t}+b_i$ 参与 top-k、bias 不影响 gating 输出」的机制见上一段 [§4.1.1](#41-分析-moe) 负载均衡三路线；边界条件是它仍需要序列级或设备级约束防止极端倾斜。
+图 4.1-2 转写 DeepSeek-V3 per-expert bias 的门控式与配套损失。上半部分给出门控值 $g'_{i,t}$ 的选择规则： $s_{i,t} + b_i$ 进入 $\{s_{j,t} + b_j\}$ 的 Top- $K_r$ 时 $g'_{i,t} = s_{i,t}$，否则为 0——偏置只改变哪个 expert 被选中，被选 expert 仍按原始分数 $s_{i,t}$ 加权，这套机制被论文命名为 auxiliary loss free balancing。下半部分引用论文的 Complementary Sequence-Wise Auxiliary Loss 式 (17)–(20)： $\mathcal L_{\text{Bal}} = \alpha \sum_{i} f_i P_i$， $f_i$ 是该序列内 expert $i$ 进入 Top- $K_r$ 的频次， $P_i$ 是归一化打分在序列上的均值，用来防止单条序列内出现极端倾斜；图末括注点明这套方法并非完全无辅助损失。边界条件与更新式见上文负载均衡三路线：per-expert bias 在 batch 级在线调度，序列级损失只兜底防单序列极端倾斜。
 
 假设一共有 $E$ 个专家，输入为 $x$ ，门控函数为 $G(\cdot)$ 用于决定每个专家的权重， $E_i(\cdot)$ 表示第 $i$ 个专家的输出，则 token-choice routing 和 expert-choice routing 的通用门控机制可以写成：
 
@@ -132,8 +129,7 @@ $$
 - **打分：** 计算 routing score $h(x) = x \cdot W_g$ 。
 - **稀疏化：** 仅保留分数最高的 $k$ 个 experts 或 token，并对这些分值进行 softmax 归一化。未被选中的 $E - k$ 个 experts 权重被置零，它们在本次前向传播中不参与计算，从而在总参数很大的情况下控制实际 FLOPs。
 
-> [!NOTE]
-> $W_g$ 是 router 中的可学习线性投影层，会把每个 token 的特征映射为与 expert 数量相同的 logits。TC 模式下是 token 主动选择 experts，EC 模式下是 expert 主动选择 token。
+$W_g$ 是 router 中的可学习线性投影层，会把每个 token 的特征映射为与 expert 数量相同的 logits。TC 模式下是 token 主动选择 experts，EC 模式下是 expert 主动选择 token。
 
 > [!NOTE]
 > 可学习路由能否发挥作用，不只取决于 TC/EC 等路由形式，还取决于输入表示是否已经具备足够语义结构。表示空间越可分，router 越容易形成稳定且有意义的专家选择。
@@ -524,13 +520,10 @@ if __name__ == "__main__":
 需要注意的是，**稀疏的可学习 routing 机制（如 top-k）引入了离散决策过程，使得梯度估计具有较高方差**。同时，expert network 只有在被 routing 选中时才接收梯度并更新，而 **router 会持续从所有样本中接收训练信号并更新**。这种 conditional compute 下的梯度不对称性会导致不同模块在优化过程中依赖于不同的数据分布，从而使优化步调难以协调，增加训练不稳定性。
 
 > [!WARNING]
-> **去掉 load balancing loss 会发生什么**：OlMoE 的消融实验给出过一组反例——拿掉 auxiliary balance loss 之后，训练 loss 显著抬升、验证指标全面恶化；expert 利用率上，几乎所有 token 都被路由到 1~2 个热门 expert，其余 expert 长期处于饥饿状态、几乎不更新。这正是「富者愈富」正反馈循环的典型后果：被选中的 expert 拿到更多梯度、router 进一步抬高它的分数、于是更多 token 被分过去，最终把「扩大参数容量」的目标反过来变成「少数 expert 承担全部计算，其余参数作废」。aux loss、aux-free bias 或 capacity / token dropping 在工程上几乎不会从大规模 MoE 训练栈里彻底移除——它们的存在并非因为「优雅」，而是因为缺了它们 MoE 会快速塌缩成少数 expert 的 dense FFN。
+> **去掉 load balancing loss 会发生什么**：OlMoE 的消融实验给出过一组反例——拿掉 auxiliary balance loss 之后，训练 loss 显著抬升、验证指标全面恶化；expert 利用率上，几乎所有 token 都被路由到 1~2 个热门 expert，其余 expert 长期处于饥饿状态、几乎不更新。这正是「富者愈富」正反馈循环的典型后果：被选中的 expert 拿到更多梯度、router 进一步抬高它的分数、于是更多 token 被分过去，最终把「扩大参数容量」的目标反过来变成「少数 expert 承担全部计算，其余参数作废」。aux loss、aux-free bias 或 capacity / token dropping 因此成为大规模 MoE 训练栈的常驻组件：缺了它们，MoE 会在富者愈富的正反馈里塌缩成少数 expert 承担全部计算的 dense FFN。
 
 > [!NOTE]
-> **为什么需要 router FP32 + z-loss**：router logits 在低精度（BF16 / FP16）下数值区间很容易被 softmax 推到极端，进而把 top-k 选择变成确定性「全部送给某 1 个 expert」，再叠加上面那条富者愈富的循环就一步到位塌缩；router FP32 与 ST-MoE §3.3 引入的 router z-loss（ $\log^2 Z$ 项，见 §4.1.2）通过保护 logits 数值区间直接打断这条路径，代价是 router 计算必须跑更高精度。
-
-> [!NOTE]
-> 可学习路由的 MoE 在不同迭代步中会激活不同专家子图。路由变化会改变梯度路径和被更新的专家集合，因此整体优化会呈现非平稳性与路径依赖。
+> **为什么需要 router FP32 + z-loss**：top-k 选择由 logits 的相对大小决定，低精度（BF16 / FP16）的舍入误差会扭曲 softmax 输出——ST-MoE 论文的量化例子是 bfloat16 半个 ULP 的舍入就能让 softmax 输出变化 36%，甚至把全部 logits 错判成相等，让本应接近平局的 top-k 决策被随机翻转；这类翻转再叠加上面那条富者愈富的循环就会被放大成路由塌缩。router FP32 与 ST-MoE §3.3 引入的 router z-loss（ $\log^2 Z$ 项，见 §4.1.2）通过保护 logits 数值区间直接打断这条路径，代价是 router 计算必须跑更高精度。
 
 ---
 
@@ -538,26 +531,21 @@ if __name__ == "__main__":
 
 MoE 的变体大多围绕两类问题展开：一类是**路由与专家分化**，也就是 token 是否能稳定进入合适的专家；另一类是**系统效率**，也就是稀疏激活是否真的转化为端到端吞吐。专家数量、共享专家、细粒度专家、top-k、capacity、aux loss、设备级均衡和 grouped GEMM 都是在这两个目标之间折中。
 
-专家分化并不保证自然出现。若 router 训练过慢，专家可能长期接收混合分布；若 aux loss 过强，router 可能为均衡牺牲语义选择；若热门专家持续过载，系统会出现 token dropping 或 all-to-all 尾延迟。因此，现代 MoE 设计通常同时处理结构、损失、初始化和通信。通信成本与拓扑选择的具体账本见 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md)。
+专家分化并不保证自然出现。若 router 训练过慢，专家可能长期接收混合分布；若 aux loss 过强，router 可能为均衡牺牲语义选择；若热门专家持续过载，系统会出现 token dropping 或 all-to-all 尾延迟。因此，现代 MoE 设计通常同时处理结构、损失、初始化和通信。通信成本与拓扑选择的具体账本见 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md)；DeepSeek-V3 的 64-way EP（跨 8 节点）+ DualPipe 双向流水线 overlap 等真实训练配置见 [第 7 章 §7.11 代表性大规模训练配置](../chapter7/chapter7_分布式训练.md)。
 
 1. DeepSpeed-MoE 的贡献可以按结构、训练系统和推理加速三层理解：
 
 - **参数效率提升：** DeepSpeed-MoE 在模型结构上提出 PR-MoE 以及蒸馏压缩版本 MoS。PR-MoE（Pyramid-Residual MoE）由 [Rajbhandari et al., 2022, *DeepSpeed-MoE*, arXiv:2201.05596](https://arxiv.org/abs/2201.05596) 提出，其结构把 token 的输出写成 $\text{PR-MoE}(x) = \text{MLP}(x) + \text{Expert}(x)$，其中 MLP 是所有 token 都走的 shared dense 路径， $\text{Expert}$ 是 router 选中的第 $k$ 个 routed expert。
 
-    公理起点是反向传播的梯度公式 $\partial \mathcal{L}/\partial W_{\text{MLP}} = \partial \mathcal{L}/\partial y \cdot \partial y/\partial W_{\text{MLP}}$ 与 $\partial \mathcal{L}/\partial W_{\text{Expert}} = \partial \mathcal{L}/\partial y \cdot \partial y/\partial W_{\text{Expert}}$ 两路独立回传。这条结构使 MLP 已经承担通用表示的"基底"，routed expert 只需补偿 residual $y - \text{MLP}(x)$，单 expert FFN 隐层维度从 $d_{\text{ff}}$ 降到约 $d_{\text{ff}}/2 \sim d_{\text{ff}}/3$ 仍能保持精度，expert 缩小后单 token 通信量等比例下降。
+    公理起点是加法分解 $y = \text{MLP}(x) + \text{Expert}(x)$：dense MLP 承担所有 token 的通用表示，routed expert 只负责补偿残差 $y - \text{MLP}(x)$，论文把这组 experts 描述为对 dense 路径的误差修正项（error correction term）。沿着这条分解，PR-MoE 用 pyramid 形态分配专家预算（浅层 experts 少、深层 experts 多），配合每 token 受控的激活路由，把参数扩容的账与单 token 计算、通信的账分开管理。
 
     论文报道两条机制叠加使 350M+PR-MoE-32/64（约 4B 参数）达到与 350M+MoE-128（约 13B 参数）可比精度（约 1/3 参数）。MoS（Mixture-of-Students）则通过分阶段蒸馏压缩模型。
 - **蒸馏压缩加速推理：** MoS 通过分阶段知识蒸馏将 PR-MoE 压缩，用较浅的稀疏学生模型替代原模型以提升推理速度。由于直接减少层数会导致模型能力下降，而全程使用教师信号也可能导致学生欠拟合，MoS 采用两阶段方式：训练前期使用蒸馏稳定学习教师分布，后期关闭蒸馏、只优化语言模型损失，让学生模型具备自主泛化能力。
 - **系统优化升级：** 系统层重写 MoE 并行与通信方式，使 MoE 在真实大规模训练和推理中更容易扩展：
     - 由于不同层的专家数量不一致，它采用 expert parallelism、expert slicing、data parallelism 和 tensor slicing 的组合，让每层获得合适的并行方式。
 
-> [!NOTE]
-> MoE 在系统侧的 all-to-all 通信、expert parallelism（EP）、expert tensor parallelism（ETP）、expert data parallelism（EDP）的拓扑选择与 overlap 调度是 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md) 的主线内容；DeepSeek-V3 的 64-way EP（跨 8 节点）+ DualPipe 双向流水线 overlap 等真实训练配置见 [第 7 章 §7.11 代表性大规模训练配置](../chapter7/chapter7_分布式训练.md)。MoE 算法侧与系统侧的耦合主要在 EP 拓扑选择，通信形状、调度细节与 overlap 实现在 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md) 集中展开。
     - 这种自适应并行可以减少负载不均与显存浪费，但具体收益依赖硬件拓扑和通信库实现。
-    - 在通信方面，DeepSpeed-MoE 通过 tensor slicing、分层 all-to-all 和显式 layout 转换降低跨节点延迟与稀疏重排开销。
-
-> [!NOTE]
-> 分层 all-to-all 指在 MoE 中把一次性全局 token 通信按硬件拓扑拆成多层通信：先在同节点内完成高速 all-to-all，再跨节点交换必要数据，从而减少跨机器通信量。
+    - 在通信方面，DeepSpeed-MoE 通过 tensor slicing、分层 all-to-all 和显式 layout 转换降低跨节点延迟与稀疏重排开销。分层 all-to-all 指把一次性全局 token 通信按硬件拓扑拆成多层：先在同节点内完成高速交换，再跨节点搬运必要数据，从而减少跨机器通信量。
 
 2. Switch Transformer 致力于在不显著增加每个样本 FLOPs 的前提下扩展模型参数量。其核心策略是把标准 Transformer 中的 dense FFN 替换为稀疏激活的专家集合，使不同输入动态激活不同专家。为了让这套系统可训练，它同时引入 auxiliary loss 处理负载均衡，并在 router 等敏感部分使用更保守的精度。
 
@@ -580,17 +568,12 @@ $$
 图 4.1-6 的关键位置是 Transformer block 里的 FFN 子层：attention 先把每个 token 变成上下文化表示，router 再为这个 token 选择一个或少数 FFN experts。左侧保持标准 block 的残差结构，右侧只替换 FFN 内部的计算路径，因此 MoE 可以在尽量少改 attention 的前提下扩大参数容量。
 
 
-> [!NOTE]
-> Switch Transformer 的基本替换位置是 Transformer block 中的 FFN：通常先经过 self-attention 获得上下文化表示，再由稀疏 MoE FFN 对每个 token 独立变换。这个顺序沿用 Transformer block 的常见组织方式，具体层序仍需要结合模型结构做消融。
-
 从机制上看，self-attention 负责让 token 读取上下文，FFN/MoE 负责对每个 token 的上下文化表示做逐 token 非线性变换。MoE 常替换 FFN，是因为 FFN 本来就是逐 token 的高 FLOPs 模块，最适合条件计算和 expert parallelism。
 
 把 MoE 放在 attention 前、后或层间如何组织，仍属于架构设计问题，需要结合稳定性和系统效率做消融。
 
 
-> [!NOTE]
-> Switch Transformer 更强调稳定性与简化 FLOPs，DeepSpeed-MoE 更强调专家分布、模型蒸馏和系统通信。两者共同指向现代 MoE 的两条设计线：用精度与通信分级降低训练成本，用动态约束与结构调节提升训练稳定性和专家专业性。
-
+Switch Transformer 更强调稳定性与简化 FLOPs，DeepSpeed-MoE 更强调专家分布、模型蒸馏和系统通信。两者共同指向现代 MoE 的两条设计线：用精度与通信分级降低训练成本，用动态约束与结构调节提升训练稳定性和专家专业性。
 
 ---
 
@@ -616,7 +599,7 @@ MoE 相较于传统 dense 模型的优势是：它可以扩大总参数规模，
 
 OLMoE 与 Komatsuzaki 这两组实验放在一起，给出 upcycling vs 从零训练的一条机制。公理起点是 SGD 的初始化偏差：upcycling 把已有 dense FFN 权重 $W_{\text{dense}}$ 复制成 $E$ 个 expert 权重 $\{W_{\text{dense}}^{(j)} : 1 \le j \le E\}$，梯度更新按 $W_{t+1}^{(j)} = W_{t}^{(j)} - \eta \nabla_W \mathcal{L}(W_{t}^{(j)})$ 进行。
 
-前几步 $W_t^{(j)} = W_{\text{dense}} + \epsilon_t$，其中 $\epsilon_t$ 是从同一初始点出发的小扰动；当 expert $j$ 想学一个与 $W_{\text{dense}}$ 不同的函数时，必须先走出 $W_{\text{dense}}$ 邻域，这部分梯度是「向不熟悉方向」的对抗性更新，步长受学习率 $\eta$ 与 $W_{\text{dense}}$ 邻域半径联合约束（这是粗粒度描述，不是闭式解）。从零训练的 experts 没有这个先验约束，router 与 experts 协同自由分化，因此用更少预算即可追上。
+前几步 $W_t^{(j)} = W_{\text{dense}} + \epsilon_t$，其中 $\epsilon_t$ 是从同一初始点出发的小扰动；当 expert $j$ 想学一个与 $W_{\text{dense}}$ 不同的函数时，必须先走出 $W_{\text{dense}}$ 邻域，这部分梯度是「向不熟悉方向」的对抗性更新，步长受学习率 $\eta$ 与 $W_{\text{dense}}$ 邻域半径联合约束（这是粗粒度描述，不是闭式解）。这条约束在两个方向上起作用：预算紧张时，upcycled experts 从第一天起就带着能用的 dense 先验，从零训练要先花预算补上这块，对应 Komatsuzaki 的 120% 追赶预算；预算充足、任务需要 experts 重新专门化时，从零初始化的 experts 没有邻域要先挣脱，router 与 experts 协同自由分化，能更早追上并反超，对应 OLMoE 的 25% 追赶预算。哪一端占优取决于实验范式（TC 与 EC、encoder 与 decoder）与训练预算。
 
 这条机制同时是经验陈述：目前 OLMoE / Komatsuzaki 的实验都未给出解析的「迁移步长 vs 训练预算」公式，给出的 25% / 120% 数字来自具体实验设置，工程上不能跨设置直接外推。
 
@@ -624,10 +607,6 @@ OLMoE 与 Komatsuzaki 这两组实验放在一起，给出 upcycling vs 从零�
 > OLMoE 的实验说明，upcycling 不只是把稠密 FFN 复制成多个专家。已有稠密权重可能干扰专家重新分化，随机初始化的 router 也可能“学得太晚”，在学习率衰减后才形成模糊专家分工。
 
 此外，工程实践中也出现了成功的 **upcycling** 案例，例如 Qwen1.5-MoE 通过将已有稠密模型改造为 MoE，在保持或提升性能的同时提高参数效率。upcycling 的关键决策包括专家初始化、共享专家比例、router 初始化和后续训练 token 预算；如果继续训练数据不足，稀疏专家容易在小规模 fine-tuning 中过拟合。
-
-> [!NOTE]
-> 25% vs 120% 这类差异通常来自实验范式差异：TC 与 EC 在负载均衡、专家分化速度和早期训练动态上不同；decoder 与 encoder 架构的训练目标和信息流也不同，因此 upcycling 收益不能跨设置直接比较。
-
 
 ## 4.2 MoE 的应用
 
@@ -641,9 +620,6 @@ MoE 是一种可广泛嵌入各种神经网络结构的条件计算框架。它�
 - 在**多模态模型**中实现跨模态专家协作。
 
 正因 MoE 的结构独立性与条件计算能力，它成为大模型扩展参数规模、提升表示能力和控制计算成本的重要基础模块。下面介绍 MoE 在 LLM 中的应用。
-
-> [!NOTE]
-> **本节与 §4.4 的分工**：本节列出的 CNN / 语音 / 推荐 / RL / 多模态五类应用是「MoE 在其它网络结构的足迹」，与本章 LLM 主线关系较远；§4.4 把 MoE 放回深度学习总体视角，专门承担「为什么 MoE 是动态分工」「工程挑战来自哪里」「如何用 dispatch / expert compute / combine 三步串起系统实现」这些 LLM 主线问题。读本章时，把 §4.2 当成应用地图扫一眼即可，把 §4.4 当成 LLM 主线的系统视角正读。
 
 ---
 
@@ -1006,7 +982,7 @@ class MiniMoELLModel(nn.Module):
 
 ## 4.3 DeepSeek 的创新
 
-**本节解决什么前置问题**：DeepSeek 在 V1 → V2 → V3 → V4 四个版本里把 MoE 推到工业级稳定训练；本节先看 DeepSeekMoE 的结构动作（细粒度 expert + shared expert），再看 DeepSeek-V3 的核心架构创新（MLA、MTP、MoE fine-tuning 经验），最后看 DeepSeek-V4 的稳定性技巧（per-expert bias + seq-wise balance + node-limited routing 与 swiglu_limit）。
+**本节解决什么前置问题**：DeepSeek 在 V1 → V2 → V3 → V4 四个版本里把 MoE 推到工业级稳定训练；本节先看 DeepSeekMoE 的结构动作（细粒度 expert + shared expert），再看 DeepSeek-V3 的核心架构创新（MLA、MTP、MoE fine-tuning 经验），最后看逐代落地的结构与稳定性配置——浅层 dense / 哈希路由（first_k_dense_replace、num_hash_layers）、V3 的 per-expert bias + seq-wise balance + node-limited routing，以及 V4-Pro config 里的 swiglu_limit。
 
 ### 4.3.1 DeepSeek V3 的创新关键点
 
@@ -1014,7 +990,7 @@ DeepSeekMoE 的核心思路是把 routed experts 做得更细，并保留少量 
 
 DeepSeek v1-v3 的演化可以按三步理解：v1 已经具备 shared + fine-grained experts、standard top-k routing 和 expert/device auxiliary balancing；v2 在 v1 基础上把 routed experts 数量扩大至 160 并把 fine-grained 因子从 4 提到 10，加入 device-limited routing 与 communication balancing loss。从 expert 配置账本看，expert 总数 = (fine-grained factor) × (原 expert 数) + shared 数，激活数 = (fine-grained factor) × (每原 expert 激活数)；这条账本决定了 v1 / v2 / v3 在「每 token 激活 expert 数不变」的前提下能持续扩大 expert 总数。v3 把 routed experts 推到 256、shared experts 收敛到 1，配合 64-way EP 跨 8 节点 64 GPU 的训练拓扑（每 GPU 持有 4 个 routed + 1 个 shared expert）；256 = 64 × 4 是把「expert 数 / EP 度」对齐到「每 GPU expert 数」这个工程量纲的结果，不是由纯理论推导得出。
 
-v3 同时强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 top-k 内归一化（`scoring_func: "sigmoid"`、`topk_method: "noaux_tc"`、`norm_topk_prob: true`；参考 [DeepSeek-V3 config.json](https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/main/config.json)）。v1/v2 用 softmax + 全局归一化，v3 改 sigmoid 后只在 top-k 内做归一化，参数路径稳定；sigmoid 输出 ∈ [0, 1] 比 softmax 在低精度下更稳定，是这条改动的公理起点（数值范围受控）。
+v3 同时强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + 仅 top-k 内归一化（`scoring_func: "sigmoid"`、`topk_method: "noaux_tc"`、`norm_topk_prob: true`；参考 [DeepSeek-V3 config.json](https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/main/config.json)）。v1/v2 用 softmax + 全局归一化，v3 先对每个 expert 独立打 sigmoid 分数（输出被约束在 [0, 1] 区间），再只在选中的 top-k 集合内做归一化：参与归一化的项从全部 $N$ 个 expert 收窄到 $k$ 个、分值范围从全实数轴收窄到单位区间，数值路径更短，这条数值账本按工程经验比全局 softmax 更耐低精度。
 
 ![图 4.3-1 DeepSeekMoE shared 与 fine-grained expert 结构](images/4-3-1-deepseek-moe-architecture.png)
 
@@ -1056,8 +1032,8 @@ v3 同时强调 per-expert bias、aux-loss-free balancing 和 sigmoid 打分 + �
 DeepSeek-V3 论文在 MoE 之外同时披露了两项独立于 MoE 的核心架构创新和一项重要的后训练经验，本节统一吸收：
 
 - **Multi-Head Latent Attention（MLA）**：把 K/V 压缩到低秩潜空间后再做注意力，相比 MHA 大幅压缩 KV cache（DeepSeek-V3 config：`num_attention_heads: 128`、`qk_nope_head_dim: 128`、`qk_rope_head_dim: 64`，单 head 维度 $d_k = 128 + 64 = 192$，MHA 等价 KV cache 为 $2 h d_k = 2 \times 128 \times 192 = 49152$ 个元素；MLA 实际只缓存 $d_c + d_k^R = 512 + 64 = 576$ 个；细节见 [第 9 章 §9.3.2 MLA：存压缩 latent，再按需展开](../chapter9/chapter9_推理系统.md)）。MLA 与本节 MoE 路线在 DeepSeek-V3 中同时启用，是 V3 在长上下文与高吞吐推理两个方向都能维持竞争力的关键。
-- **Multi-Token Prediction（MTP）**：训练目标中允许模型一次预测未来多个 token，把 next-token 监督目标扩展为 $K$-token 联合分布 $P(t_{n+1}, \dots, t_{n+K} \mid t_{\le n})$。公理起点是交叉熵损失按 token 加和的标准形式 $\mathcal L_{\text{MTP}} = -\frac{1}{K} \sum_{k=1}^{K} \log P(t_{n+k} \mid t_{\le n}, t_{n+1}, \dots, t_{n+k-1})$：相比 next-token CE $-\log P(t_{n+1} \mid t_{\le n})$，每个训练样本的总梯度贡献按 $K$ 倍提升，对应的优化步沿 $\nabla \mathcal L_{\text{MTP}}$ 的方差与梯度范数比值变化需要靠经验调参。同一网络 head 也可在 decoding 阶段作为 speculative decoding 的草稿使用——speculative decoding 的加速比与 draft 模型接受率 $\alpha$ 相关（ $\alpha$ 越高每步能并行的草稿数越多），同一 MTP head 在训练阶段学到多步预测能力后自然具备 draft 能力。DeepSeek-V3 论文实际只取 $K=1$（预测紧邻下一个 token），其他 $K$ 值在 [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) 报告的消融中并未带来稳定收益；这是经验现象，没有公开的解析公式说明「 $K > 1$ 收益饱和在哪一点」。MTP 在大多数主流开源模型里尚未普及，目前主要在 DeepSeek 系列内部规模化使用。
-- **MoE fine-tuning 易过拟合**：MoE 专家数量大时 fine-tune 全部专家常常引发严重 overfitting。公理起点是 Chinchilla scaling law $\mathcal{L}(N, D) = E + A/N^\alpha + B/D^\beta$（ $N$ = 参数量， $D$ = 训练 token 数）—— fine-tune 阶段可训练参数量 $\theta$ 与 fine-tune 数据集大小 $D_{\text{ft}}$ 共同决定 loss 表面期望值；当 fine-tune 数据集远小于 pre-train 数据集时（典型 $D_{\text{ft}} \approx 10^5 \sim 10^6$ 而 pre-train $D \approx 10^{12}$）， $B/D_{\text{ft}}^\beta$ 项主导 loss 表面的不可优化性。常见做法是只 fine-tune attention 层或 dense FFN 层，把 routed experts 冻结，把 $\theta$ 降低一个量级来对抗 $D_{\text{ft}}$ 的不足。这条经验在 V3 / V4-Pro 等大规模 MoE 后训练阶段尤其需要复现。
+- **Multi-Token Prediction（MTP）**：训练目标中允许模型一次预测未来多个 token，把 next-token 监督目标扩展为深度为 $D$ 的联合分布 $P(t_{n+1}, \dots, t_{n+D} \mid t_{\le n})$（ $D$ = 额外预测深度）。公理起点是交叉熵损失按 token 平均的标准形式 $\mathcal L_{\text{MTP}} = -\frac{1}{D} \sum_{d=1}^{D} \log P(t_{n+d} \mid t_{\le n}, t_{n+1}, \dots, t_{n+d-1})$： $\frac{1}{D}$ 平均让每个训练样本同时监督 $D$ 个未来位置而单样本梯度尺度与 next-token CE 同量级，对应的优化步沿 $\nabla \mathcal L_{\text{MTP}}$ 的方差与梯度范数比值变化需要靠经验调参。同一网络 head 也可在 decoding 阶段作为 speculative decoding 的草稿使用——speculative decoding 的加速比与 draft 的接受率相关（接受率越高每步能并行的草稿数越多），同一 MTP head 在训练阶段学到多步预测能力后自然具备 draft 能力。DeepSeek-V3 论文取深度 $D = 1$（每个 token 除 next-token 目标外只额外预测紧邻的下一个 token，[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §4.2），Table 4 显示加上 MTP 后小尺度与大尺度模型的 HumanEval / GSM8K 等指标同步抬升；更深的多步联合预测属于按训练栈经验调参的范围，没有公开的解析公式说明「 $D > 1$ 收益饱和在哪一点」。MTP 在大多数主流开源模型里尚未普及，目前主要在 DeepSeek 系列内部规模化使用。
+- **MoE fine-tuning 易过拟合**：MoE 专家数量大时，把全部 routed experts 放开在小规模 fine-tune 数据上训练常常引发严重 overfitting。这条判断来自经验观察——fine-tune 阶段的可训练容量远大于数据能支撑的复杂度；Chinchilla 那类刻画 pre-train 算力分配的 scaling law 不构成对 fine-tune 过拟合的推导。公开解法分两条：ST-MoE（Zoph et al., 2022）只 fine-tune 非 MoE 的 MLP 部分、把 routed experts 冻结，用可训练参数量下降一个量级对冲数据不足；DeepSeek 走数据侧，把 SFT 数据扩到百万量级（课程材料记为 1.4M 样本）压过拟合。大规模 MoE 后训练按这两条路线之一处理。
 
 ---
 
@@ -1073,14 +1049,14 @@ MoE 稳定性通常需要同时处理路由更新、激活异常值和损失尖�
 
     这条机制既削弱「富者愈富」正反馈（→ 极端塌缩），又保留路由决策的自由度。**收敛到完全均衡的解析条件目前没有公开推导**（ $f_i$ 受 batch 采样、router 演化、专家权重变化共同影响，是非平稳信号）， $\gamma = 0.001$ 是经验值，工程上 $\gamma$ 过大容易震荡、 $\gamma$ 过小收敛太慢——属于「论文给常数 + 工程调」的典型模式。
 
-- **seq-wise balance auxiliary loss**：NoAux-TC 不替代、而**配合**一条权重极小的序列级辅助损失。公理起点是 expert 负载的归一化熵 $H(\mathbf f_s) = -\sum_{i=1}^{E} \bar f_{i,s} \log \bar f_{i,s}$，其中 $\bar f_{i,s}$ 是序列 $s$ 内 expert $i$ 被分配的 token 比例（按序列归一化）。当所有 expert 均匀分配时 $H = \log E$（最大值），当一个 expert 拿走全部 token 时 $H = 0$（最小值）。DeepSeek-V3 论文 §2.1.2 把这条辅助损失写成 $\mathcal L_{\text{seq}} = \alpha \sum_{s \in \text{batch}} H(\mathbf f_s)$，其中 $\alpha$ 是极小权重（论文未明示数值）。这条机制给出兜底：per-expert bias 是在 batch 级做在线调整，seq-wise loss 是在序列级做兜底约束，两者粒度互补；[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) 报告这套组合在完整预训练中实现「无不可恢复的 loss spike、无回滚」（具体训练 token 数与 GPU-小时数见论文 §5.1）。
+- **seq-wise balance auxiliary loss**：NoAux-TC 不替代、而**配合**一条权重极小的序列级辅助损失。论文 §2.1.2 给出的形式是 $\mathcal L_{\text{Bal}} = \alpha \sum_{i} f_i P_i$： $f_i$ 是该序列内 expert $i$ 进入 Top- $K_r$ 的频次（式 18）， $P_i$ 是归一化打分 $s'_{i,t} = s_{i,t} / \sum_{j} s_{j,t}$ 在序列上的均值（式 19–20）。机制上，选择频次 $f_i$ 与分数质量 $P_i$ 同时集中到少数 expert 的序列会让乘积和升高，这项损失惩罚的正是单条序列内部的极端倾斜； $\alpha = 0.0001$（§4.2 训练超参），与 batch 级 per-expert bias 粒度互补。[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) 报告这套组合在完整预训练中做到「无不可恢复的 loss spike、无回滚」（14.8T tokens 与训练配置见 §4.2，2.788M H800 GPU-hours 见 Table 1）。
 
-- **node-limited routing**：把每 token 激活的 expert 数限制在最多 $M=4$ 个节点上，配合 $routed\\_scaling\\_factor=2.5$ 与 $n\\_group=8, topk\\_group=4$ 三件套。这条机制从通信账本（ $\text{all-to-all volume} \propto \text{tokens} \times \text{active nodes}$）出发压住跨节点 dispatch 带宽，从系统视角保住训练不出现通信尾延迟引发的有效 loss spike。
+- **node-limited routing**：把每 token 激活的 expert 数限制在最多 $M=4$ 个节点上，配合 `routed_scaling_factor=2.5` 与 `n_group=8`、`topk_group=4` 三个路由字段。这条机制从通信账本（ $\text{all-to-all volume} \propto \text{tokens} \times \text{active nodes}$ ）出发压住跨节点 dispatch 带宽与 straggler 尾延迟；训练的数值稳定性由前面的 per-expert bias、seq-wise loss 与 FP8 数值路径共同承担。
 
-- **SwiGLU clamping**：对 SwiGLU 中容易产生异常值的分支做范围限制，例如将线性分量限制在 `[-10, 10]`，并限制门控分量上界（[DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 中的 `swiglu_limit: 10.0` 即此参数；DeepSeek-V3 config 没有该字段，gpt-oss-120b 取的是 `swiglu_limit: 7.0`）。这样可以降低 activation outlier 和 loss spike 风险，但是否值得使用仍取决于模型规模、精度和训练设置。
+- **SwiGLU clamping**：对 SwiGLU 中容易产生异常值的分支输出做幅值上限限制（[DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 中的 `swiglu_limit: 10.0` 即此参数；DeepSeek-V3 config 没有该字段，gpt-oss-120b 取的是 `swiglu_limit: 7.0`）。幅值上限直接压住 activation outlier 的峰值，降低 loss spike 风险；是否启用取决于模型规模、精度和训练设置。
 
-> [!NOTE]
-> 这类 MoE 稳定性技巧目前更多来自工程经验和消融实验；同一技巧在同尺度、同数据、同精度的训练栈里通常只能给出边际稳定，跨规模、跨精度的迁移效果需要重新消融。「必然有效」「不损害性能」一类无条件结论缺乏公开复现支撑。
+> [!WARNING]
+> MoE 稳定性技巧的收益边界绑死在训练栈上：同一技巧在同尺度、同数据、同精度的栈里给出边际稳定，规模、精度或数据一变，收益幅度就要在新栈上重新评估。
 
 ## 4.4 MoE 与深度学习
 
@@ -1118,7 +1094,7 @@ expert parallelism 的意义在于把专家维度也变成可切分资源：atte
 - **ETP（Expert Tensor Parallelism）**：把单个 expert FFN 内部的矩阵按张量并行切分（如把 $W_1 \in \mathbb{R}^{d_{\text{model}} \times d_{\text{ff}}}$ 沿 $d_{\text{ff}}$ 维度切开），每张设备持有 expert 的一个张量子集。这条切分适合 expert 内部 FFN 很大、需要进一步分摊单 expert 显存 / 算力的情形；通信形状以 all-reduce 为主（与 dense TP 同）。
 - **EDP（Expert Data Parallelism）**：每张设备持有完整一份 experts，靠数据并行（micro-batch 切分）拉满 GPU 利用率。EDP 只在 expert 总数较小、单 GPU 装得下的场景使用；当 expert 总数扩展到几百时显存瓶颈让 EDP 不再适用。
 
-DeepSeek-V3 在 256 routed experts 上选 64-way EP（跨 8 节点 64 GPU），每个 GPU 持有 4 个 experts + 1 个 shared expert；ETP / EDP 不再叠加，因为单 expert FFN 已能装入单卡。EP 拓扑与 overlap 调度的细节在 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md) 展开。
+DeepSeek-V3 在 256 routed experts 上选 64-way EP（跨 8 节点 64 GPU），每个 GPU 持有 4 个 experts + 1 个 shared expert；ETP / EDP 不再叠加，因为单 expert FFN 已能装入单卡。EP / ETP / EDP 的拓扑选择与组合细节在 [第 7 章 §7.9.2 Expert Parallelism：MoE 的系统并行](../chapter7/chapter7_分布式训练.md) 展开。
 
 ![图 4.4-1 expert parallelism 中的 dispatch 与 combine](images/4-4-1-expert-parallelism.png)
 
@@ -1139,7 +1115,7 @@ DeepSeek-V3 在 256 routed experts 上选 64-way EP（跨 8 节点 64 GPU），�
 
 在超大规模 MoE 基座模型上，工程权衡集中在如何用全参数（或接近全参数）训练拿到 RL 增益，而不引入专家 / 设备层级的额外不稳定。
 
-以 [Kimi K2](https://huggingface.co/moonshotai/Kimi-K2-Instruct) 为例（约 1T total / 32B active；384 routed + 1 shared / top-8 per token，详见 [Kimi K2 论文](https://arxiv.org/abs/2507.20534)），公开材料描述的训练路径是：预训练阶段用 Muon 优化器并在 QK 上做 MuonClip 截断，把 attention logits 压在一个稳定区间，从而在 15.5T tokens 上做到「零 loss spike」；后训练阶段在完整 MoE 上做联合 RL，结合真实与合成 agentic 环境的轨迹做策略优化。MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并行切分与稳定性技巧直接决定训练是否可行。
+以 [Kimi K2](https://huggingface.co/moonshotai/Kimi-K2-Instruct) 为例（约 1T total / 32B active；384 routed + 1 shared / top-8 per token，详见 [Kimi K2 论文](https://arxiv.org/abs/2507.20534)），公开材料描述的训练路径是：预训练阶段用 Muon 优化器并配 MuonClip（QK-Clip）——任一层 attention logit 超过阈值 $\tau = 100$ 就按头缩放 Q / K 投影权重把 logit 拉回稳定区间（soft-cap 直接截断的方案在论文里被否决），从而在 15.5T tokens 上做到「零 loss spike」；后训练阶段在完整 MoE 上做联合 RL，结合真实与合成 agentic 环境的轨迹做策略优化。MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并行切分与稳定性技巧直接决定训练是否可行。
 
 相关对比观察通常显示：基座模型的能力对 RL 阶段的样本效率影响显著，基座越强，RL 越容易产生高质量轨迹，信号也更有效；但能否扩展到 MoE 全参数 RL 取决于工程栈能否同时压住以下几类挑战：
 
@@ -1151,17 +1127,17 @@ DeepSeek-V3 在 256 routed experts 上选 64-way EP（跨 8 节点 64 GPU），�
 针对这些挑战，相关系统通常会组合几类工程优化方法：
 
 1. **混合并行设计**：合理安排不同并行方式，减少通信开销；
-2. **优化器侧稳定性**：例如 MuonClip 之类在 attention logits 上做截断，控制 router / attention 输出范围；
+2. **优化器侧稳定性**：例如 Kimi K2 的 MuonClip（QK-Clip）按头缩放 Q / K 投影权重，把 attention logit 控制在阈值以内；
 3. **自适应并行调度器**：根据实时指标、GPU 利用率、内存、step time 自动调整 tensor、pipeline、expert、sequence 并行策略。
 
 > [!WARNING]
->这些结论基于 Kimi K2 与同类超大规模 MoE 系统的公开材料，具有工程环境依赖；在其他模型、硬件或任务中，效果可能不同，需要复现验证。
+> Kimi K2 一类结论的成立范围就是超大规模 MoE 训练栈：模型规模、硬件拓扑或任务分布一变，全参数 RL 与 MuonClip 的效果幅度随之变化，其他尺度上的收益按各自训练栈的实测取值。
 
 ## 4.5 Expert 配置表与代表模型
 
 **本节解决什么前置问题**：把抽象的「专家数 / top-k / 共享 expert / 激活比例」落到一份可对照的公开模型表上。读完本节应能在引用某 MoE 模型时直接读出它的 expert 配置与激活比，并能与 §4.6 的 DeepSeek 三代演进表交叉对应。
 
-下表汇总公开 MoE 模型的 expert 配置，每行展示总专家数 / top-k / 共享专家数，以及实际激活 expert 比例。数据取自官方模型卡与 config.json，引用源附在最右列。
+下表汇总公开 MoE 模型的 expert 配置，每行展示总专家数 / top-k / 共享专家数，以及实际激活 expert 比例。数据取自官方论文、模型卡与 config.json，引用源附在最右列。
 
 | 模型 | 总专家数 | top-k | 共享专家数 | 激活比例 | 来源 |
 | --- | --- | --- | --- | --- | --- |
@@ -1176,7 +1152,7 @@ DeepSeek-V3 在 256 routed experts 上选 64-way EP（跨 8 节点 64 GPU），�
 | DeepSeek v3 | 256 routed + 1 shared = 257 | 8 | 1 | (8 routed + 1 shared) / 257 = 9/257 ≈ 3.5% ≈ 1/28.6 | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) + [DeepSeek-V3 config](https://huggingface.co/deepseek-ai/DeepSeek-V3) |
 | OlMoE | 64 | 8 | 0 | 8/64 = 1/8 | [arXiv:2409.02060](https://arxiv.org/abs/2409.02060) |
 | Llama 4 Maverick | 128 routed + 1 shared = 129 | 1 | 1 | (1 routed + 1 shared) / 129 = 2/129 ≈ 1.55% | [Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct)：`num_local_experts: 128`、`num_experts_per_tok: 1`；PyTorch / Meta 官方说明每 token 由 shared expert + 1 个 routed expert 组成（约 17B active / ~400B total） |
-| MiniMax-M1 | 32 routed + 1 shared = 33 | 4 | 1 | (4 routed + 1 shared) / 33 = 5/33 ≈ 15.15% | [MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k)：`num_local_experts: 32`、`num_experts_per_tok: 4`、`shared_intermediate_size: 2048`（>0 表示存在 1 个常驻 shared expert，size 2048 对应一个 fused shared FFN）；README 顶部写「35B total / 3B activated」，3B / 35B ≈ 8.6% 是把 dense 部分（如 embedding / attention / 1 dense FFN）折进去后的总激活比例，单纯按 MoE expert 计数 (4 routed + 1 shared) / (32 routed + 1 shared) = 5/33 |
+| MiniMax-M1 | 32 routed + 0 shared = 32 | 2 | 0 | 2/32 = 1/16 = 6.25% | [MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k)：`num_local_experts: 32`、`num_experts_per_tok: 2`、`shared_intermediate_size: 0`（无 shared expert）；[MiniMax-M1 论文](https://arxiv.org/abs/2506.13585) 给出 456B total / 45.9B activated，45.9B / 456B ≈ 10.1% 是折进 attention、embedding 等 dense 部分后的总激活比例，单纯按 MoE expert 计数为 2/32 = 1/16 |
 
 > [!NOTE]
 > **Qwen 1.5 MoE 的 shared expert 计数**：官方架构为 60 个 routing expert（每 token top-4）加 4 个常驻 shared expert，每 token 共激活 8 个。HF config 里没有单独的 shared expert 个数字段，只有 `shared_expert_intermediate_size: 5632` 这一 shared 侧 FFN 中间维度；单个 routed expert 的 `moe_intermediate_size` 是 1408，5632 = 4 × 1408，说明 4 个 shared expert 在实现上被合成一个 fused MLP。读 config 时按维度倍数还原专家数，才能和 60 + 4 = 64 的架构描述对上。
@@ -1190,8 +1166,7 @@ DeepSeek-V3 在 256 routed experts 上选 64-way EP（跨 8 节点 64 GPU），�
 > [!NOTE]
 > **Switch Transformer expert 数**：本表这一行的 64 experts / 1/64 对应 [Fedus et al., 2022, *Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity*, arXiv:2101.03961](https://arxiv.org/abs/2101.03961) Table 9 里的 Switch-XXL（395B，64 experts）。同一张 Table 9 还给出 Switch-Base 7B / 128 experts、Switch-Large 26B / 128 experts、Switch-C 1571B / 2048 experts，四个变体的 top-k 均为 1；表中另一列 “Expert freq.” 是 Switch 层替换 FFN 层的频率，Base / Large / XXL 为 1/2，Switch-C 为 1。
 
-> [!NOTE]
-> **§4.5 与 §4.6 的分工**：§4.5 横向对照各家族 MoE（激活比从 ~1/1024 到 1/4 量级），§4.6 纵向单看 DeepSeek 一家从 V1 到 V4-Pro 的演进。DeepSeek v1 / v3 这两行在两表都出现，是因为 §4.5 关心激活比（横向可比性），§4.6 关心路由与平衡策略的代际差异（纵向可比性）；同源数据不同维度，不视为重复。
+§4.5 与 §4.6 从两个维度组织同一批配置数据：§4.5 横向对照各家族 MoE（激活比从 ~1/1024 到 1/4 量级），§4.6 纵向单看 DeepSeek 一家从 V1 到 V4-Pro 的演进；DeepSeek v1 / v3 两行在两表都出现，前者读激活比的横向可比性，后者读路由与平衡策略的代际差异。
 
 ## 4.6 DeepSeek MoE 三代演进
 
@@ -1204,16 +1179,16 @@ DeepSeek-V3 在 256 routed experts 上选 64-way EP（跨 8 节点 64 GPU），�
 | DeepSeek v1 (DeepSeek-MoE 16B) | 16B | 2.8B | 64 routed + 2 shared / top-6（8/66 ≈ 12.1% 激活） | 共享专家 + fine-grained experts 的早期尝试 | [arXiv:2401.06066](https://arxiv.org/abs/2401.06066) |
 | DeepSeek v2 | 236B | 21B | 160 routed + 2 shared / top-6（8/162 ≈ 4.94% 激活） | device-limited routing（每个 token 的目标 expert 最多分布在 M 个 device 上，M ≥ 3 时质量与无约束 top-K 基本对齐），communication balancing loss | [arXiv:2405.04434](https://arxiv.org/abs/2405.04434) + [DeepSeek-V2 config](https://huggingface.co/deepseek-ai/deepseek-v2) |
 | DeepSeek v3 | 671B | 37B | 256 routed + 1 shared / top-8（9/257 ≈ 3.5% 激活） | sigmoid 打分 + 仅 top-k 归一化；node-limited routing（每 token 最多发到 M=4 个节点，区别于 v2 的 device-limited）；aux-loss-free + seq-wise aux balance | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) + [DeepSeek-V3 config](https://huggingface.co/deepseek-ai/DeepSeek-V3) |
-| DeepSeek V4-Pro | 未公开 | 未公开 | 384 routed + 1 shared / top-6（7/385 ≈ 1.82% 激活） | `topk_method: "noaux_tc"` + `scoring_func: "sqrtsoftplus"`；前 3 层交哈希路由（`num_hash_layers: 3`），降低浅层 MoE 训练不稳定；`swiglu_limit: 10.0` 抑制 activation outlier | [DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) |
+| DeepSeek V4-Pro | 未公开 | 未公开 | 384 routed + 1 shared / top-6（7/385 ≈ 1.82% 激活） | `topk_method: "noaux_tc"` + `scoring_func: "sqrtsoftplus"`；前 3 层走哈希路由（`num_hash_layers: 3`）；`swiglu_limit: 10.0` 抑制 activation outlier | [DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) |
 
 > [!TIP]
-> DeepSeek MoE 的「共享专家 + fine-grained experts」组合是 2024-2025 年间公开 MoE 模型最常复用的模板（Qwen 1.5 MoE、Qwen MoE 系列、Llama 4 Maverick 等都用到这一组合或其变体）。但 DeepSeek 与 OlMoE 之间存在一个未解决的开放问题：DeepSeek 的实验表明共享 expert 普遍提升 loss，而 OlMoE 的实验表明共享 expert 没有明显收益、收益主要来自细粒度 expert；这组相反结果构成路由设计的开放边界，具体收益仍依赖模型规模、数据和训练设置。
+> DeepSeek MoE 的「共享专家 + fine-grained experts」组合是 2024-2025 年间公开 MoE 模型最常复用的模板（Qwen 1.5 MoE、Qwen MoE 系列、Llama 4 Maverick 等都用到这一组合或其变体）。但 DeepSeek 与 OlMoE 之间存在一个未解决的开放问题：DeepSeek 的消融显示加上共享 expert 能改善指标，而 OlMoE 的实验显示共享 expert 没有明显收益、收益主要来自细粒度 expert；这组相反结果构成路由设计的开放边界，具体收益仍依赖模型规模、数据和训练设置。
 
 ## 本章总结与下章衔接
 
 **MoE 的核心收益与代价**：conditional compute 带来更大的总参数空间，但也把 routing、load balancing、通信和稳定性推到台前。更稳妥的工程结论应围绕 routing quality、expert utilization、all-to-all 开销和并行布局做联合权衡，单一模型的训练设置只能作为具体案例。
 
-下一章进入 [第 5 章 GPU 和 GPU 相关优化](../chapter5/chapter5_GPU和GPU相关优化.md)，把 routing / dispatch / all-to-all 放进 HBM 带宽、SM 占用率和 FlashAttention 的执行视角：第 4 章回答「routing 怎么把 token 派给 expert」，第 5 章回答「这次派发在 SM、HBM 和 SRAM 上的成本是多少」。
+下一章进入 [第 5 章 GPU 和 GPU 相关的优化](../chapter5/chapter5_GPU和GPU相关优化.md)，把 routing / dispatch / all-to-all 放进 HBM 带宽、SM 占用率和 FlashAttention 的执行视角：第 4 章回答「routing 怎么把 token 派给 expert」，第 5 章回答「这次派发在 SM、HBM 和 SRAM 上的成本是多少」。
 
 ## 思考
 
@@ -1251,5 +1226,6 @@ DeepSeek-V3 在 256 routed experts 上选 64-way EP（跨 8 节点 64 GPU），�
 ## 来源与更新记录
 
 - 公开模型配置：[OlMoE config](https://huggingface.co/allenai/OLMoE-1B-7B-0924)、[Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct)。DeepSeek-V4 系列配置见 [DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)：`n_routed_experts: 384`、`n_shared_experts: 1`、`num_experts_per_tok: 6`、`topk_method: "noaux_tc"`、`scoring_func: "sqrtsoftplus"`、`num_hash_layers: 3`、`swiglu_limit: 10.0`（查阅日期 2026-09-03）。
-- §4.5 expert 配置表的 Qwen 1.5 MoE 与 MiniMax-M1 两行取自 [Qwen1.5-MoE-A2.7B config](https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B/blob/main/config.json) 与 [MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k/blob/main/config.json)（状态：官方，查阅日期 2026-09-05）。
+- §4.5 expert 配置表的 Qwen 1.5 MoE 行取自 [Qwen1.5-MoE-A2.7B config](https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B/blob/main/config.json)（查阅日期 2026-09-05）；MiniMax-M1 行取自 [MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k/blob/main/config.json) 与 [MiniMax-M1 论文](https://arxiv.org/abs/2506.13585) 的 456B / 45.9B 参数口径（查阅日期 2026-09-22）。
 - 课程材料：CS336 2026 Lecture 4 slides 与 video，对应 lecture 映射见 [`sources/cs336-2026.md`](../../sources/cs336-2026.md)。
+- 本节事实声明的来源指向：§4.1.2 router z-loss 与低精度 router 分析（ST-MoE [arXiv:2202.08906](https://arxiv.org/abs/2202.08906) §3.3， $c_z = 0.001$）；§4.1.3 从零训练 25% 追赶（OLMoE [arXiv:2409.02060](https://arxiv.org/abs/2409.02060) §4.1.5）与 upcycled 120% 预算（[arXiv:2212.05055](https://arxiv.org/abs/2212.05055) Figure 4）；§4.3.1 DeepSeekMoE §4.4 Pile loss 1.808 / 1.806 / 1.811；§4.3.2 seq-wise $\alpha = 0.0001$、bias 更新 $\gamma = 0.001$、MTP 深度 $D = 1$ 与 14.8T tokens（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §4.2、Table 1、Table 4）；§4.5 Switch 表口径（[arXiv:2101.03961](https://arxiv.org/abs/2101.03961) Table 9）；§4.4 Kimi K2 QK-Clip 阈值 $\tau = 100$ 与 15.5T 零 loss spike（[arXiv:2507.20534](https://arxiv.org/abs/2507.20534)）（查阅日期 2026-09-22）。

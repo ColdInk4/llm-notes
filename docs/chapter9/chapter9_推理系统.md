@@ -35,7 +35,7 @@
 
 ## 本章主线与读图路径
 
-下面的 ASCII 速查图把推理系统主线拆成 6 节、每节回答一个问题。读者顺着这张图能快速判断当前读到哪一段、还剩什么没读：
+下面的 ASCII 速查图把推理系统主线拆成 §9.1 到 §9.5 五节，再加 §9.6 扩展研究一节，每节回答一个问题。读者顺着这张图能快速判断当前读到哪一段、还剩什么没读：
 
 ```text
   推理系统主线                  每节核心账本                主要优化对象
@@ -76,17 +76,17 @@
 
 *图 9.1-1 Inference overview*
 
-图 9.1-1 把推理成本放到真实使用场景里看。聊天、代码补全、agent、批处理、evaluation 和 RL rollout 都在调用同一个生成系统；差别在于哪些 token 会被人读到，哪些 token 只是系统内部为了搜索、验证或打分而产生。推理优化要同时服务交互体验和大规模 token 产出成本。
+图 9.1-1 把一次推理请求抽象成三个方块：model 与 prompt 进入 Inference，产出 response。聊天、代码补全、agent、批处理、evaluation 和 RL rollout 都在反复调用这同一个方块；差别在于哪些 token 会被人读到，哪些 token 只是系统内部为了搜索、验证或打分而产生。推理优化要同时服务交互体验和大规模 token 产出成本。
 
 ### 9.1.1 训练看全序列，推理逐 token 生成
 
 对 decoder-only 自回归模型来说，无论训练还是推理，单步目标都可以写成：
 
 $$
-P(\text{token}_i \mid \text{token}_1, \text{token}_2, \dots, \text{token}_{i-1})
+P(x_i \mid x_1, x_2, \dots, x_{i-1})
 $$
 
-generation 时 $x_i$ 的概率分布只能在前一步采样出 $x_{i-1}$ 之后才能计算，模型因此被强制在时间维度上串行执行；训练则因为有 ground-truth token 直接喂入（teacher forcing），所有位置可以并行处理。
+其中 $x_t$ 是位置 $t$ 上的 token。generation 时 $x_i$ 的概率分布只能在前一步采样出 $x_{i-1}$ 之后才能计算，模型因此被强制在时间维度上串行执行；训练则因为有 ground-truth token 直接喂入（teacher forcing），所有位置可以并行处理。
 
 关键差异来自前文来源和并行方式：
 
@@ -158,7 +158,7 @@ $$
 \mathrm{Attention}(Q, K, V) = \mathrm{softmax}\left(\frac{QK^\top}{\sqrt{d_k}}\right)V
 $$
 
-只是这里的 $K$ 和 $V$ 大部分来自 KV cache，无需每一步重新计算。KV cache 的规模近似随 batch、上下文长度、层数、KV heads 和 head dimension 线性增长：
+其中 $d_k$ 是单个 attention head 的 key 维度，对应 §9.1.3 张量形状约定里的 $H$。这里的 $K$ 和 $V$ 大部分来自 KV cache，无需每一步重新计算。KV cache 的规模近似随 batch、上下文长度、层数、KV heads 和 head dimension 线性增长：
 
 $$
 \mathrm{KV\ cache} \propto B \times S \times L \times K_{\mathrm{kv}} \times H
@@ -184,12 +184,11 @@ $$
 I = \frac{\mathrm{FLOPs}}{\mathrm{Bytes\ Transferred}}
 $$
 
-若计算的 `arithmetic intensity` 高于硬件的 FLOP/s 与 HBM bandwidth 比值，就更可能 compute-bound；若低于这个比值，就更可能 memory-bound。以 H100/Hopper 的 BF16 数量级示例看，峰值 FLOP/s 除以 HBM bandwidth 大约是几百 FLOPs/byte。这个数值只用于帮助判断瓶颈，不能当成所有硬件和 kernel 的通用阈值。
+若计算的 `arithmetic intensity` 高于硬件的 FLOP/s 与 HBM bandwidth 比值，就更可能 compute-bound；若低于这个比值，就更可能 memory-bound。以 H100/Hopper 的 BF16 数量级示例看，峰值 FLOP/s 除以 HBM bandwidth 大约是几百 FLOPs/byte；换硬件或换 kernel 时按该硬件的 FLOP/s 与 HBM bandwidth 重算这个比值。
 
-> [!NOTE]
-> **H100 dense BF16 显式判据**：约 **989.5 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs/byte**。NVIDIA H100 datasheet 把 BF16 Tensor Core 标为 1,979 TFLOPS（含结构化稀疏），dense 取一半即 989.5；jax-ml scaling-book roofline 章节用 9.89 × 10¹⁴ bfloat16 FLOPs/s 表示同一值，与本节 989.5 一致（[NVIDIA H100 datasheet](https://www.nvidia.com/en-us/data-center/h100/) / [JAX Scaling Book roofline](https://jax-ml.github.io/scaling-book/roofline/)）。对矩阵乘法 $X(B \times D) \cdot W(D \times F)$，当 $D, F \gg B$ 时 arithmetic intensity 收敛到 $B$；因此**compute-bound iff $B > 295$**。这条阈值与上述"几百 FLOPs/byte"的数量级说法一致；这里给出具体数字只是为了把判据直接落到 batch size。
+以 H100 的 dense BF16 为例，判据可以写成显式数字：**989.5 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs/byte**。NVIDIA H100 datasheet 把 BF16 Tensor Core 标为 1,979 TFLOPS（含结构化稀疏），dense 取一半即 989.5；jax-ml scaling-book roofline 章节用 9.89 × 10¹⁴ bfloat16 FLOPs/s 表示同一值（[NVIDIA H100 datasheet](https://www.nvidia.com/en-us/data-center/h100/) / [JAX Scaling Book roofline](https://jax-ml.github.io/scaling-book/roofline/)）。对矩阵乘法 $X(B \times D) \cdot W(D \times F)$，当 $D, F \gg B$ 时 arithmetic intensity 收敛到 $B$，因此 compute-bound 的条件是 $B > 295$。
 
-把这条阈值落到具体 batch 上：Llama 2 13B 单步运算量大致随 $B$ 线性增长，所以 MLP generation 在 $B > 295$ 时进入 compute-bound 区间；实际服务系统常见 batch size 远小于 295，generation 因此长期 memory-bound。但 batch 继续增大后会撞上显存容量上限：Llama 2 13B 在 BF16 下参数约 26.0 GB，单条请求 KV cache 约 0.84 GB，参数 + KV cache 总内存 = $26.0 + 0.84 \cdot B$ GB。B=64 时约 79.7 GB（仍可装下单卡 80 GB H100）；B=256 时约 240.8 GB（已超过 80 GB 容量）。80 GB 是显存容量上限，与 295 FLOPs/byte 的 compute-bound 判据是两条独立约束；§9.2.3 会用更完整的 latency / throughput 账本说明这条 tradeoff。
+把这条阈值落到具体 batch 上：Llama 2 13B 单步运算量大致随 $B$ 线性增长，所以 MLP generation 在 $B > 295$ 时进入 compute-bound 区间；实际服务系统常见 batch size 远小于 295，generation 因此长期 memory-bound。但 batch 继续增大后会撞上显存容量上限：Llama 2 13B 在 BF16 下参数约 26.0 GB，单条请求 KV cache 约 0.84 GB，参数 + KV cache 总内存 = $26.0 + 0.84 \cdot B$ GB。B=64 时约 79.7 GB（仍可装下单卡 80 GB H100）；B=256 时约 240.8 GB（已超过 80 GB 容量）。80 GB 是显存容量上限，与 295 FLOPs/byte 的 compute-bound 判据是两条独立约束；§9.2.3 用更完整的 latency / throughput 账本说明这条 tradeoff。
 
 ### 9.2.1 MLP 层：batch 和 token 数能摊薄权重读取
 
@@ -209,7 +208,7 @@ $$
 
 ### 9.2.2 Attention 层：batch 不能同样摊薄 KV cache
 
-attention generation 更难。attention 的核心是两个矩阵乘： $Q (B \times T \times D) \cdot K (B \times S \times D)$ 计算 attention logits（ $2 B S T D$ FLOPs），随后 $\mathrm{softmax}(\cdot) \cdot V (B \times S \times D)$ 计算加权和（ $2 B S T D$ FLOPs）。HBM 读写方面，Q、K、V 三者各 $2 B \cdot (\text{batch+seq}) \cdot D$ 字节，加上输出 Y 的 $2 B T D$ 字节。代入 $D \gg B T$ 的假设简化得：
+attention generation 更难。attention 的核心是两个矩阵乘： $Q (B \times T \times D) \cdot K (B \times S \times D)$ 计算 attention logits（ $2 B S T D$ FLOPs），随后 $\mathrm{softmax}(\cdot) \cdot V (B \times S \times D)$ 计算加权和（ $2 B S T D$ FLOPs）。HBM 读写方面，K 与 V 都是 $B \times S \times D$ 张量，各需 $2 B S D$ 字节；Q 与输出 Y 都是 $B \times T \times D$ 张量，各需 $2 B T D$ 字节。合计：
 
 $$
 \mathrm{FLOPs} = 4 B S T D,\quad \mathrm{Bytes} = 4 B S D + 4 B T D
@@ -248,7 +247,7 @@ $$
 
 这张表给出两个不同的工程方向。MLP generation 的低算术强度可以通过更大的并发 batch 缓解，因为大家共享同一份权重；attention generation 的低算术强度来自每个请求私有的 KV cache。
 
-在标准 Transformer 上，单纯增加 batch 并不能把 attention generation 变成高复用的大矩阵乘法——每多一个请求就多一份不同历史，权重读取的复用无法延伸到 KV cache 上。更直接的优化方向是减少 KV cache 体积、改善 KV 布局或改变 attention 结构，这正是 9.3 节要展开的 GQA、MLA、CLA、local / sparse attention 与 quantization / pruning / distillation。
+在标准 Transformer 上，单纯增加 batch 并不能把 attention generation 变成高复用的大矩阵乘法——每多一个请求就多一份不同历史，权重读取的复用无法延伸到 KV cache 上。更直接的优化方向是减少 KV cache 体积、改善 KV 布局或改变 attention 结构，对应 §9.3 模型与 KV cache 压缩的 GQA、MLA、CLA、local / sparse attention 与 quantization / pruning / distillation。
 
 ### 9.2.3 Latency 与 Throughput 的取舍
 
@@ -336,11 +335,11 @@ KV cache 大小大致与 $K_{\mathrm{kv}} \times H$ 成正比，所以从 MHA �
 
 普通 attention 的 KV cache 存的是 $\mathbf{k} = W_K h$ 和 $\mathbf{v} = W_V h$。MLA 存的是压缩向量 $c = W_c h$，使用时再从 $c$ 投影出 key/value。这样 KV cache 的存储维度可以明显下降。一个工程细节是 RoPE 通常直接作用在 key/query 相关维度上，所以 MLA 还要为 RoPE 保留额外维度；即便如此，总 KV cache 仍可大幅缩小。
 
-![图 9.3-4 MLA accuracy: MHA and GQA](images/9-3-4-mla-accuracy-mha-gqa.png)
+![图 9.3-4 Dense 7B 上 MHA / GQA / MQA 质量对照](images/9-3-4-mla-accuracy-mha-gqa.png)
 
-*图 9.3-4 MLA accuracy: MHA and GQA*
+*图 9.3-4 Dense 7B 上 MHA / GQA / MQA 质量对照*
 
-图 9.3-4 把 MLA 放回 MHA / GQA 的质量对照里看。MHA 保留完整 KV 表示，cache 成本最高；GQA 减少 KV heads，cache 更小但可能牺牲一部分表示能力；MLA 则试图把每个 token 的 KV 信息压进 latent，再按需展开。横向比较时要同时看 cache 缩小比例和 loss / eval 变化，否则只看速度会忽略结构改动带来的质量风险。
+图 9.3-4 是同一 Dense 7B 设置下 MHA / GQA / MQA 的质量对照（DeepSeek-V2 论文 Appendix D.1 Table 8）。MHA 保留完整 KV 表示，cache 成本最高，质量也最强；GQA 与 MQA 用更少的 KV heads 换更小 cache，KV cache 只有 MHA 的一小部分，但论文在该消融里判定它们的质量不敌 MHA。MLA 与 MHA 的直接对照在图 9.3-5。横向比较时要同时看 cache 缩小比例和 eval 变化，只看速度会忽略结构改动带来的质量风险。
 
 ![图 9.3-5 MLA accuracy](images/9-3-5-mla-accuracy.png)
 
@@ -448,7 +447,13 @@ $$
 
 当 draft model 过度偏向某个 token 时，第一次拒绝后从归一化的残差分布 $r_i(y) \propto \max(q_i(y) - p_i(y), 0)$ 采样一个 token。若 $k$ 个候选全部被接受，再从 target model 采样一个额外 token。接受与残差采样共同补偿 proposal distribution 的偏差。
 
-分布保持成立：设两元素词表 $\{A, B\}$，target 概率 $[q(A), q(B)]$，draft 概率 $[p(A), p(B)]$，且 $p(A) > q(A)$（draft 偏向 $A$）即 $p(B) < q(B)$。接受 $A$ 的概率为 $p(A) \cdot \min(1, q(A)/p(A)) = q(A)$。第一次拒绝后从残差 $\max(q-p, 0)$ 归一化分布（此处只剩 $B$）采样 $B$ 的概率为 $p(A) \cdot (1 - q(A)/p(A)) = p(A) - q(A) = q(B)$。两个互斥事件概率之和恰为 $q(A) + q(B) = 1$，输出分布与 target model 完全一致；该代数推导可推广到任意词表，证明 speculative sampling 是 exact sampler。
+分布保持成立：设两元素词表 $\{A, B\}$，target 概率 $[q(A), q(B)]$，draft 概率 $[p(A), p(B)]$，且 $p(A) > q(A)$（draft 偏向 $A$），于是 $p(B) < q(B)$。输出 $A$ 只有一条路径：draft 提议 $A$ 且被接受，概率为 $p(A) \cdot \min(1, q(A)/p(A)) = q(A)$。输出 $B$ 有两条路径：draft 提议 $B$，因 $p(B) < q(B)$ 接受率取 1，贡献 $p(B)$；draft 提议 $A$ 后被拒绝（概率 $p(A) \cdot (1 - q(A)/p(A)) = p(A) - q(A)$），再从残差分布（此处只剩 $B$）采样，同样贡献 $p(A) - q(A)$。两条路径相加，利用 $p(A) + p(B) = 1$：
+
+$$
+P(B) = p(B) + p(A) - q(A) = 1 - q(A) = q(B)
+$$
+
+于是 $P(A) + P(B) = q(A) + q(B) = 1$，输出分布与 target model 完全一致。任意词表下同一分解写成 $P(x) = \min(p(x), q(x)) + \max(0, q(x) - p(x)) = q(x)$，speculative sampling 因此是 exact sampler。
 
 速度实验要把分布保持与加速收益分开验证：固定 target model、提示集合和采样温度，扫描 draft model 大小与候选长度 $k$，分别记录接受率、每轮接受 token 数、target forward 次数和端到端 latency。接受率只说明候选质量；只有当并行检查节省的 target 计算超过 draft 开销时，吞吐才会上升。
 
@@ -468,11 +473,11 @@ $$
 
 ### 9.4.3 Medusa 与 EAGLE
 
-![图 9.4-4 Medusa and EAGLE](images/9-4-4-medusa-eagle.png)
+![图 9.4-4 Speculative Sampling、Lookahead、Medusa 与 EAGLE](images/9-4-4-medusa-eagle.png)
 
-*图 9.4-4 Medusa and EAGLE*
+*图 9.4-4 Speculative Sampling、Lookahead、Medusa 与 EAGLE*
 
-Medusa 和 EAGLE 都是在改进 draft token 的生成方式。Medusa 给 target model 加多 token 预测头，让候选生成更贴近目标模型；EAGLE 使用 target model 的高层特征来构造更好的 draft。
+图 9.4-4 把四种 draft 方式并排对照：Speculative Sampling 用小模型起草，Lookahead 用 2-gram / Jacobi 迭代起草，Medusa 给 target model 加多 token 预测头，让候选生成更贴近目标模型，EAGLE 用 target model 的高层特征来构造更好的 draft。四条路线的差别集中在候选从哪里来，验收环节共用同一套接受 / 残差数学。
 
 它们的共同目标是提高候选质量和接受率，从而让 target model 更少做串行 generation。只要验收数学正确，speculative sampling 就可以保持 target distribution，同时减少 target model 的串行瓶颈。
 
@@ -501,7 +506,11 @@ PagedAttention 面向在线服务中 KV cache 的生命周期管理。传统做�
 - 内部碎片：请求实际生成很短，却占了最大长度的空间。
 - 外部碎片：多个请求释放后留下零散空洞，总空闲显存够，但找不到足够大的连续块。
 
-设总请求数 $N$、平均实际生成长度 $\bar L$、预留上限 $L_{\max}$，则内部碎片总量期望为 $(L_{\max} - \bar L) \cdot N$，与并发数线性增长；外部碎片则依赖请求生命周期的交错——一段连续空闲区域被新请求的部分占用切成更短的连续区，期望长度随 $\sqrt{N}$ 量级缩小。PagedAttention 论文 Figure 2 报告，按最大长度预留的现有系统实际有效内存只占总分配 KV cache 的 20%–38%，意味着 62%–80% 的显存被两类碎片与冗余复制浪费，导致 batch 装不下更多请求。这两个数学约束直接导出 block-based allocation 的设计要求：把 KV cache 切成固定大小 block 后，单请求内部碎片期望退化为 $\text{block\\_size}/2$（最后一个未填满的 block），外部碎片因块等大而完全消失；剩余代价是 block table 的额外间接寻址开销，对 attention kernel 是 gather 索引访问而非连续内存。
+设总请求数 $N$、平均实际生成长度 $\bar L$、预留上限 $L_{\max}$，内部碎片总量期望为 $(L_{\max} - \bar L) \cdot N$，随并发数线性增长。外部碎片来自请求生命周期的交错：多个请求释放后留下的空闲区域被新请求部分占用，连续空闲区被切成更短的段，总空闲显存够大却拼不出满足新请求的连续块。
+
+PagedAttention 论文 Figure 2 报告，按最大长度预留的现有系统实际有效内存只占总分配 KV cache 的 20%–38%，其余显存浪费在预留槽位、内部碎片与外部碎片上，batch 因此装不下更多请求。
+
+这份账本给出 block-based allocation 的设计要求：把 KV cache 切成固定大小的 block 按需分配后，单请求的内部碎片只剩最后一个未填满的 block，平均约半个 block；等大 block 让外部碎片消失，任何空闲显存块都能被重新使用。剩余代价是 block table 的间接寻址：attention kernel 按 block 逐块 gather，访存模式从整段连续读取变成分块读取。
 
 KV cache 的硬件预算与 HBM 容量约束已在 [第 5 章 §5.8 KV cache：HBM 上的另一笔账](../chapter5/chapter5_GPU和GPU相关优化.md) 给出，本节继续讲服务侧的调度问题。
 
@@ -515,13 +524,13 @@ vLLM 的 PagedAttention 借鉴操作系统分页思想，把每个序列的 KV c
 
 *图 9.5-3 PagedAttention blocks*
 
-`logical block` 是某个请求自己的连续上下文视图，`physical block` 是显存里实际分配到的块。二者通过 block table 连接，因此同一个请求在逻辑上连续，物理上可以散落在不同空闲块中。
+图 9.5-3 展示单个请求的 KV 分块：10 个 token 的历史按固定大小切成 Block 0（Four score and seven）、Block 1（years ago our fathers）、Block 2（brought forth）三段，计算第 10 个 token 的 attention 时 query “forth” 逐块读取 key/value。块内 token 连续存放，块间位置由 block table 记录，attention kernel 按块 gather 出完整历史。
 
 ![图 9.5-4 PagedAttention logical and physical blocks](images/9-5-4-paged-attention-logical-blocks.png)
 
 *图 9.5-4 PagedAttention logical and physical blocks*
 
-图 9.5-4 展开了 block table 的作用。左侧的 logical blocks 按 token 顺序编号，表示请求自己看到的连续上下文；右侧的 physical blocks 是显存里实际分配的 KV block，可以散落在不同位置。推理 kernel 通过 block table 找到每个 logical block 对应的 physical block，于是服务端既能按需复用零散显存，又能让模型逻辑上看到连续的历史 token。
+图 9.5-4 展开了 block table 的作用。左侧与右侧分别是 Request A、Request B 各自的 logical blocks，按 token 顺序编号，表示请求自己看到的连续上下文；中间是共享的 physical KV block 池，物理块按需分配、散落在不同位置。推理 kernel 通过 block table 找到每个 logical block 对应的 physical block，于是服务端既能按需复用零散显存，又能让模型逻辑上看到连续的历史 token。
 
 ### 9.5.3 Prefix Sharing 与 Copy-on-Write
 
@@ -531,11 +540,13 @@ vLLM 的 PagedAttention 借鉴操作系统分页思想，把每个序列的 KV c
 
 *图 9.5-5 PagedAttention prefix sharing*
 
-如果两个请求后续生成不同 token，就在分叉处触发 `copy-on-write`。完整的共享 prefix block 可以继续共享；若新 token 要写入同一个尚未填满的共享末尾 block，服务端会复制该 block，再让两个请求分别写入。分叉从新 block 开始时，各请求只需分配自己的新 block。
+图 9.5-5 里 Sequence A 与 Sequence B 共享同一段 few-shot 前缀：shared prompt 的 KV block 只存一份，两条请求从各自的 task input（“cheese” 与 “I love you”）开始分别追加。system prompt、多轮对话的公共历史、同一 prompt 的多条采样都能按这个方式复用，KV cache 占用随共享前缀比例下降。
 
 ![图 9.5-6 PagedAttention copy-on-write](images/9-5-6-paged-attention-copy-on-write.png)
 
 *图 9.5-6 PagedAttention copy-on-write*
+
+图 9.5-6 展示分叉处的 `copy-on-write`：两条路径原本共享尚未填满的 Block 1（ref count = 2），要在同一 block 里写入不同 token（“fathers” 与 “mothers”）时，服务端先把 Block 1 复制到空闲的 Block 3（ref count 降为 1），再让两条路径各自写入；已经填满的完整共享 block（如 Block 0）继续共享。分叉从新 block 开始时，各请求只需分配自己的新 block。
 
 PagedAttention 和 FlashAttention 的层级不同：
 
@@ -570,13 +581,13 @@ prompt 也会消耗推理预算。长 prompt 会增加 `prefill` 时间，也会
 
 *图 9.6-1 Hard prompt compression*
 
-hard prompt compression 直接在离散文本上做选择、摘要或改写。常见做法包括按 query 相关性筛选段落、摘要长文档、改写冗长指令，或者根据任务难度动态控制 token 数。它通常更可解释，也更容易和检索、重排、摘要系统结合；风险是删掉看似冗余但实际关键的上下文。
+hard prompt compression 直接在离散文本上做选择、摘要或改写。图 9.6-1 对照 Original 与 SelectiveContext、LLMLingua、Nano-Capsulator 三条离散压缩管线，差别在用通用 LLM 还是 LoRA 小模型估计 token 重要性；常见做法还包括按 query 相关性筛选段落、摘要长文档、改写冗长指令，或者根据任务难度动态控制 token 数。它通常更可解释，也更容易和检索、重排、摘要系统结合；风险是删掉看似冗余但实际关键的上下文。
 
 ![图 9.6-2 Soft prompt compression](images/9-6-2-soft-prompt-compression.png)
 
 *图 9.6-2 Soft prompt compression*
 
-soft prompt compression 使用连续向量替代或补充自然语言 prompt。它可以把任务信息压到少量 embedding 中，适合固定任务或固定模板下的压缩；代价是可解释性较弱，跨任务泛化更依赖训练数据。只要这些向量仍作为 prefix 进入模型，就仍会参与前向和 attention，因此它减少的是文本 token 表达负担，不必然减少所有推理成本。
+soft prompt compression 使用连续向量替代或补充自然语言 prompt。图 9.6-2 对照 CC、GIST、AutoComp、ICAE、500xCompressor、xRAG、UniICL 等方案：压缩器把 instruction / context 编码成少量 embedding 或 compression token 再喂给 LLM。它可以把任务信息压到少量 embedding 中，适合固定任务或固定模板下的压缩；代价是可解释性较弱，跨任务泛化更依赖训练数据。只要这些向量仍作为 prefix 进入模型，就仍会参与前向和 attention，因此它减少的是文本 token 表达负担，不必然减少所有推理成本。
 
 ![图 9.6-3 DeepSeek-OCR prompt compression](images/9-6-3-deepseek-ocr.png)
 
@@ -594,14 +605,11 @@ Transformer 的 KV cache 来自显式保存所有历史 token 的 key/value。�
 
 SSM / Mamba / GatedDeltaNet 这类模型可以被看作更适合流式推理的记忆结构：不显式保存完整 KV cache，而是更新某种 hidden state。它们对长序列更友好，但能否保留精确长程检索能力取决于状态容量和训练方式。
 
-> [!NOTE]
-> 本节引用的 MiniMax / MiniMax-01 由 MiniMax 团队发表于 arXiv [2501.08313](https://arxiv.org/abs/2501.08313)（2025 年 1 月），采用 7:1 hybrid（7 个 linear attention 层 + 1 个 softmax attention 层）的设计；图 9.6-5 与图 9.6-6 来自该论文。
-
 ![图 9.6-5 MiniMax hybrid attention](images/9-6-5-minimax-hybrid-attention.png)
 
 *图 9.6-5 MiniMax hybrid attention*
 
-图 9.6-5 讲的是 hybrid attention 的结构动机。标准 softmax attention 擅长精确检索历史 token，但 KV cache 和长上下文成本高；linear attention、SSM 或递推层把历史压成低维状态，流式推理更友好，但可能丢失精确长程检索能力。Hybrid 结构把这些机制放在不同层或不同模块里组合，目标是在保留一部分全局检索能力的同时降低长序列 generation 成本。
+MiniMax-01（MiniMax 团队，arXiv [2501.08313](https://arxiv.org/abs/2501.08313)，2025 年 1 月）是这条路线的代表：每 7 个 lightning attention 层接 1 个 softmax attention 层，共 80 层，图 9.6-5 与图 9.6-6 来自该论文。图 9.6-5 是它的 hybrid attention 结构动机：标准 softmax attention 擅长精确检索历史 token，但 KV cache 和长上下文成本高；linear attention、SSM 或递推层把历史压成低维状态，流式推理更友好，但可能丢失精确长程检索能力。Hybrid 结构把这些机制放在不同层或不同模块里组合，目标是在保留一部分全局检索能力的同时降低长序列 generation 成本。
 
 ![图 9.6-6 MiniMax inference time](images/9-6-6-minimax-inference-time.png)
 
@@ -639,7 +647,7 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 
 *图 9.6-10 Speculative cascades models*
 
-图 9.6-10 展示的是 cascades 的模型层级：小模型先承担低成本生成或判断，大模型只在不确定、风险高或质量要求更高的片段介入。它和前面的 speculative sampling 都利用大小模型协作，但目标函数不同；这里更接近服务系统里的风险路由，通常不承诺严格保持某个 target model 的逐 token 分布。
+图 9.6-10 展示的是 cascades 的模型层级：小模型先承担低成本生成或判断，大模型只在模型把握不足、风险高或质量要求更高的片段介入。它和前面的 speculative sampling 都利用大小模型协作，但目标函数不同；这里更接近服务系统里的风险路由，通常不承诺严格保持某个 target model 的逐 token 分布。
 
 ![图 9.6-11 Speculative cascades demo](images/9-6-11-speculative-cascades-demo.gif)
 
@@ -711,8 +719,7 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 
 ## 来源与更新记录
 
-
-- 章节引用的 trace / video 资源：见 `sources/lectures/` 与 `sources/captions/lecture_*.md` 对应章节。
-- 链接复核：2026-09-04（[LLaDA2.0: Scaling Up Diffusion Language Models to 100B, arXiv:2512.15745](https://arxiv.org/abs/2512.15745)，Tiwei Bie 等 31 位作者按姓氏字母序署名，机构覆盖 Ant Group / Renmin University of China / Zhejiang University / Westlake University / Hong Kong University of Science and Technology 五所，v1 提交 2025-12-10 / v2 修订 2025-12-24；MiniMax-01 [arXiv:2501.08313](https://arxiv.org/abs/2501.08313) 引用回连到第 3 章与第 8 章；稀疏 attention 一节引用 [Native Sparse Attention (arXiv:2502.11089)](https://arxiv.org/abs/2502.11089) 与 [Sparse Transformer (arXiv:1904.10509)](https://arxiv.org/abs/1904.10509)；其余链接本次复核仍可访问）。
-- 推理系统与指标来源：[JAX Scaling Book: Inference](https://jax-ml.github.io/scaling-book/inference)（Transformer inference 综述，2025-02-04 出版）；[vLLM / PagedAttention](https://arxiv.org/abs/2309.06180)；[Orca (OSDI 2022, Gyeong-In Yu 等)](https://www.usenix.org/conference/osdi22/presentation/yu)，continuous batching 的 iteration-level scheduling 与 selective batching 出处；SGLang / RadixAttention；[TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/)（NVIDIA 官方文档，2026-09-04 查阅）；[Prompt Compression Survey (NAACL 2025)](https://aclanthology.org/2025.naacl-long.368/)；[Speculative decoding (arXiv:2211.17192)](https://arxiv.org/abs/2211.17192) 与 [Speculative sampling (arXiv:2302.01318)](https://arxiv.org/abs/2302.01318)。
-- 结构与压缩来源：[GQA](https://arxiv.org/abs/2305.13245)（uptraining：KV 投影 mean pooling + 5% 原始预训练 compute）、[DeepSeek-V2 / MLA](https://arxiv.org/abs/2405.04434)（ $d_c=512$、RoPE 额外 $d_h^R=64$，合计每 token 每层 576 维）、[CLA](https://arxiv.org/abs/2405.12981)、[Mistral 7B](https://arxiv.org/abs/2310.06825)（rolling buffer cache， $W=4096$）、[Longformer (arXiv:2004.05150)](https://arxiv.org/abs/2004.05150)、[Sparse Transformer](https://arxiv.org/abs/1904.10509)、[Native Sparse Attention (arXiv:2502.11089)](https://arxiv.org/abs/2502.11089)、[GPTQ](https://arxiv.org/abs/2210.17323)、[AWQ](https://arxiv.org/abs/2306.00978)、[pruning 与 distillation (arXiv:2407.14679)](https://arxiv.org/abs/2407.14679)、[Medusa (arXiv:2401.10774)](https://arxiv.org/abs/2401.10774)、[EAGLE (arXiv:2401.15077)](https://arxiv.org/abs/2401.15077)、prompt compression、DeepSeek-OCR、MiniMax-01 (arXiv:2501.08313，7 个 lightning attention 层后接 1 个 softmax attention 层，共 80 层)、S4 (arXiv:2111.00396)、Diffusion-LM (arXiv:2205.14217)、[LLaDA2.0 (arXiv:2512.15745)](https://arxiv.org/abs/2512.15745)、[Faster Cascades via Speculative Decoding (arXiv:2405.19261)](https://arxiv.org/abs/2405.19261)。
+- 官方来源：链接复核 2026-09-04（[LLaDA2.0: Scaling Up Diffusion Language Models to 100B, arXiv:2512.15745](https://arxiv.org/abs/2512.15745)，Tiwei Bie 等 31 位作者按姓氏字母序署名，机构覆盖 Ant Group / Renmin University of China / Zhejiang University / Westlake University / Hong Kong University of Science and Technology 五所，v1 提交 2025-12-10 / v2 修订 2025-12-24；MiniMax-01 [arXiv:2501.08313](https://arxiv.org/abs/2501.08313) 引用回连到第 3 章与第 8 章；稀疏 attention 一节引用 [Native Sparse Attention (arXiv:2502.11089)](https://arxiv.org/abs/2502.11089) 与 [Sparse Transformer (arXiv:1904.10509)](https://arxiv.org/abs/1904.10509)；其余链接本次复核仍可访问）。
+- 课程来源：CS336 2026 Lecture 10（inference workload、arithmetic intensity、KV cache 压缩、speculative sampling、continuous batching 与 PagedAttention），对应关系按 `sources/cs336-2026.md`。
+- 本节事实声明的来源指向——推理系统与指标：[JAX Scaling Book: Inference](https://jax-ml.github.io/scaling-book/inference)（Transformer inference 综述，2025-02-04 出版）；[vLLM / PagedAttention](https://arxiv.org/abs/2309.06180)；[Orca (OSDI 2022, Gyeong-In Yu 等)](https://www.usenix.org/conference/osdi22/presentation/yu)，continuous batching 的 iteration-level scheduling 与 selective batching 出处；SGLang / RadixAttention；[TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/)（NVIDIA 官方文档，2026-09-04 查阅）；[Prompt Compression Survey (NAACL 2025)](https://aclanthology.org/2025.naacl-long.368/)；[Speculative decoding (arXiv:2211.17192)](https://arxiv.org/abs/2211.17192) 与 [Speculative sampling (arXiv:2302.01318)](https://arxiv.org/abs/2302.01318)。
+- 本节事实声明的来源指向——结构与压缩：[GQA](https://arxiv.org/abs/2305.13245)（uptraining：KV 投影 mean pooling + 5% 原始预训练 compute）、[DeepSeek-V2 / MLA](https://arxiv.org/abs/2405.04434)（ $d_c=512$、RoPE 额外 $d_h^R=64$，合计每 token 每层 576 维）、[CLA](https://arxiv.org/abs/2405.12981)、[Mistral 7B](https://arxiv.org/abs/2310.06825)（rolling buffer cache， $W=4096$）、[Longformer (arXiv:2004.05150)](https://arxiv.org/abs/2004.05150)、[Sparse Transformer](https://arxiv.org/abs/1904.10509)、[Native Sparse Attention (arXiv:2502.11089)](https://arxiv.org/abs/2502.11089)、[GPTQ](https://arxiv.org/abs/2210.17323)、[AWQ](https://arxiv.org/abs/2306.00978)、[pruning 与 distillation (arXiv:2407.14679)](https://arxiv.org/abs/2407.14679)、[Medusa (arXiv:2401.10774)](https://arxiv.org/abs/2401.10774)、[EAGLE (arXiv:2401.15077)](https://arxiv.org/abs/2401.15077)、prompt compression、DeepSeek-OCR、MiniMax-01 (arXiv:2501.08313，7 个 lightning attention 层后接 1 个 softmax attention 层，共 80 层)、S4 (arXiv:2111.00396)、Diffusion-LM (arXiv:2205.14217)、[LLaDA2.0 (arXiv:2512.15745)](https://arxiv.org/abs/2512.15745)、[Faster Cascades via Speculative Decoding (arXiv:2405.19261)](https://arxiv.org/abs/2405.19261)。

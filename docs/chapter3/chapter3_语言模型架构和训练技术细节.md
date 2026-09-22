@@ -46,7 +46,7 @@ Transformer 模型的起源可以追溯到 2017 年，当时由 Google 研究团
 
 图 3.1-1 给出现代 decoder-only block 的标准骨架：左侧是输入到输出的纵向流（Token Embedding + Absolute Position Embeddings 相加 → Add & Dropout → N 个 Transformer Block → Norm → Linear → Softmax），右侧把单个 block 展开为 Causal Multi-Head Self-Attention、Add、Dropout、Position-Wise Feed-Forward、Norm 五个组件的串联加两条 residual。
 
-这套”attention + FFN + residual + norm”骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，差异有三：(1) 注意力改为 Causal Multi-Head Self-Attention（mask 掉未来位置），不再保留原始 encoder-decoder 之间的 cross-attention；(2) block 内 norm 位置从 Post-LN (Vaswani et al., 2017 §5.4) 改为 Pre-LN，成为后续 decoder-only LLM 的默认；(3) 位置编码方案与具体激活函数与原始 Transformer 不同。
+这套”attention + FFN + residual + norm”骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，差异有三：(1) 注意力改为 Causal Multi-Head Self-Attention（mask 掉未来位置），不再保留原始 encoder-decoder 之间的 cross-attention；(2) block 内 norm 位置从 Post-LN (Vaswani et al., 2017 §3.1) 改为 Pre-LN，成为后续 decoder-only LLM 的默认；(3) 位置编码方案与具体激活函数与原始 Transformer 不同。
 
 第 (1)(2) 点差异进入 §3.2 集中讨论的 norm 位置与注意力形式；第 (3) 点中位置编码进入 §3.2.4，激活函数进入 §3.2.3。
 
@@ -308,7 +308,7 @@ $$
 
 ![图 3.1-4 Feed-forward 网络](images/3-1-4-feed-forward.png)
 
-*图 3.1-4 原始 FFN 在每个位置独立执行两层 MLP，中间用 ReLU 提供非线性*
+*图 3.1-4 原始 Transformer block 里 Feed Forward 与 Add & Norm 的串联位置*
 
 原始 Transformer 论文《Attention Is All You Need》中使用的激活函数是 **ReLU**（Rectified Linear Unit），具体应用于**位置前馈网络** （Position-wise Feed-Forward Networks）。
 
@@ -355,7 +355,7 @@ ReLU 的**计算高效**，相比 Sigmoid/Tanh，ReLU 的导数计算简单（0 
 
 ![图 3.2-1 语言模型架构配置对比](images/3-2-1-model-configs.png)
 
-*图 3.2-1 把多代模型的 norm、FFN、位置编码和注意力决策排成同一张表，横轴是模型代际或家族*
+*图 3.2-1 把多代模型的 norm、FFN、位置编码和注意力决策排成同一张表*
 
 图中的表格适合用来观察趋同趋势，不适合作为固定排行榜。许多模型都从 Post-LN、ReLU、绝对位置编码逐步转向 Pre-norm/RMSNorm、门控 FFN、RoPE 或其变体，并在推理侧引入 GQA、MLA、CLA、SWA、NoPE 等减小 KV cache 或改善长上下文的设计。
 
@@ -372,11 +372,11 @@ ReLU 的**计算高效**，相比 Sigmoid/Tanh，ReLU 的导数计算简单（0 
 
 ![图 3.2-2 现代 Transformer 默认骨架](images/3-2-2-modern-transformer-defaults.png)
 
-*图 3.2-2 把上述默认骨架串成单个 dense decoder block，标注每个组件的输入 / 输出形状与参数来源*
+*图 3.2-2 把上述默认骨架串成单个 dense decoder block，标注每个组件的输入 / 输出形状与关键差异*
 
 ![图 3.2-3 架构设计取舍](images/3-2-3-architecture-design-decisions.png)
 
-*图 3.2-3 把学习效果、GPU 效率和训练稳定性三条曲线画在同一坐标平面，标注三者交叉的设计取舍区域*
+*图 3.2-3 把架构设计取舍按 Basics、Systems、Scaling laws、Data、Alignment 五列归类*
 
 > [!TIP]
 > 看新模型配置时，可以先扫四项：norm 位置与类型、FFN/激活、位置编码、注意力 KV cache 设计。它们通常比“用了多少层多少头”更能解释训练稳定性和推理成本。
@@ -424,11 +424,11 @@ $$
 
 ![图 3.2-5 Pre-norm 与 Post-norm 实验对比](images/3-2-5-pre-post-norm-results.png)
 
-*图 3.2-5 Pre-norm/Post-norm 的训练曲线和梯度行为对比，用来说明 norm 位置会影响深层网络稳定性*
+*图 3.2-5 Pre-norm 与 Post-norm 的收敛对比：左图为英越翻译 Dev BLEU，右上为 IWSLT 验证损失与 BLEU，右下为 BERT 预训练验证损失*
 
 采用预归一化配合其他稳定化技巧后，即使不使用**预热机制**，系统表现也能媲美甚至**优于**需要精细预热方案的**后归一化 LayerNorm**。左图展示了英语-越南语机器翻译（Salazar & Nguyen 2019）下的 Dev BLEU 收敛轨迹；右上是 Xiong 2020 在 IWSLT 机器翻译任务上的验证损失与 BLEU 曲线（同一任务的 Adam 优化器 × 预热对比）；右下是 BERT 在预训练步数上的验证损失对比，是当前图片中唯一跳出机器翻译场景的实验。
 
-关于预归一化的优势存在**多种解释**：有研究认为它能避免层间**梯度衰减**，保持**梯度规模恒定**；而未使用预热的后归一化会导致**梯度爆炸**（橙色曲线）。综合这些论点，预归一化本身被普遍接受为更稳定的训练架构选择——它通过把 LayerNorm 移到子层输入前来避免 LayerNorm 的可学习缩放叠加进 residual stream，从而保持 residual stream 的恒等通路。
+关于预归一化的优势存在**多种解释**：有研究认为它能避免层间**梯度衰减**，保持**梯度规模恒定**；而未使用预热的后归一化会导致**梯度爆炸**。综合这些论点，预归一化本身被普遍接受为更稳定的训练架构选择——它通过把 LayerNorm 移到子层输入前来避免 LayerNorm 的可学习缩放叠加进 residual stream，从而保持 residual stream 的恒等通路。
 
 如今，**预归一化和其他 LayerNorm 技巧被广泛用作训练大型神经网络时的稳定性辅助手段**。
 
@@ -507,7 +507,7 @@ FFN 去除偏置项 b 的理由几乎和 RMSNorm 一致，去除偏置项的想�
 
 ![图 3.2-7 ReLU&GeLU](images/3-2-7-relu-gelu.png)
 
-*图 3.2-7 把 ReLU、GeLU、SwiGLU / GeGLU 的曲线和对应模型族放在同一坐标系，便于比较硬截断、平滑和门控三种非线性形态*
+*图 3.2-7 ReLU 与 GeLU 的公式、函数曲线与常用模型，以及 SwiGLU / GeGLU 条目*
 
 **1. ReLU 函数**
 
@@ -599,7 +599,7 @@ Shazeer 的 GLU 变体实验（*GLU Variants Improve Transformer*, [arXiv:2002.0
 
 ![图 3.2-11 位置嵌入](images/3-2-11-position-embedding-types.png)
 
-*图 3.2-11 沿同一坐标轴展示四类位置编码：sinusoidal / 可学习绝对 / T5 相对偏置 / RoPE，标注每条曲线注入位置信息的位置*
+*图 3.2-11 四类位置编码的注入方式对照：sinusoidal、可学习绝对位置、相对位置与 RoPE*
 
 **1. 绝对嵌入（Absolute Embedding）**
 
@@ -711,17 +711,19 @@ $$
 \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right)V
 $$
 
+取位置 $m$ 的 token 在某个 head 上的 query 列向量 $q$ 与位置 $n$ 的 token 的 key 列向量 $k$，旋转后 $q_1 = R(m)\,q$ 、 $k_1 = R(n)\,k$ ，二者的点积为：
+
 $$
 \begin{aligned}
-Q_1 \cdot K_1^T &= R(m) \cdot R(n)^T \cdot QK^T\\
-&= R(m) \cdot R( -n) \cdot QK^T \\
-&= R(m-n) \cdot QK^T
+q_1^{\top} k_1 &= (R(m)\,q)^{\top} (R(n)\,k) \\
+&= q^{\top} R(m)^{\top} R(n)\, k \\
+&= q^{\top} R(n-m)\, k
 \end{aligned}
 $$
 
-我们为不同位置的 token 都乘以不同角度的旋转矩阵；在计算注意力时就会出现 $R(m-n)$，这正是两个 token 的相对位置信息。
+第二步到第三步用性质 1 的正交性 $R(m)^{\top}=R(-m)$ 与性质 4 的 $R(a+b)=R(a)R(b)$ ：绝对位置 $m$ 、 $n$ 各自消去，只留下相对位置 $n-m$ ，attention 分数因此直接由两个 token 的相对距离决定。
 
-高维 RoPE 的实现方式是把向量按相邻维度拆成多个二维子块，并在每个二维子空间内用不同频率独立旋转。这样内积中自然出现相对位置 $m-n$ ，同时保持实现简单。
+高维 RoPE 的实现方式是把向量按相邻维度拆成多个二维子块，并在每个二维子空间内用不同频率独立旋转。这样内积中自然出现相对位置 $n-m$ ，同时保持实现简单。
 
 矩阵 $R(m\theta)$ 是一个用于 RoPE 的旋转矩阵，它被设计为一个方阵，其中包含了余弦和正弦函数的值，这些值用于编码位置信息。矩阵的每一行和每一列对应于嵌入向量中的一个维度。矩阵的结构如下：
 
@@ -745,7 +747,7 @@ $$
 \theta_i = 10000^{-2i/d}
 $$
 
-其中， $i$ 是维度索引（从 0 开始）， $d$ 是嵌入向量的总维度。这一形式继承自 Vaswani 2017 的 long-term decay 表达（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864) §3.2.2 / §3.3）；RoFormer §3.2.2 Eq. 15 的旋转矩阵形式取 $10000^{-2(i-1)/d}$（ $i \in [1, d/2]$，one-indexed），§3.3 Properties of RoPE 文本形式取 $10000^{-2i/d}$（one-indexed，范围按上下文隐含），正文采用 zero-indexed 形式 $10000^{-2i/d}$（ $i \in [0, d/2-1]$），与 §3.2.2 矩阵形式给出同一组 $d/2$ 个角频率，仅 $i$ 起点差 1。
+其中， $i$ 是维度索引（从 0 开始）， $d$ 是嵌入向量的总维度。这一形式继承自 Vaswani 2017 的 long-term decay 表达（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864) §3.2.2 / §3.3）；RoFormer §3.2.2 Eq. 15 的旋转矩阵形式取 $10000^{-2(i-1)/d}$（ $i \in [1, d/2]$，one-indexed），§3.3 Properties of RoPE 文本形式取 $10000^{-2i/d}$，§3.4.3 的求和式把这一形式与 zero-indexed 范围 $i = 0, \dots, d/2-1$ 配对。正文采用 $10000^{-2i/d}$（ $i \in [0, d/2-1]$），与 §3.2.2 矩阵形式给出同一组 $d/2$ 个角频率，仅 $i$ 起点差 1。
 
 这种高维嵌入方法的关键是：每两个维度组成一对二维子空间，并按对应频率旋转。不同维度对拥有不同旋转速度，因此可以同时编码高频近距离信息和低频远距离信息。
 
@@ -767,7 +769,7 @@ RoPE 把位置信息注入到 Q/K 上，使注意力分数显式依赖相对距�
 
 ![图 3.2-12 KV cache](images/3-2-12-kv-cache.png)
 
-*图 3.2-12 把 KV cache 沿时间步铺成二维矩阵，每个新 token 只在最右侧追加一行 K/V，避免整张注意力矩阵的反复重算*
+*图 3.2-12 有无 KV cache 的分步计算对照，标出取自 cache 与被 mask 的中间值*
 
 自回归生成一次只产生一个新 token：模型读取已有上下文，输出下一个 token 的分布，再把新 token 接到上下文后继续生成。由于 generation 阶段不能像 prefill 那样完全并行，系统会缓存历史 token 的 K/V。这样生成新 token 时只需要为新 token 计算新的 Q/K/V，并复用历史 K/V，这个缓存就是 KV cache。
 
@@ -793,11 +795,11 @@ MQA 把压缩推到极限，代价是所有 query head 只能读同一份 K/V �
 
 GQA（grouped-query attention）在 MHA 和 MQA 之间折中：多个 query heads 共享一组 K/V heads。K/V groups 的数量决定 generation 阶段的 cache 体积和 HBM 读取量；groups 更多时，表示自由度也更接近 MHA。压缩谱系的两端是固定的：K/V groups = 1 退化到 MQA（cache 最省但所有 query head 共享同一份 K/V 表示），K/V groups = num_attention_heads 退化到 MHA（表达自由度最高但 cache 体积不变）。两个端点之间的中间区域，正是 GQA 在不同模型中扫描的位置。
 
-图 3.2-14 把这个 tradeoff 放到推理系统里：K/V groups 越少，cache 越省；groups 过少时，质量或表达能力可能受到影响。
+图 3.2-14 把这个 tradeoff 落到每个样本的生成耗时上：K/V groups 越少，耗时越接近 MQA 端点；groups 过少时，质量或表达能力可能受到影响。
 
 ![图 3.2-14 GQA 推理速度](images/3-2-14-gqa-speed.png)
 
-*图 3.2-14 把 GQA 推理速度与 KV head 数量画在同一张图上，标注 latency 与 throughput 的帕累托前沿*
+*图 3.2-14 每个样本生成耗时随 GQA 分组数的变化，分组越少耗时越接近 MQA*
 
 ### 3.2.5.5 MLA 多头潜在注意力（DeepSeek）
 
@@ -851,19 +853,15 @@ RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸�
 
 MLA 和 MHA 在困难基准上的比较显示，DeepSeek-V2 在显著减少 KV cache 的同时保持了较强性能。需要注意的是，MLA 的收益与具体模型、训练设置、kernel 实现和推理负载有关，不能只按缓存压缩比例线性外推端到端速度。
 
-![图 3.2-18 MLA 结构示意](images/3-2-18-mla-schema.png)
-
-*图 3.2-18 MLA 结构示意，compressed latent cache、上投影和 RoPE 专用路径共同决定缓存体积与额外计算*
-
-这张结构图把 MLA 的工程边界画清楚：cache 里保存的是压缩 latent，attention 计算时需要物化或合并相关投影；RoPE 相关维度单独处理，是为了避免位置旋转直接作用在共享 latent 上破坏相对位置信号。
+图 3.2-15 的结构图把 MLA 的工程边界画清楚：cache 里保存的是压缩 latent，attention 计算时需要物化或合并相关投影；RoPE 相关维度单独处理，是为了避免位置旋转直接作用在共享 latent 上破坏相对位置信号。
 
 ### 3.2.5.6 CLA 跨层共享 KV
 
-CLA（Cross-Layer Attention）的思路可以类比 GQA：GQA 在注意力头之间共享 K/V，CLA 则在层之间共享一部分 K/V。这样做的直接目标仍然是减少 KV cache，改善推理 latency/throughput 的帕累托边界。它不改变"根据 Q 读取历史 K/V"的基本形式，但改变了缓存的组织方式。Brandon 等人（*Reducing Transformer Key-Value Cache Size with Cross-Layer Attention*, [arXiv:2405.12981](https://arxiv.org/abs/2405.12981), 2024-05；MIT CSAIL & MIT-IBM Watson AI Lab）的报告显示 CLA 在 LLaMA2-7B / 70B 上分别取得约 2× / 2.4× 的 KV cache 压缩，并保持困惑度不退化。
+CLA（Cross-Layer Attention）的思路可以类比 GQA：GQA 在注意力头之间共享 K/V，CLA 则在层之间共享一部分 K/V。这样做的直接目标仍然是减少 KV cache，改善推理 latency/throughput 的帕累托边界。它不改变"根据 Q 读取历史 K/V"的基本形式，但改变了缓存的组织方式。Brandon 等人（*Reducing Transformer Key-Value Cache Size with Cross-Layer Attention*, [arXiv:2405.12981](https://arxiv.org/abs/2405.12981), 2024-05；MIT CSAIL & MIT-IBM Watson AI Lab）在 1B / 3B 规模的 Llama 风格模型上报告：CLA 把 KV cache 压缩 2×（与 MQA 组合相对 plain MQA 基线同样达到 2× reduction），困惑度退化小于 1%，个别设置还有改善。
 
-![图 3.2-19 CLA 结构示意](images/3-2-19-cla-diagram.png)
+![图 3.2-18 CLA 结构示意](images/3-2-18-cla-diagram.png)
 
-*图 3.2-19 CLA 结构示意，通过跨层复用 K/V 把 cache 压缩从 head 维度扩展到 layer 维度*
+*图 3.2-18 CLA 结构示意，通过跨层复用 K/V 把 cache 压缩从 head 维度扩展到 layer 维度*
 
 CLA 的收益来自减少每层都独立保存 K/V 的开销。代价是相邻层对历史信息的表示会被绑定在一起，因此它更像 cache 组织方式的改变，对 attention 语义的影响需要单独评估。
 
@@ -873,9 +871,9 @@ CLA 的收益来自减少每层都独立保存 K/V 的开销。代价是相邻�
 
 **3.2.5.7.1 SWA 滑动窗口注意力**
 
-![图 3.2-20 稀疏与结构化 attention](images/3-2-20-sparse-structured-attention.png)
+![图 3.2-19 稀疏与结构化 attention](images/3-2-19-sparse-structured-attention.png)
 
-*图 3.2-20 稀疏 attention 用局部窗口、跨块连接和结构化模式减少长序列中的 attention 计算*
+*图 3.2-19 稀疏 attention 用局部窗口、跨块连接和结构化模式减少长序列中的 attention 计算*
 
 稀疏 attention 的基本思路是为每个 query 限制可访问的历史位置：局部窗口保留邻近 token 的高分辨率信息，对角线或跨块模式负责把远处信息传回来。这样可以在表达能力和运行效率之间取得平衡。
 
@@ -885,9 +883,9 @@ OpenAI 的 Sparse Transformer（Child et al., 2019, [arXiv:1904.10509](https://a
 
 虽然这些是较早的思路，但现代实现方式有了新的发展。
 
-![图 3.2-21 sliding-window attention](images/3-2-21-sliding-window-attention.png)
+![图 3.2-20 sliding-window attention](images/3-2-20-sliding-window-attention.png)
 
-*图 3.2-21 sliding-window attention 只读取当前位置附近的窗口，堆叠多层后信息可以逐层向更远位置传播*
+*图 3.2-20 sliding-window attention 只读取当前位置附近的窗口，堆叠多层后信息可以逐层向更远位置传播*
 
 最近 LLaMA 4、Gemma 3、Gemma 4、OLMo 3 和 Cohere Command A 等模型采用了局部与全局混合的思路：大多数层使用带 RoPE 的 sliding-window attention，只处理局部上下文；间隔若干层再放入 full attention 层，用于跨窗口信息交换。
 
@@ -904,9 +902,9 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 标准 full attention 让每个 query token 与所有历史 token 计算注意力。长上下文下，这个全连接范式成本很高，而许多任务真正需要高分辨率读取的历史位置只占一部分。DSA 因此采用“先筛选、后计算”的结构：先用轻量模块扫描历史 token，估计重要性分数；再让得分较高的位置进入精细注意力计算。核心组件是 indexer 和 top-k selector。
 
-![图 3.2-22 DSA](images/3-2-22-dsa-indexer.png)
+![图 3.2-21 DSA](images/3-2-21-dsa-indexer.png)
 
-*图 3.2-22 DSA 先用轻量 indexer 估计历史 token 重要性，再把 top-k 位置交给精细 attention*
+*图 3.2-21 DSA 先用轻量 indexer 估计历史 token 重要性，再把 top-k 位置交给精细 attention*
 
 1. **Lightning Indexer**（闪电索引器）:
 
@@ -918,9 +916,9 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 这类方法可以作为长上下文适配路线，但是否能后训练接入已有模型，取决于目标模型的注意力分布、稀疏模块训练预算和服务端 kernel 支持。
 
-![图 3.2-23 DSA 实验](images/3-2-23-dsa-experiment.png)
+![图 3.2-22 DSA 实验](images/3-2-22-dsa-experiment.png)
 
-*图 3.2-23 DSA 实验同时报告质量和速度，用于判断稀疏读取是否真的带来端到端收益*
+*图 3.2-22 DSA 实验同时报告质量和速度，用于判断稀疏读取是否真的带来端到端收益*
 
 相关实验通常会同时报告质量与速度：稀疏注意力若能维持接近 full attention 的任务表现，同时在长序列的 decode、forward 和 backward 阶段减少计算，就具备工程吸引力。理论复杂度只是第一步，indexer 成本、top-k 选择开销和 kernel 实现同样会决定最终收益。
 
@@ -928,23 +926,23 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 **CSA 的全称是 Compressed Sparse Attention，压缩稀疏注意力，HCA 的全称是 Heavily Compressed Attention，重度压缩注意力**。
 
-![图 3.2-24 DeepSeek-V4的评测和资源占用](images/3-2-24-deepseek-v4-evaluation-resource.png)
+![图 3.2-23 DeepSeek-V4的评测和资源占用](images/3-2-23-deepseek-v4-evaluation-resource.png)
 
-*图 3.2-24 DeepSeek-V4 把资源占用和评测结果放在同一张快照里，便于观察注意力压缩是否换来可接受质量*
+*图 3.2-23 DeepSeek-V4 把资源占用和评测结果放在同一张快照里，便于观察注意力压缩是否换来可接受质量*
 
-图 3.2-24 把资源占用与评测结果放在同一张快照里。结合 [`DeepSeek-V4-Pro/config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 的字段（`index_topk` / `compress_ratios` / `index_n_heads` / `index_head_dim` / `sliding_window` 等），可以按三条线理解这个结构：CSA/DSA/HCA 负责压缩与稀疏选择长历史；滑动窗口分支和局部 RoPE 负责保留近邻上下文与位置关系；单 KV 头、共享 KV 与 grouped output projection 则共同指向更小的 KV cache、更低的 HBM 带宽压力和更可控的长上下文推理成本。
+图 3.2-23 把资源占用与评测结果放在同一张快照里。结合 [`DeepSeek-V4-Pro/config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 的字段（`index_topk` / `compress_ratios` / `index_n_heads` / `index_head_dim` / `sliding_window` 等），可以按三条线理解这个结构：CSA/DSA/HCA 负责压缩与稀疏选择长历史；滑动窗口分支和局部 RoPE 负责保留近邻上下文与位置关系；单 KV 头、共享 KV 与 grouped output projection 则共同指向更小的 KV cache、更低的 HBM 带宽压力和更可控的长上下文推理成本。
 
-![图 3.2-25 DeepSeek V4 attention](images/3-2-25-deepseek-v4-attention.png)
+![图 3.2-24 DeepSeek V4 attention](images/3-2-24-deepseek-v4-attention.png)
 
-*图 3.2-25 标出每条分支承担的上下文尺度：CSA 高分辨率稀疏块、HCA 低分辨率全局背景、sliding-window 处理近邻、shared KV 与 grouped output projection 共同降低 cache 体积*
+*图 3.2-24 标出每条分支承担的上下文尺度：CSA 高分辨率稀疏块、HCA 低分辨率全局背景、sliding-window 处理近邻、shared KV 与 grouped output projection 共同降低 cache 体积*
 
 CSA 和 HCA 混合注意力架构以 MQA 风格的共享 KV 为基础。核心逻辑是分工：CSA 用较低压缩率和 indexer 保留高分辨率关键块，HCA 用高压缩率提供低成本全局背景，滑动窗口分支负责最近上下文的细粒度依赖。
 
 **3.2.5.7.3.1 CSA：压缩与稀疏的平衡**
 
-![图 3.2-26 CSA 结构](images/3-2-26-csa-structure.png)
+![图 3.2-25 CSA 结构](images/3-2-25-csa-structure.png)
 
-*图 3.2-26 CSA 先把连续 token 压成块级 KV 表征，再用稀疏选择保留高价值历史块*
+*图 3.2-25 CSA 先把连续 token 压成块级 KV 表征，再用稀疏选择保留高价值历史块*
 
 CSA 的设计哲学是在大幅降低计算量的同时，保留对关键块的高分辨率注意力。它分两步走：**先压缩，后稀疏选择**。
 
@@ -958,16 +956,16 @@ CSA 使用可学习的加权压缩机制：模型会为每个 token 计算压缩
 
 压缩后，如果对所有块做密集注意力，复杂度依然是平方级的。CSA 接着用稀疏注意力只挑选最相关的块。
 
-先使用**闪电索引器**快速计算当前查询 token 与所有压缩后 KV 块的相关性分数。根据索引分数，只为当前查询 token 保留分数最高的 $k$ 个压缩 KV 块。若原序列长度记为 $S$ 、压缩比记为 $m$（每 $m$ 个 token 合成一个压缩块），块级密集注意力的复杂度为 $O((S/m)^2)$；稀疏选择 top- $k$ 块后进一步降为 $O(k)$，与原始序列长度 $S$ 解耦，但实际 wall-clock 还需计入闪电索引器自身的开销。在 V4 中，Flash 的 **k=512**，Pro 的 **k=1024**；Pro 的这个数字就写在 `DeepSeek-V4-Pro/config.json` 的 `index_topk: 1024` 里，配套的闪电索引器规格是 `index_n_heads: 64`、`index_head_dim: 128`。它和 MoE routing 的 top-k 是两个独立旋钮：同一份 config 中 MoE 侧写的是 `num_experts_per_tok: 6`、`n_routed_experts: 384`，`index_topk` 控制稀疏注意力挑多少个压缩 KV 块，`num_experts_per_tok` 控制每个 token 激活多少个专家。
+先使用**闪电索引器**快速计算当前查询 token 与所有压缩后 KV 块的相关性分数。根据索引分数，只为当前查询 token 保留分数最高的 $k$ 个压缩 KV 块。若原序列长度记为 $S$ 、压缩比记为 $m$（每 $m$ 个 token 合成一个压缩块），块级密集注意力在压缩序列上两两打分，复杂度为 $O((S/m)^2)$ 。稀疏选择 top- $k$ 块后按查询粒度计：每个查询 token 只读 $k$ 个块、共 $km$ 个 cache 条目，单个查询的读取量不随 $S$ 增长，序列总量为 $O(Sk)$ ；实际 wall-clock 还需计入闪电索引器为全部压缩块打分的开销。在 V4 中，Flash 的 **k=512**，Pro 的 **k=1024**；Pro 的这个数字就写在 `DeepSeek-V4-Pro/config.json` 的 `index_topk: 1024` 里，配套的闪电索引器规格是 `index_n_heads: 64`、`index_head_dim: 128`。它和 MoE routing 的 top-k 是两个独立旋钮：同一份 config 中 MoE 侧写的是 `num_experts_per_tok: 6`、`n_routed_experts: 384`，`index_topk` 控制稀疏注意力挑多少个压缩 KV 块，`num_experts_per_tok` 控制每个 token 激活多少个专家。
 
 
 CSA 层执行流程可以概括为：先对 KV cache 做可学习的加权压缩，再利用闪电索引器低成本选出最相关的 top-k 块，最终核心 attention 只在稀疏选择的块上进行计算。
 
 **3.2.5.7.3.2 HCA：极高压缩率的全局背景**
 
-![图 3.2-27 HCA 结构](images/3-2-27-hca-structure.png)
+![图 3.2-26 HCA 结构](images/3-2-26-hca-structure.png)
 
-*图 3.2-27 HCA 用更高压缩率维护低成本全局背景，与 CSA 的稀疏高分辨率读取互补*
+*图 3.2-26 HCA 用更高压缩率维护低成本全局背景，与 CSA 的稀疏高分辨率读取互补*
 
 HCA 的目标是极低成本地维护一个覆盖十万级 token 的全局背景视野。它只做压缩，不做稀疏选择。
 
@@ -997,7 +995,7 @@ $$
 S_t = \gamma_t S_{t-1} + k_t v_t^\top,\quad y_t = q_t^\top S_t + v_t^\top D
 $$
 
-其中 $\gamma_t=f(x_t)$ 控制旧状态保留程度。这样做的目标是保留线性时间推理的优势，同时通过 gating 提升表达能力。此处沿 fla 库 / chip code 写法取 $S_t \in \mathbb{R}^{d_k \times d_v}$，于是 $k_t v_t^\top$ 形状为 $d_k \times d_v$，与 $S_t$ 同形；论文 §2 与 Algorithm 1 取转置约定 $S_t \in \mathbb{R}^{d_v \times d_k}$，写成 $S_t = \gamma_t S_{t-1} + v_t k_t^\top,\ y_t = S_t q_t + D \odot x$。两种写法互为转置，逐元素含义一致。
+其中 $\gamma_t=f(x_t)$ 控制旧状态保留程度。这样做的目标是保留线性时间推理的优势，同时通过 gating 提升表达能力。此处沿 fla 库写法取 $S_t \in \mathbb{R}^{d_k \times d_v}$，于是 $k_t v_t^\top$ 形状为 $d_k \times d_v$，与 $S_t$ 同形；Gated DeltaNet 论文 §2.1 把 Mamba-2 的这条线性递推写在转置约定 $S_t \in \mathbb{R}^{d_v \times d_k}$ 下（ $d_k$ 与 $d_v$ 分别是 query/key 与 value 的 head 维度），同一递推转置后写成 $S_t = \gamma_t S_{t-1} + v_t k_t^\top,\ y_t = S_t q_t + D \odot x$。两种写法互为转置，逐元素含义一致。
 
 实践中的落地形态是 hybrid attention：一部分层使用线性/状态空间类模块，一部分层保留 full attention，以折中长上下文效率和复杂推理质量。MiniMax-01（[arXiv:2501.08313](https://arxiv.org/abs/2501.08313)）用 lightning attention + softmax attention + MoE 的 7:1 组合（线性注意力层数: softmax attention 层数 = 7:1）；Nemotron-H（[arXiv:2504.03624](https://arxiv.org/abs/2504.03624)）把 self-attention 层压到总层数的约 8%（8B 版 52 层里 4 层 attention，56B 版 118 层里 10 层），其余层由 Mamba-2 与 FFN 各占一半交替排布；Qwen3-Next（[Qwen3-Next blog](https://qwen.ai/blog?id=qwen3-next)）用 Gated DeltaNet + full attention 的 3:1 组合。
 
@@ -1009,7 +1007,7 @@ $$
 S_t = \alpha_t\,(I - \beta_t\, k_t k_t^\top)\,S_{t-1} + \beta_t\, k_t v_t^\top
 $$
 
-其中 $\alpha_t$ 与 $\beta_t$ 是两个独立 gate。这里的状态约定沿 Mamba-2 / fla 库写法取 $S_t \in \mathbb{R}^{d_k \times d_v}$，于是 $(I - \beta_t k_t k_t^\top) \in \mathbb{R}^{d_k \times d_k}$ 从左侧作用在 $S_{t-1}$ 上，delta 外积写成 $k_t v_t^\top$（形状 $d_k \times d_v$，与 $S_t$ 同形），对应 [fla 库的 gated delta net 实现](https://github.com/sustcsonglin/flash-linear-attention)。
+其中 $\alpha_t$ 与 $\beta_t$ 是两个独立 gate。这里的状态约定沿 fla 库写法取 $S_t \in \mathbb{R}^{d_k \times d_v}$，于是 $(I - \beta_t k_t k_t^\top) \in \mathbb{R}^{d_k \times d_k}$ 从左侧作用在 $S_{t-1}$ 上，delta 外积写成 $k_t v_t^\top$（形状 $d_k \times d_v$，与 $S_t$ 同形），对应 [fla 库的 gated delta net 实现](https://github.com/sustcsonglin/flash-linear-attention)。
 
 [Gated DeltaNet 论文](https://arxiv.org/abs/2412.06464) §3.1 的状态更新式取转置约定 $S_t \in \mathbb{R}^{d_v \times d_k}$，因此写成 $S_t = S_{t-1}\bigl(\alpha_t (I - \beta_t k_t k_t^\top)\bigr) + \beta_t v_t k_t^\top$，转移矩阵从右侧作用、delta 外积用 $v_t k_t^\top$。两种写法互为转置，逐元素含义一致。
 
@@ -1047,11 +1045,11 @@ $$
 d_{\text{ff}} = \frac{2}{3} \cdot 4 d_{\text{model}} = \frac{8}{3} d_{\text{model}} \approx 2.66 d_{\text{model}}
 $$
 
-观察现有模型会发现，许多都遵循这个经验法则，**$8/3 \approx 2.66$**。图 3.3-1 在横轴上把不同模型族并排，纵轴给出 $d_{\text{ff}}/d_{\text{model}}$ 的实测值，标注 GLU 经验值 $8/3$ 与非 GLU 经验值 $4$ 的位置。
+观察现有模型会发现，许多都遵循这个经验法则，**$8/3 \approx 2.66$**。图 3.3-1 把不同模型族的 $d_{\text{ff}}/d_{\text{model}}$ 实测值排成对照表。
 
 ![图 3.3-1 d_ff&d_model](images/3-3-1-ffn-model-dim-ratio.png)
 
-*图 3.3-1 横轴为不同模型族，纵轴为 $`d_{\text{ff}}/d_{\text{model}}`$ 实测值，标注 GLU 经验值 $`8/3`$ 与非 GLU 经验值 $`4`$ 的位置*
+*图 3.3-1 各模型族 $`d_{\text{ff}}/d_{\text{model}}`$ 实测值对照表*
 
 以 PaLM 为例，它虽然是 SwiGLU 模型，但把 $d_{\text{ff}}$ 直接设为 $4d_{\text{model}}$，没有做 2/3 缩放。LLaMA-2 70B 与 Mistral-7B v0.1 落在 3.5 倍附近：LLaMA-2 70B 的 `hidden_size = 8192`、`intermediate_size = 28672`，Mistral-7B v0.1 的 `hidden_size = 4096`、`intermediate_size = 14336`，两者都是 $d_{\text{ff}}/d_{\text{model}} = 3.5$。两个模型都用 GQA（`num_key_value_heads = 8`），共享 KV 省下的预算被重新分配给 MLP，于是在 $8/3$ 的基础上再乘约 1.33。
 
@@ -1135,7 +1133,7 @@ Google 的 Yi Tay 等人研究了深度与宽度在上游和下游任务中的�
 
 ![图 3.3-7 dropout ratio](images/3-3-7-dropout-weight-decay.png)
 
-*图 3.3-7 横轴按模型发布年份排布，纵轴分别给出 dropout 与 weight decay 的设置，圆点大小表示训练 token 量级*
+*图 3.3-7 各模型预训练 dropout 与 weight decay 设置对照表*
 
 许多旧模型在预训练期间使用了 dropout：原始 Transformer、GPT-2、GPT-3、T5、OPT 与 Qwen 14B 的 dropout 都是 0.1，其中 GPT-2、GPT-3、OPT 与 Qwen 14B 同时配 weight decay 0.1，原始 Transformer 与 T5 的 weight decay 为 0。较新的模型把 dropout 记为 0，只保留 weight decay：T5 v1.1 与 PaLM 的 dropout 为 0，LLaMA 的 dropout 为 0、weight decay 为 0.1；Qwen 14B 是这一趋势里的例外。新模型的训练设置披露也常省略 dropout 这一项。
 
@@ -1175,7 +1173,7 @@ OLMo2 论文提供了一个很典型的稳定性案例：仅看 loss 曲线时�
 z-loss 是一种 softmax 归一化器正则化技术，约束 **softmax 分母（归一化因子 Z）过大或过小** 的情况，从而稳定训练过程。它作用在最终 softmax logits 上的形式最早出现在 Mesh TensorFlow 代码库（[Shazeer et al., 2018](https://arxiv.org/abs/1811.02084)）；ST-MoE（[arXiv:2202.08906](https://arxiv.org/abs/2202.08906)）把同一思路改造成用于 router 的 router z-loss，并在论文里写明这是对 Mesh TensorFlow 中 final softmax logits z-loss 的改编。PaLM（Chowdhery et al., 2022, [arXiv:2204.02311](https://arxiv.org/abs/2204.02311)）在训练设置里给出了这条被广泛引用的写法：辅助损失取 $10^{-4} \cdot \log^2 Z$，目标是让 $\log Z$ 保持接近 0。
 
 $$
-\mathcal{L}_{\text{z-loss}} = \lambda \cdot \log^2 Z
+\mathcal L_{\text{z-loss}} = \lambda \cdot \log^2 Z
 $$
 
 其中：
@@ -1250,7 +1248,7 @@ $$
 
 当 logits 大幅超过 soft cap 时，tanh 函数会接近 1，整体输出被限制在 cap 附近。因此，soft-capping 可以看成对 logits 的平滑裁剪。它的采用面比 QK norm 和 z-loss 窄：Gemma 2 同时在 attention 和输出层用了软截断，而 OLMo 2 的稳定性配方是 RMSNorm + 非残差 post-norm + QK norm + z-loss，并没有引入 tanh 软截断。
 
-另一组证据来自 NVIDIA 关于 LLM 训练稳定性的实验（*Methods of improving LLM training stability*, [arXiv:2410.16682](https://arxiv.org/abs/2410.16682)）：在同一套 bf16 设置下，基线困惑度是 11.19，logit soft cap 单独使用时为 11.24，落在 ±0.1 置信区间内，与基线没有显著差别；QK norm 单独使用把困惑度降到 10.84（表 4 最低），QK-FC norm（QK + Proj + FC2 norm）降到 10.87，QKV norm 降到 10.85，QK norm + cap（同时施加 QK norm 与 logit soft cap）降到 11.00。QKV norm 与 QK norm + cap 都允许 max stable learning rate 提升至 1.5×（基线在 40e-3 发散，这两档在 60e-3 仍能收敛），因此 QK norm + cap 的额外价值主要在允许更激进的学习率而不发散，而非单点困惑度改善；QK norm 单独使用虽然 perplexity 最佳（10.84），但 max stable LR 与 baseline 相同（≤40e-3）。
+另一组证据来自 NVIDIA 关于 LLM 训练稳定性的实验（*Methods of improving LLM training stability*, [arXiv:2410.16682](https://arxiv.org/abs/2410.16682)）：在同一套 bf16 设置下，基线困惑度是 11.19，logit soft cap 单独使用时为 11.24，落在 ±0.1 置信区间内，与基线没有显著差别；QK norm 单独使用把困惑度降到 10.84（表 4 最低），QK-FC norm（QK + Proj + FC2 norm）降到 10.87，QKV norm 降到 10.85，QK norm + cap（同时施加 QK norm 与 logit soft cap）降到 11.00。QKV norm 与 QK norm + cap 的 max stable learning rate 都达到 60e-3，相对 QK norm 单独使用的 40e-3 提升 1.5×；基线的 max stable LR 为 6e-3（8e-3 发散），QK norm 单独用到 40e-3（60e-3 发散）。因此 QK norm + cap 的价值在允许比 QK norm 单独更激进的学习率而不发散；QK norm 单独使用时 perplexity 最佳（10.84）。
 
 ## 3.5 总结与下章衔接
 

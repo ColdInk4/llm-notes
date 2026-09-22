@@ -16,11 +16,11 @@ LLM 推理能力既是可观察的生成行为，也是消耗系统预算的训�
 
 ## 推理能力的研究案例
 
-本节先用三个近期公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖图论与组合（2025 年 Knuth）、理论物理的解析推导（2026 年 Brenner 等）和代数几何中的特征值计算（2026 年 Feng）三类典型应用，能力、概率与系统代价的拆解见后续 §3 预训练与解码、§4 后训练、§5 CoT、§6 Prompt 与 §7 外部工具搜索。
+本节先用三个近期公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖图论与组合（2026 年 Knuth）、理论物理的解析推导（2026 年 Brenner 等）和经典 Lie 群上的特征值计算（2026 年 Feng）三类典型应用，能力、概率与系统代价的拆解见后续 §3 预训练与解码、§4 后训练、§5 CoT、§6 Prompt 与 §7 外部工具搜索。
 
-- Donald Knuth 在 2025 年的 [PDF *The Claude cycle in Stanford graph theory*](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf) 中记录了 Claude（Anthropic）在图论开放问题上的独立发现，并把这条新构造的图论环命名为 *Claude cycle*。
+- Donald Knuth 在 2026 年的 [PDF *Claude's Cycles*](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf) 中记录了 Claude Opus 4.6（Anthropic）求解一个图论开放问题的过程，并把 Claude 构造的 Hamilton 环称为 *Claude's cycle*。
 - Brenner（Google Research 与 Harvard SEAS）、Cohen-Addad（Google Research）和 Woodruff（Google Research 与 Carnegie Mellon 联合）在 [arXiv:2603.04735 *Solving an Open Problem in Theoretical Physics using AI-Assisted Discovery*](https://arxiv.org/abs/2603.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
-- Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：核心数学内容由内部推理代理 _Aletheia_（基于 Gemini Deep Think 构建）完整生成，论文把 Feng–Yun–Zhang 在 [FYZ25a] 中只覆盖了若干特殊情形的 eigenweights 推到全部四个经典 Lie 群族（Type A、B、C、D）的一般情形；论文正文给出 Type A（GL_n）、Type C（PSp_{2n}）与 Type D（PSO_{2n}）的完整证明。人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
+- Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：核心数学内容由内部推理代理 _Aletheia_（基于 Gemini Deep Think 构建）完整生成，论文把 Feng–Yun–Zhang 在 [FYZ25a] 中只覆盖了若干特殊情形的 eigenweights 推到 Type A（GL_n）、Type C（PSp_{2n}）与 Type D（PSO_{2n}）三个群族的一般情形（Type B 结果沿用 FYZ25a），论文正文给出这三个群族的完整证明。人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
 
 三个案例从不同角度展示同一类机制：模型负责生成推理轨迹和数学构造，作者负责设定目标、组织验证与最终叙述。CoT、多路径采样与工具扩展主题随后展开；推理行为既可以由模型直接产生，也可以由作者代理作为中间环节。
 
@@ -110,7 +110,7 @@ $$
 
 *专题图 5 多路径 CoT 解码过程*
 
-专题图 5 把这种机制展开成多步搜索：每一步都保留多个候选 token，候选 token 继续扩展成多条推理路径，再在路径级别比较置信度、答案一致性或外部验证信号。它适合零训练地挖掘预训练模型的潜在能力，代价是需要维护更多 candidate trace，增加 generation token、KV cache 和调度压力。
+专题图 5 比较了在不同解码步引入备选 token 的效果：从第一步的 top-k 候选继续生成，能展开出互不相同的推理路径，越靠后的分支越受已生成前缀的牵制。论文默认在第一步保留 $k = 10$ 个候选、之后按贪心解码走完，再按答案 token 上的平均置信度差给路径排序。多路径 CoT 解码适合零训练地挖掘预训练模型的潜在能力，代价是需要维护更多 candidate trace，增加 generation token、KV cache 和调度压力。
 
 从系统侧看，多路径 CoT 会把一次问题求解变成多条 candidate trace 的生成与筛选。能力侧关注正确率和稳定性；系统侧关注候选条数、平均长度、接受规则、是否共享前缀缓存，以及这些请求能否在 continuous batching 中高效合并。
 
@@ -180,9 +180,9 @@ Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。Mor Ge
 
 ![专题图 10 类比推理提示对推理任务求解的帮助](images/reasoning-10-analogical-reasoning.png)
 
-*专题图 10 类比推理提示对推理任务求解的帮助（覆盖 GSM8K、MATH、Codeforces、BIG-Bench 推理任务）*
+*专题图 10 类比推理提示对推理任务求解的帮助*
 
-专题图 10 展示了类比推理的使用方式。直接要求模型解复杂任务时，模型可能找不到合适路径；先要求模型回忆一个相关问题，再求解当前问题，可以把参数中已有的相似结构调出来。这个机制是在检索和重组内部模式：prompt 改变了模型进入解题空间的位置，后续解码再把相似模板迁移到当前问题。
+专题图 10 展示了类比推理的使用方式。直接要求模型解复杂任务时，模型可能找不到合适路径；先要求模型回忆一个相关问题，再求解当前问题，可以把参数中已有的相似结构调出来。这个机制是在检索和重组内部模式：prompt 改变了模型进入解题空间的位置，后续解码再把相似模板迁移到当前问题。作者在 GSM8K、MATH、Codeforces 和 BIG-Bench 推理任务上评估了这一提示。
 
 综合这些线索，LLM 的问题求解能力未必来自单一机制。模型既会记住具体片段，也会在参数里形成可迁移结构；解码、prompt 和后训练决定这些结构能否被稳定触发，并把它们转化为可见的推理行为。
 
@@ -200,7 +200,7 @@ Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。Mor Ge
 
 专题图 11 可以理解为搜索空间重加权。预训练模型已经覆盖了许多候选轨迹，其中既有正确推理，也有错误捷径、冗长模板和格式化噪声。RLVR 用可验证奖励提高正确轨迹的相对概率，使小规模采样更容易命中有效路径。
 
-但 Yue 等人的实验同时给出反向证据（专题图 11 Problem B 与右侧 Omni-MATH-Train 曲线）：对于基座模型原本就能找到正确路径的部分题目，RLVR 训练会把这些路径的概率压低，使对应题目在新策略下变成不可解；随着训练步数推进，平均 pass@1 在提升，但 pass@256 在下降，说明可解题集合在收缩。这与 §3.3 Pass@k：基座模型也包含正确轨迹 部分的结论一致——RLVR 的能力上限仍由基座模型的分布决定，它主要重排并稳定调用已有轨迹，副作用是在覆盖范围和平均性能之间做权衡。RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度偏差，还包括这一类能力边界收缩；与 [第 13 章 §13.4.1 R1-Zero：纯 GRPO 起点](../chapter13/chapter13_可验证奖励的强化学习.md) 案例中"a-ha moment 在 base 模型中已出现"的观察共同指向同一个结论：基座模型已经把可解题的上限写在分布里，后训练主要是重排触达概率。
+但 Yue 等人的实验同时给出反向证据（专题图 11 Problem B 与右侧 Omni-MATH-Train 曲线）：对于基座模型原本就能找到正确路径的部分题目，RLVR 训练会把这些路径的概率压低，使对应题目在新策略下变成不可解；随着训练步数推进，平均 pass@1 在提升，但 pass@256 在下降，说明可解题集合在收缩。这与 §3.3 Pass@k：基座模型也包含正确轨迹 部分的结论一致——RLVR 的能力上限仍由基座模型的分布决定，它主要重排并稳定调用已有轨迹，副作用是在覆盖范围和平均性能之间做权衡。RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度偏差，还包括这一类能力边界收缩；与 [第 13 章 §13.4.1 R1-Zero：纯 GRPO 起点](../chapter13/chapter13_可验证奖励的强化学习.md) 案例中"aha moment 在 base 模型中已出现"的观察共同指向同一个结论：基座模型已经把可解题的上限写在分布里，后训练主要是重排触达概率。
 
 后训练常见方法包括：
 
@@ -246,7 +246,7 @@ Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。Mor Ge
 
 专题图 13 的机制是比较 Transformer 各层对同一 token 的预测分布变化。若某个 token 在浅层就基本稳定，它通常承担语法、模板或填充表达；若预测分布到深层才稳定，它更可能承担关键计算或推断。DTR 与准确率正相关，说明有效推理不只看输出长度，还要看生成 token 是否真的调用了更深层计算。
 
-DTR 仍然是统计性指标。完整推理链需要浅层组织语言，也需要深层完成关键判断；未来如果要用 DTR 控制 CoT，还需要结合 token 不确定性、路径一致性、外部验证器和任务难度。Qwen 3 公开的混合思维模式（hybrid thinking modes）也沿着这条线索前进：通过 thinking 与 non-thinking 数据混合、特殊终止标记和 thinking budget，让模型在不同任务上调节推理长度。
+DTR 仍然是统计性指标。完整推理链需要浅层组织语言，也需要深层完成关键判断；未来如果要用 DTR 控制 CoT，还需要结合 token 置信度、路径一致性、外部验证器和任务难度。Qwen 3 公开的混合思维模式（hybrid thinking modes）也沿着这条线索前进：通过 thinking 与 non-thinking 数据混合、特殊终止标记和 thinking budget，让模型在不同任务上调节推理长度。
 
 到这里，读者应能区分 CoT 长度、有效深度和外部奖励信号对最终行为的不同影响。
 
@@ -288,7 +288,7 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 
 *专题图 14 智能体思考能力的四代演进*
 
-专题图 14 把推理与外部动作的结合拆成四个阶段：第一代「无思」直接产出答案；第二代「规划」在动作前先生成计划；第三代「工具」让模型调用搜索、数据库、代码执行器或浏览器；第四代「交错」让思考与工具调用在每一步中交替进行。能力上每一代都在前一代基础上叠加新维度（规划、工具、交错），但模型参数本身保持不变，改变的是推理阶段如何组合内部思考与外部动作。
+专题图 14 把推理与外部动作的结合拆成四个阶段：第一代「无思」直接产出答案；第二代「规划」在动作前先生成计划；第三代「工具」让模型调用搜索、数据库、代码执行器或浏览器；第四代「交错」让思考与工具调用在每一步中交替进行。能力上每一代都在前一代基础上叠加新维度（规划、工具、交错），四代之间的区别在于推理阶段如何组合内部思考与外部动作。
 
 检索增强生成（RAG）是最常见的形式。系统先从外部知识库检索相关文档，再把文档片段作为上下文输入模型，从而减少过时知识和幻觉。Deep Research 类系统把一次回答拆成多轮搜索、阅读、筛选和综合，适合开放式研究任务。
 
@@ -302,14 +302,14 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 
 读完五条主线后，需要把能力、成本和工程判断放回同一张账本：CoT 增加 generation tokens，多路径采样增加 candidate trace，RLVR 需要大量 rollout，工具搜索会引入多轮调用和长上下文。能力提升和系统成本必须一起评估：正确率、稳定性、latency、throughput、KV cache、batching 和验证信号质量属于同一条工程链路。判断一条推理改进是否成立，至少要回答两件事：它激活的是哪一类预训练结构？它把什么代价压到了哪一段服务预算上？
 
-随着高质量人类文本逐渐接近可获取上限，合成数据和自我改进会继续成为重要方向。这条路线可以借鉴 AlphaGo Zero 的闭环思想，但语言模型面对的大多数开放式任务没有完美规则验证器。数学、代码等可验证任务可以接入客观验证器，把对错信号直接喂给 RL；开放式任务缺乏稳定奖励函数，反复用自身生成数据训练时，reward hacking、分布收窄和模型坍塌三类失效模式会同时出现，能力随训练步数呈先升后降的曲线。借鉴自我博弈思想时，verifier 的稳定性与覆盖度直接决定可学习信号的有效性；不可验证领域的 reward model 始终是真实偏好的代理。
+随着高质量人类文本逐渐接近可获取上限，合成数据和自我改进会继续成为重要方向。这条路线可以借鉴 AlphaGo Zero 的闭环思想，但语言模型面对的大多数开放式任务没有完美规则验证器。数学、代码等可验证任务可以接入客观验证器，把对错信号直接喂给 RL；开放式任务缺乏稳定奖励函数，反复用自身生成数据训练时，reward hacking、分布收窄和模型坍塌三类失效模式都可能出现，能力随训练步数常呈先升后降的经验曲线。借鉴自我博弈思想时，verifier 的稳定性与覆盖度直接决定可学习信号的有效性；不可验证领域的 reward model 始终是真实偏好的代理。
 
 预训练提供可迁移结构和候选轨迹；后训练、prompt、解码和工具系统决定这些轨迹以什么概率、成本和可靠性被调用。这条主线贯穿五条具体路线，是本专题反复回到的同一判断。
 
 ## 参考资料
 
 - [Brenner / Cohen-Addad / Woodruff：AI 辅助求解宇宙弦引力辐射功率谱解析解](https://arxiv.org/abs/2603.04735)
-- [Tony Feng：Eigenweights for arithmetic Hirzebruch Proportionality（Aletheia 代理生成所有经典 Lie 群族 eigenweights 的一般情形）](https://arxiv.org/abs/2601.23245)
+- [Tony Feng：Eigenweights for arithmetic Hirzebruch Proportionality（Aletheia 代理生成 Type A、C、D 群族 eigenweights 的一般情形）](https://arxiv.org/abs/2601.23245)
 - [Google DeepMind 团队 Denny Zhou 的 LLM 推理研究探讨](https://dennyzhou.github.io/LLM-Reasoning-Stanford-CS-25.pdf)
 - [DeepSeek-R1 的训练经验总结](https://arxiv.org/abs/2501.12948)
 - [Does Reinforcement Learning Really Incentivize Reasoning Capacity in LLMs Beyond the Base Model?](https://arxiv.org/pdf/2504.13837)
@@ -319,7 +319,6 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 - [Transformer 中前馈层网络的探究](https://aclanthology.org/2021.emnlp-main.446/)（[arXiv:2012.14913](https://arxiv.org/abs/2012.14913)）
 - [从生产语言模型中抽取训练数据](https://arxiv.org/abs/2012.07805)
 - [Stanford 与 Google 团队合作提出的类比推理](https://arxiv.org/pdf/2310.01714)
-- [Mind Lab 工程博客：在 1.04T 总参 / 32.6B 激活的 Kimi-K2 上用 LoRA + RL 训练（64 张 H800 / 10% 全参 RL GPU）的经验](https://macaron.im/mindlab/research/building-trillion-parameter-reasoning-rl-with-10-gpus)
 - [第 13 章 §13.1 为什么需要 RLVR？](../chapter13/chapter13_可验证奖励的强化学习.md)
 - [过犹不及：理解大语言模型中的思维链长度](https://arxiv.org/pdf/2502.07266)
 - [DTR 指标](https://arxiv.org/pdf/2602.13517)
@@ -331,9 +330,6 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 
 ## 来源与更新记录
 
-
-- 来源：本专题与第 9 章的 serving / inference systems 分工互补；具体案例链接见上方「参考资料」一节。
-- 课程映射：提供后训练、RLHF、DPO、RLVR 和现代推理模型案例背景；CoT、多路径解码、DTR、工具增强等主题主要依赖上方公开论文和专题材料。
-- 材料边界：rollout、训练 infra 和 serving 成本等系统侧细节由第 9 章与第 13 章承载；本专题只引用其结论，不重复系统账本。
-- 跨章引用：[第 13 章 §13.4.1 R1-Zero：纯 GRPO 起点](../chapter13/chapter13_可验证奖励的强化学习.md) 与 [第 13 章 §13.3.1 GRPO：去掉了价值函数的 PPO / §13.3.2 GRPO 的两类偏差：问题难度与响应长度](../chapter13/chapter13_可验证奖励的强化学习.md) 与本专题 §4 后训练：奖励信号如何改变搜索偏好 中的 RLVR 副作用部分共享同一组证据（"RL 不必然增加新能力，更可能重排基座模型的轨迹概率"）；[第 14 章 多模态模型](../chapter14/chapter14_多模态模型.md) 在章末把多模态 agent trace 与 RLVR 验证指向本专题。
-- 查阅日期：2026-09-05。覆盖 CS336 2026 Lecture 10（inference）与 Lecture 15 / 16 后训练背景；外部论文按 arXiv 提交日期记录。
+- **官方来源**：案例与论文链接见上方「参考资料」；查阅日期 2026-09-22，状态：论文 / 官方。本专题与第 9 章的 serving / inference systems 分工互补；rollout、训练 infra 和 serving 成本等系统侧细节由第 9 章与第 13 章承载，本专题引用其结论。
+- **课程来源**：CS336 2026 Lecture 10（inference 系统账本）、Lecture 15（SFT / RLHF / DPO 与长度、风格副作用）和 Lecture 16（PPO 到 GRPO、RLVR 与现代推理案例）提供后训练背景；CoT、多路径解码、DTR、工具增强等主题依据上方公开论文。
+- **事实声明指向**：[第 13 章 §13.4.1 R1-Zero：纯 GRPO 起点](../chapter13/chapter13_可验证奖励的强化学习.md) 与 [第 13 章 §13.3.1 GRPO：去掉了价值函数的 PPO / §13.3.2 GRPO 的两类偏差：问题难度与响应长度](../chapter13/chapter13_可验证奖励的强化学习.md) 与本专题 §4 后训练：奖励信号如何改变搜索偏好 中的 RLVR 副作用部分共享同一组证据（"RL 不必然增加新能力，更可能重排基座模型的轨迹概率"）；[第 14 章 本章总结与下章衔接](../chapter14/chapter14_多模态模型.md) 在章末把多模态 agent trace 与 RLVR 验证指向本专题；外部论文按 arXiv 提交日期记录。

@@ -161,9 +161,7 @@ PyTorch 里的 `torch.distributed` 是更高一层的接口。写训练代码时
 
 这类输出有两个固定现象：多进程打印顺序不保证按 rank 排列；`torch.empty` 预分配缓冲区在 collective 之前可能显示旧值或未初始化值。判断 collective 语义，要看调用完成后每个 rank 拿到的结果。
 
-> [!TIP]
-> stdout 里的三行结果正好对应三个语义：all-reduce 后每个 rank 都得到完整 `[6, 10, 14, 18]`；reduce-scatter 后 rank 0/1/2/3 分别只拿到 `6/10/14/18` 这一片；再接 all-gather 后，每个 rank 又恢复完整 `[6, 10, 14, 18]`。
-> 这组结果把 `all-reduce = reduce-scatter + all-gather` 的关系落到了具体张量上。
+stdout 里的三行结果正好对应三个语义：all-reduce 后每个 rank 都得到完整 `[6, 10, 14, 18]`；reduce-scatter 后 rank 0/1/2/3 分别只拿到 `6/10/14/18` 这一片；再接 all-gather 后，每个 rank 又恢复完整 `[6, 10, 14, 18]`。这组结果把 `all-reduce = reduce-scatter + all-gather` 的关系落到了具体张量上。
 
 ### 7.2.2 Collective 语义概览
 
@@ -267,10 +265,10 @@ balanced all-to-all 示例可以直接看作一次分片转置：
 理解 reduce 系列操作时，关键是 **同 shape tensor 在所有 rank 上按相同下标对齐做 element-wise 聚合**。以求和为例：
 
 $$
-\text{out}[i] = \sum_{r=0}^{p-1} \text{input}_r[i]
+y[i] = \sum_{r=0}^{p-1} x_r[i]
 $$
 
-其中 $p$ 是 `world_size`， $r$ 是 rank 编号， $i$ 是 tensor 内部的下标。reduce 操作按不同 rank 上的相同位置聚合元素，并不在单个 rank 的向量内部求和；判断 reduce 语义时，关键是下标对齐，图里的箭头方向只表示数据流。
+其中 $x_r$ 是 rank $r$ 上的输入、 $y$ 是聚合输出， $p$ 是 `world_size`， $i$ 是 tensor 内部的下标。reduce 操作按不同 rank 上的相同位置聚合元素，并不在单个 rank 的向量内部求和；判断 reduce 语义时，关键是下标对齐，图里的箭头方向只表示数据流。
 
 ### 7.2.3 `torch.distributed` 输出示例
 
@@ -443,9 +441,9 @@ Rank 3 [after all-gather]: input = tensor([18.], device='cuda:3'), output = tens
 
 理解 collective 的语义之后，还要看它在真实运行中花多少时间。一个小 benchmark 就可以展示通信耗时和有效带宽的基本观察方式。
 
-benchmark 输出里的 GB/s 由 benchmark 脚本自己按固定公式算出，NCCL 并不回报这个数字，它也不等于“张量大小除以耗时”。脚本沿用 [nccl-tests 的 bus bandwidth 口径](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md)：先算 algorithm bandwidth $S/t$ ，再乘一个只和 collective 类型与 rank 数有关的修正系数——all-reduce 是 $2(p-1)/p$ ，reduce-scatter 和 all-gather 是 $(p-1)/p$ 。这个系数来自 ring 算法的最优传输量推导，但写进脚本后就与 NCCL 实际选中的 ring 或 tree 实现无关。它的价值是比较同一集群、同一 collective、同一消息大小下的趋势；某一次数字不能直接当成硬件上限。
+benchmark 输出里的 GB/s 由 benchmark 脚本自己按固定公式算出，NCCL 并不回报这个数字，它也不等于“张量大小除以耗时”。脚本沿用 [nccl-tests 的 bus bandwidth 口径](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md)：先算 algorithm bandwidth $S/t$ ，再乘一个只和 collective 类型与 rank 数有关的修正系数——all-reduce 是 $2(p-1)/p$ ，reduce-scatter 和 all-gather 是 $(p-1)/p$ 。这个系数按点对点数据传输次数计数得到：all-reduce 共需 $2(p-1)$ 次数据传输，nccl-tests 写明该口径与实际算法无关，ring、tree 或其他点对点实现都适用。它的价值是比较同一集群、同一 collective、同一消息大小下的趋势；某一次数字不能直接当成硬件上限。
 
-通信实验的可识别条件是固定消息大小、dtype、rank 拓扑和 collective 算法，只改变 world size 或节点布局。先由 ring 的传输量推导理论 $S/t$ 与 bus-bw，再用同步后的实测时间检验趋势；若偏差随消息大小或拓扑改变，应回到 latency、协议切换和链路带宽分别定位。
+通信实验的可识别条件是固定消息大小、dtype、rank 拓扑和 collective 算法，只改变 world size 或节点布局。先按传输计数口径推导理论 $S/t$ 与 bus-bw，再用同步后的实测时间检验趋势；若偏差随消息大小或拓扑改变，应回到 latency、协议切换和链路带宽分别定位。
 
 这里有两层异步需要分开看：`torch.cuda.synchronize()` 等待本 rank 上已经提交的 CUDA / NCCL kernel 完成，`dist.barrier()` 等待所有 rank 都走到同一个同步点。前者解决 GPU 异步执行，后者解决多进程进度不齐；做通信 benchmark 时通常两个都需要。
 
@@ -511,7 +509,7 @@ def all_reduce(rank: int, world_size: int, num_elements: int):
 这里有个细节：实际发送/接收的字节数是多少？每个 rank 上的张量大小为 `size_bytes`，需要和其他 `world_size - 1` 个 rank 交换信息。简化估算里乘以 2，是为了强调 all-reduce 可以分成“发送输入参与 reduce”和“接收完整结果”两个阶段。因此这里用 `world_size` 乘以实际经过时间来估算聚合吞吐。
 
 > [!WARNING]
-> 这里的 `size_bytes * 2 * (world_size - 1)` 是简化通信量估算，用来强调 all-reduce 包含“发送输入”和“分发结果”两类通信。精确到 ring all-reduce 时，每步通常传 shard，每 rank 单向发送量常写作 $2 \cdot \frac{p-1}{p} \cdot S$ ，其中 $S$ 对应代码里的 `size_bytes`。实际传输量由 NCCL 选定的算法、拓扑和消息大小共同决定，因此同一份公式在不同集群上会给出不同的有效带宽读数。
+> 这里的 `size_bytes * 2 * (world_size - 1)` 是简化通信量估算，把每个对端都按一去一回各 $S$ 字节记账，用来强调 all-reduce 包含“发送输入”和“分发结果”两类通信。按 nccl-tests 的传输计数口径，all-reduce 全程每个 rank 实际发送量为 $2 \cdot \frac{p-1}{p} \cdot S$ （reduce-scatter 与 all-gather 两阶段各 $\frac{p-1}{p} \cdot S$ ），其中 $S$ 对应代码里的 `size_bytes`；该口径与实际算法无关，ring、tree 或其他点对点实现都适用。NCCL 选定的算法、拓扑和消息大小仍会改变同一公式在不同集群上给出的有效带宽读数。
 
 ```text
 [all_reduce] Rank 1: all_reduce measured bandwidth = 390 GB/s
@@ -794,7 +792,7 @@ def pipeline_parallelism_main(rank: int, world_size: int, data: torch.Tensor, nu
 这就是 PP 的最小前向实现。它概念上简单，但距离生产级还很远：当前 `send` / `recv` 是 blocking 的，没有实现通信与计算重叠；这里只演示前向传播，没有安排反向传播。最后一个阶段拿到的是每个 micro-batch 经过全部层后的输出 activation；如果继续做训练，loss 和反向传播会从最后阶段开始，activation gradient 再沿相反方向逐阶段传回。
 
 > [!NOTE]
-> 这个 toy code 的价值是看清“按层切分后传 activation”。真实 PP 系统还要处理非阻塞收发、micro-batch 调度、1F1B、interleaving、zero-bubble、activation 释放和重计算，后面的模型并行小节会从调度角度重新解释这些问题。
+> 这个 toy code 的价值是看清“按层切分后传 activation”。真实 PP 系统还要处理非阻塞收发、micro-batch 调度、1F1B、interleaving、zero-bubble、activation 释放和重计算；§7.7 流水线并行从调度角度处理其中的 micro-batch 调度、激活释放、重计算与 zero-bubble。
 
 上面的代码示例只是在最小工作负载上演示“沿哪个维度切、在哪些位置通信”。真实 Transformer 训练还要处理参数注册、梯度 bucket、通信计算重叠、重计算、optimizer state 分片和异步调度，因此生产级实现通常直接依赖 Megatron-LM、DeepSpeed、PyTorch FSDP 或 JAX/Levanter 这类框架。
 
@@ -828,13 +826,13 @@ $$
 
 它的限制也很直接：每个 GPU 都完整复制参数、梯度和 optimizer states。扩卡可以增加并行计算，但不会自动降低单卡上的模型状态显存；模型继续变大或序列继续变长时，显存瓶颈仍然会出现。因此问题改写成：哪些状态必须复制，哪些状态可以分片，并用通信把它们在需要时临时恢复出来。这正是 §7.6 ZeRO / FSDP 的处理对象。
 
-![图 7.5-1 朴素数据并行中的内存使用情况](images/7-5-1-naive-data-parallel-memory.png)
+![图 7.5-1 朴素数据并行：模型复制与数据切分](images/7-5-1-naive-data-parallel-memory.png)
 
-*图 7.5-1 朴素数据并行中的内存使用情况*
+*图 7.5-1 朴素数据并行：模型复制与数据切分*
 
-在普通的数据并行内存账本里，每个 rank 都要保存一份参数、梯度和优化器状态。图 7.5-1 使用一组教学账本假设：参数 2 B/param、梯度 2 B/param、优化器状态 $K=12$ B/param（FP32 master weights 4 + Adam 一阶矩 4 + 二阶矩 4），因此 baseline 是 **16 B/param**。
+在朴素数据并行里，每个 rank 都完整保存一份参数、梯度和优化器状态（图 7.5-1：模型复制到各 GPU，数据集切分给各 rank）。内存账本按一组教学假设计算：参数 2 B/param、梯度 2 B/param、优化器状态 $K=12$ B/param（FP32 master weights 4 + Adam 一阶矩 4 + 二阶矩 4），因此 baseline 是 **16 B/param**，与图 7.6-1 baseline 行的 $(2+2+K)\Psi$ 一致。
 
-后面 “Pure BF16 training with Kahan summation” 的表格使用 **12 B/param** 作为另一个精度/优化器假设；常数会随训练设置变化，核心问题始终是哪些状态在每个 rank 上复制，哪些状态可以分片。
+图 7.6-9 的 “Pure BF16 training with Kahan summation” 账本使用 **12 B/param** 作为另一个精度/优化器假设；常数会随训练设置变化，核心问题始终是哪些状态在每个 rank 上复制，哪些状态可以分片。
 
 ## 7.6 ZeRO / FSDP
 
@@ -1280,7 +1278,7 @@ Narayanan 2021 的实验（[arXiv:2104.04473](https://arxiv.org/abs/2104.04473)�
 
 图 7.10-7 说明 activation recomputation 可能“自己付回成本”：它增加 FLOPs，但节省显存后可以支持更大 batch；更大的 batch 又能帮助隐藏 pipeline bubble 或摊薄通信，从而提高整体吞吐。这个取舍和 FlashAttention 类似：多算一点，少存和少搬很多。
 
-多篇技术报告展示了这些规则的实际组合。OLMo / Dolma 这类 7B 级 dense 模型可以主要依赖 FSDP，因为参数状态还可以用通用分片外壳处理。Gemma 2 走的是 TPU 路线：27B 用 6,144 颗 TPUv5p，768-way data 分片配 8-way model 分片，optimizer state 再按类 ZeRO-3 的方式切开。Llama 3 405B 这类超大 dense 模型没有 expert 可切，通常需要 TP、CP、PP 和 DP 一起分摊宽度、长上下文、深度和 batch。
+多篇技术报告展示了这些规则的实际组合。7B 级 dense 模型的参数状态可以用 FSDP 这类通用分片外壳处理。Gemma 2 走的是 TPU 路线：27B 用 6,144 颗 TPUv5p，768-way data 分片配 8-way model 分片，optimizer state 再按类 ZeRO-3 的方式切开。Llama 3 405B 这类超大 dense 模型没有 expert 可切，通常需要 TP、CP、PP 和 DP 一起分摊宽度、长上下文、深度和 batch。
 
 DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ETP/EDP，同时仍然为 attention 保留 TP/CP。案例里的并行度数字要和 dense layer、MoE layer、长上下文和网络拓扑一起理解。
 
@@ -1288,7 +1286,7 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 
 ## 7.11 代表性大规模训练配置
 
-这一节把前面所有抽象落到公开报告的真实数字：Llama 3 405B 标准上下文（DP=64/128 两档集群规模）与 128K 长上下文（DP=8）的 TP/PP/CP/DP、DeepSeek-V3 的 PP16 + EP64 + ZeRO-1（TP 压到 1）、Mixtral / Gemma 2 / Qwen3 / Nemotron 3 Super 的公开并行度。表里 `?` 字段表示一手源未公开，不在笔记里凭手感补全。
+这一节把前面所有抽象落到公开报告的真实数字：Llama 3 405B 标准上下文（DP=64/128 两档集群规模）与 128K 长上下文（DP=8）的 TP/PP/CP/DP、DeepSeek-V3 的 PP16 + EP64 + ZeRO-1（TP 压到 1）、Mixtral / Gemma 2 / Qwen3 / Nemotron 3 Super 的公开并行度。
 
 下表汇总公开来源给出的代表性大规模训练配置（`?` 表示对应论文 / 官方文档未公开的字段）：
 
@@ -1297,12 +1295,10 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 | Llama 3 405B (标准上下文) | 8 | 16 | 1 | 0 | 64 或 128 | - | CP=1；DP=64 / 128 ([Llama 3 paper Table 4](https://arxiv.org/abs/2407.21783)) |
 | Llama 3 405B (128K long-context) | 8 | 16 | 16 | 0 | 8 | - | 长上下文阶段 CP=16，DP=8 ([Llama 3 paper Table 4](https://arxiv.org/abs/2407.21783), 16,384 GPUs / 131,072 seq len) |
 | DeepSeek V3 | 1 | 16 | - | 64 | - | ZeRO-1 | 16-way PP + 64-way EP（跨 8 节点）+ ZeRO-1 DP，TP 压到 1；§3.2 Training Framework 写明 "without using costly Tensor Parallelism (TP)"，DualPipe 与跨节点 all-to-all kernel 见 §3.2.1、§3.2.2（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437)） |
-| Mixtral 8x22B | 2 | 8 | 1 | 8 | 1 | - | TP=2 / PP=8 / CP=1 / EP=8 / VPP=7，16 节点 128 GPU（DP=1，TP×PP×EP 占满 128 卡）；来自社区维护的 [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) `runtime_configs/benchmarking/runtime.conf` benchmarking recipe，构建在 Megatron-Core 之上 |
-| Nemotron 3 Super 120B-A12B | ? | ? | ? | ? | ? | - | 模型已公开（[nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8)，120B 总参 / 12B 激活，2026-03-11），model card 只给部署侧 TP/EP；家族论文 [NVIDIA Nemotron 3, arXiv:2512.20856](https://arxiv.org/abs/2512.20856) 描述 LatentMoE 架构与 NVFP4 训练，训练侧并行度放在单独的 Nemotron 3 Super 技术报告 |
+| Mixtral 8x22B | 2 | 8 | 1 | 8 | 8 | - | TP=2 / PP=8 / CP=1 / EP=8 / VPP=7，16 节点 128 GPU；按 attention 侧 world = TP×CP×DP×PP 得 DP=8，EP=8 ≤ DP 满足 §7.9.2 的传统映射；来自社区维护的 [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) `runtime_configs/benchmarking/runtime.conf` benchmarking recipe，构建在 Megatron-Core 之上 |
+| Nemotron 3 Super 120B-A12B | 2 | ? | 64 | 64 | ? | - | 模型已公开（[nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8)，120B 总参 / 12B 激活，2026-03-11），model card 只给部署侧 TP/EP；家族论文 [NVIDIA Nemotron 3, arXiv:2512.20856](https://arxiv.org/abs/2512.20856) 描述 LatentMoE 架构与 NVFP4 训练；训练侧并行度见 [Nemotron 3 Super 技术报告](https://research.nvidia.com/labs/nemotron/files/NVIDIA-Nemotron-3-Super-Technical-Report.pdf) §2.6：LC-Phase 长上下文扩展在 GB200 GPU 上使用 64-way context parallelism、2-way tensor parallelism、64-way expert parallelism，PP 与 DP 未在该节给出 |
 | Gemma 2 27B | 8 | 0 | 0 | 0 | 768 | ZeRO-3 类 | [arXiv:2408.00118](https://arxiv.org/abs/2408.00118) Table 3：6,144 颗 TPUv5p，768-way data 分片 + 8-way model 分片，optimizer state 另按类 ZeRO-3 方式分片（2B 为 512 chips / 512×1，9B 为 4,096 chips / 1,024×4） |
-| Qwen3 235B-A22B | 2 | 8 | 1 | 32 | ? | - | 官方 [arXiv:2505.09388](https://arxiv.org/abs/2505.09388) 与 HF model card 未公开原训练并行度；以上 TP/PP/CP/EP 数值来自社区 [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) `runtime_configs/benchmarking/runtime.conf` benchmarking recipe（VPP=4，32 节点 256 GPU）。TP×PP×CP×EP=512 已超过 256 卡总数，公开 recipe 在 MoE 层引入 ETP/EDP 或专家共享以使总卡数对齐，具体数值未在仓库 README 给出；本行并非阿里原训练配置 |
-
-> **校准说明**：表中数值仅来自公开论文 / 官方模型卡 / config.json；标 `?` 的字段在公开材料中未给出，不在此处凭手感补全。表中所有行仅作为并行方案示例，不构成任何模型团队的官方部署推荐配置。
+| Qwen3 235B-A22B | 2 | 8 | 1 | 32 | 16 | - | 官方 [arXiv:2505.09388](https://arxiv.org/abs/2505.09388) 与 HF model card 未公开原训练并行度；以上 TP/PP/CP/EP 数值来自社区 [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) `runtime_configs/benchmarking/runtime.conf` benchmarking recipe（VPP=4，32 节点 256 GPU）。按 attention 侧 world = TP×CP×DP×PP 得 DP=16；EP=32 超过 DP=16，MoE 层按 §7.9.2 的 MoE parallel folding 用 ETP×EP×EDP×PP 组合，与 256 卡对齐 |
 
 观察到的工程模式：
 
@@ -1343,6 +1339,7 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 
 
 - 参考：PyTorch distributed 文档；NCCL 文档；ZeRO/FSDP、Megatron-LM、GPipe 相关论文或文档；[NVIDIA Megatron Core MoE 文档](https://docs.nvidia.com/megatron-core/developer-guide/latest/user-guide/features/moe.html)。
+- 课程来源：CS336 2026 Lecture 7（collective 语义、通信 benchmark 与最小分布式代码讲义）与 Lecture 8（ZeRO、流水线、张量、序列与专家并行 slides），对应关系见 `sources/cs336-2026.md`。
 - 一手来源核对（2026-09-03）：
   - Rajbhandari et al., *ZeRO*, [arXiv:1910.02054](https://arxiv.org/abs/1910.02054) — Figure 1（Ψ=7.5B / $N_d$=64 / K=12，120 → 31.4 → 16.6 → 1.88 GB）、Table 1（按 DP degree 的每卡内存）、§7.2.2（ZeRO-3 通信量 3Ψ = 1.5× baseline）；"a modest 50% increase in communication volume" 出自 §1 Extended Introduction 对三个阶段的列举，不在 abstract 里。论文按 fp16 混合精度记账。
   - Korthikanti et al., *Reducing Activation Recomputation in Large Transformer Models*, [arXiv:2205.05198](https://arxiv.org/abs/2205.05198) — Eq. (1) $\mathrm{sbh}(34 + 5as/h)$ 与 Eq. (2) $\mathrm{sbh}(10 + 24/t + 5as/(ht))$；34 拆为 attention 11 + MLP 19 + LayerNorm 4。
@@ -1357,3 +1354,7 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
   - Liu et al., *MoE Parallel Folding*, [arXiv:2504.14960](https://arxiv.org/abs/2504.14960) §3.2 — 传统映射把 EP group 放进 DP 子组，专家并行度被数据并行度上限卡住；folding 后 attention 用 TP×CP×DP×PP、MoE 用 ETP×EP×EDP×PP，只要求 PP 划分一致。
   - NVIDIA, *NVIDIA Nemotron 3: Efficient and Open Intelligence*, [arXiv:2512.20856](https://arxiv.org/abs/2512.20856) — Nemotron 3 家族的 LatentMoE 架构与 NVFP4 训练；Super 120B-A12B 的训练侧并行度不在该论文与 HF model card 内。
   - Narayanan et al., *Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM*, [arXiv:2104.04473](https://arxiv.org/abs/2104.04473) Table 1 — 弱扩展模型规模为 1.7B / 3.6B / 7.5B / 18B / 39B / 76B / 145B / 310B / 530B / 1T；论文正文另以 GPT-3 175B 作为参照配置。§7.10-4 引用已同步更改为 17 亿起的真实表行。
+- 一手来源核对（2026-09-22）：
+  - [nccl-tests `doc/PERFORMANCE.md`](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md) — bus bandwidth 修正系数按点对点数据传输次数计数（all-reduce 共需 $2(n-1)$ 次数据传输），原文写明该口径 "independent of the algorithm used (ring, tree, or other)"。
+  - NVIDIA, *Nemotron 3 Super Technical Report*（[技术报告 PDF](https://research.nvidia.com/labs/nemotron/files/NVIDIA-Nemotron-3-Super-Technical-Report.pdf)）§2.6 — LC-Phase 长上下文扩展使用 64-way context parallelism、2-way tensor parallelism 与 64-way expert parallelism，在 GB200 GPU 上训练。
+  - [Megatron-MoE-ModelZoo `runtime_configs/benchmarking/runtime.conf`](https://github.com/yanring/Megatron-MoE-ModelZoo/blob/main/runtime_configs/benchmarking/runtime.conf) — 列头 `TP PP EP CP VPP MBS GBS LAYERS DISPATCHER GROUPED_GEMM NNODES`；Mixtral 8x22B 行为 `2 8 8 1 7` @16 节点，Qwen3-235B-A22B 行为 `2 8 32 1 4` @32 节点，表中 DP 按 attention 侧 world = TP×CP×DP×PP 推得。

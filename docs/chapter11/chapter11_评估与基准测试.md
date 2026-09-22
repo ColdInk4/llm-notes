@@ -55,8 +55,7 @@
 
 ## 11.1 简介
 
-> [!NOTE]
-> 本节解决三个前置问题：「好模型」有几种常见定义、公开榜单截图能在多大程度上传递信息、社区案例观察为什么不能替代系统评估。读完后，读者应能在看到任何一份 LLM 评估材料时，先定位它属于哪一类，再追问它测到了什么。
+本节解决三个前置问题：「好模型」有几种常见定义、公开榜单截图能在多大程度上传递信息、社区案例观察为什么不能替代系统评估。读完后，读者应能在看到任何一份 LLM 评估材料时，先定位它属于哪一类，再追问它测到了什么。
 
 当你打开任何一个大语言模型（LLM）的评测网站或论文时，最容易看到的是一串分数、一张排行榜或几条社交媒体上的惊艳案例。本节先把这些表象拆成四类问题，再追问它们各自到底测到了什么。
 
@@ -86,8 +85,7 @@
 
 *图 11.1-4 OpenRouter 使用量排名*
 
-> [!NOTE]
-> 这四类定义都合理，但没有任何一类等同于“模型本身绝对更好”。评估要先说明目标：比较研究方法、采购产品模型、评估 agent 系统，还是衡量社会风险。目标不同，输入分布、调用方式、评分规则和解释边界都会变化。
+这四类定义都合理，但没有任何一类等同于“模型本身绝对更好”。评估要先说明目标：比较研究方法、采购产品模型、评估 agent 系统，还是衡量社会风险。目标不同，输入分布、调用方式、评分规则和解释边界都会变化。
 
 ### 11.1.2 静态榜单截图的使用边界
 
@@ -97,7 +95,7 @@
 
 *图 11.1-5 DeepSeek-R1 基准性能*
 
-[DeepSeek-R1 论文 Figure 1 报告的基准性能](https://arxiv.org/pdf/2501.12948)，展示了 DeepSeek-R1 在 AIME 2024、Codeforces、GPQA Diamond、MATH-500 等基准上的性能。
+[DeepSeek-R1 论文 Table 3 报告的基准性能](https://arxiv.org/pdf/2501.12948)，展示了 DeepSeek-R1 在 AIME 2024、Codeforces、GPQA Diamond、MATH-500 等基准上的性能。
 
 ![图 11.1-6 Llama 4 基准性能](images/11-1-6-llama4-benchmarks.png)
 
@@ -109,7 +107,7 @@
 
 *图 11.1-7 OLMo-2 基准性能*
 
-[Allen AI 团队在技术报告中展示的 OLMo-2-32B 模型基准性能](https://allenai.org/blog/olmo2-32B)，主要覆盖 MATH、MMLU、DROP 和 GSM8k 等基准。
+[Allen AI 团队在 OLMo-2-32B 发布博客中展示的模型基准性能](https://allenai.org/blog/olmo2-32B)，主要覆盖 MATH、MMLU、DROP 和 GSM8k 等基准。
 
 下面是 [HELM](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard)、OpenCompass、SuperCLUE、Artificial Analysis、OpenRouter 和 Chatbot Arena 等平台的截图例子。它们有的强调能力覆盖，有的强调中文或区域性任务，有的强调成本或用户偏好。
 
@@ -141,8 +139,7 @@
 
 *图 11.1-14 Chatbot Arena 分数排行榜*
 
-> [!WARNING]
-> 这组静态榜单截图的用途是拆解榜单分数：先看 benchmark 组合和模型调用规则，再看分数是否包含成本、延迟、工具权限和 agent scaffold。模型版本、提示模板、系统 prompt、采样参数和计价方式都会改变分数含义。
+静态榜单分数由模型版本、提示模板、系统 prompt、采样参数、工具权限、agent scaffold 和计价方式共同决定。分析这组截图时，先看 benchmark 组合和模型调用规则，再看分数是否包含成本、延迟与工具权限。
 
 ### 11.1.3 评估危机与社区案例观察
 
@@ -156,13 +153,11 @@ Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会�
 
 ## 11.2 如何看待评估
 
-> [!NOTE]
-> 本节回答一个总框架问题：给定一个评估结果，应该按哪三个维度反复审视它？读完后，读者应能用 difficulty / realism / validity 三维度直接拆解任一 benchmark 的可信度，并理解四类使用场景（用户 / 研究者 / 政策 / 开发者）对评估设计的不同要求。
+本节回答一个总框架问题：给定一个评估结果，应该按哪三个维度反复审视它？读完后，读者应能用 difficulty / realism / validity 三维度直接拆解任一 benchmark 的可信度，并理解四类使用场景（用户 / 研究者 / 政策 / 开发者）对评估设计的不同要求。
 
 评估是一个服务明确目标的设计框架。它从要测量的抽象构念出发，再选择足够贴近该构念的输入、调用方式、评分规则和解释方式；输入提示词、得到输出、计算平均分只是执行层面的最后一步。
 
-> [!NOTE]
-> 核心原则：没有唯一的“正确”评估。只有和目标、输入分布、调用规则、评分规则绑定在一起的评估。
+核心原则是：没有唯一的“正确”评估，只有和目标、输入分布、调用规则、评分规则绑定在一起的评估。
 
 每个 benchmark 都可以用三个维度反复检查：
 
@@ -217,8 +212,7 @@ Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会�
 
 ## 11.3 困惑度
 
-> [!NOTE]
-> 本节介绍评估语言模型最基础的指标 perplexity：它如何定义、为什么需要在测试集上测量、经典数据集的历史作用、为什么今天仍然是预训练阶段的连续监控信号，以及何时不该用 perplexity。读完后，读者应能在看到任何 perplexity 数字时，准确说出它的口径、置信区间和局限。
+本节介绍评估语言模型最基础的指标 perplexity：它如何定义、为什么需要在测试集上测量、经典数据集的历史作用、为什么今天仍然是预训练阶段的连续监控信号，以及何时不该用 perplexity。读完后，读者应能在看到任何 perplexity 数字时，准确说出它的口径、置信区间和局限。
 
 ### 11.3.1 什么是 Perplexity（困惑度）？
 
@@ -389,8 +383,7 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ## 11.4 知识类基准
 
-> [!NOTE]
-> 本节覆盖四类知识型考试基准：MMLU / MMLU-Pro / GPQA / Humanity's Last Exam。读完后的能力：能区分「知识广度基准」与「高难度专家基准」的设计取舍，能读懂题目来源、难度档位和 contamination 防护。
+本节覆盖四类知识型考试基准：MMLU / MMLU-Pro / GPQA / Humanity's Last Exam。读完后的能力：能区分「知识广度基准」与「高难度专家基准」的设计取舍，能读懂题目来源、难度档位和 contamination 防护。
 
 这类基准旨在衡量模型所掌握的事实性知识。
 
@@ -455,12 +448,11 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 *图 11.4-4 Humanity's Last Exam 收集筛选流程*
 
-[HLE 官方站点](https://agi.safe.ai/)提供持续更新的结果。HLE 仍然远未饱和，跟踪其时间序列可观察模型在多学科高难题上的增量进展。HLE 在公开 2,500 题之外保留私有 held-out 测试集，用来检测过拟合与训练-测试污染，避免训练流直接覆盖评测；具体私有题数随维护版本变化，需要在引用时直接查看 HLE 官方站点与论文附录。
+[HLE 官方站点](https://agi.safe.ai/)提供持续更新的结果。HLE 仍然远未饱和，跟踪其时间序列可观察模型在多学科高难题上的增量进展。HLE 在公开 2,500 题之外保留私有 held-out 测试集，用来检测过拟合与训练-测试污染，避免训练流直接覆盖评测。
 
 ## 11.5 指令遵循基准
 
-> [!NOTE]
-> 本节覆盖聊天偏好、显式约束、长度归一化与真实用户分布四类指令遵循评估：Chatbot Arena / IFEval / AlpacaEval / WildBench，以及 LLM-as-judge 的四类偏差。读完后的能力：能在看到任意聊天基准分数时，定位它的评分机制（盲测 / 规则 / LLM judge），并指出对应的偏差来源与缓解方式。
+本节覆盖聊天偏好、显式约束、长度归一化与真实用户分布四类指令遵循评估：Chatbot Arena / IFEval / AlpacaEval / WildBench，以及 LLM-as-judge 的四类偏差。读完后的能力：能在看到任意聊天基准分数时，定位它的评分机制（盲测 / 规则 / LLM judge），并指出对应的偏差来源与缓解方式。
 
 这类基准评估模型是否“听话”，能否按照用户的要求进行输出。
 
@@ -535,8 +527,7 @@ reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward
 
 ## 11.6 智能体基准
 
-> [!NOTE]
-> 本节介绍四类 agent 基准：SWE-bench / Terminal-Bench / Cybench / MLE-bench，并明确一个关键边界：这些基准评估的是「模型 + agent scaffold」的系统能力，而非裸模型。读完后的能力：能在看到任一 agent benchmark 分数时，识别它对应的 scaffold 假设、工具权限与运行预算。
+本节介绍四类 agent 基准：SWE-bench / Terminal-Bench / Cybench / MLE-bench，并明确一个关键边界：这些基准评估的是「模型 + agent scaffold」的系统能力，而非裸模型。读完后的能力：能在看到任一 agent benchmark 分数时，识别它对应的 scaffold 假设、工具权限与运行预算。
 
 这类基准评估模型作为智能体（Agent） 的能力，即在复杂环境中通过工具调用和迭代规划完成任务。
 
@@ -544,11 +535,9 @@ reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward
 
 同一个 agent benchmark 既是评估工具也是 RL 训练数据：SWE-bench 风格任务在[第 13 章 §13.4 案例研究](../chapter13/chapter13_可验证奖励的强化学习.md)的 agentic RL 训练里被大量构造为可验证 rollout。
 
-> [!NOTE]
-> **Agent scaffold 的四个核心组件**：**explicit planning**（显式写出多步计划并勾选进度）、**hierarchical delegation**（任务分层委派，子任务可由更小的 agent loop 完成以保持上下文干净）、**persistent memory**（通过读写文件维护跨 turn 状态，区别于纯上下文窗口）、**extreme context engineering**（在 prompt 中显式给出大量过程性指令，区别于单纯的上下文压缩 / 重组 / 检索）。公理起点是「语言模型的上下文窗口有限 + 单调成本随序列长度增长」：要让模型在长程任务里不丢状态，必须把状态外置到文件、把计划外置到显式列表、把指令子集分到子 agent。四个组件各自对应一种外置策略（计划 / 子任务边界 / 跨 turn 状态 / 过程性指令）。这四项与 2025-2026 主流 agent 框架（Claude Code、Cursor、Aider 等）的设计选择基本对齐；同一底座模型在不同 scaffold 组合下的 benchmark 分数可能差几倍。
+**Agent scaffold 的四个核心组件**：**explicit planning**（显式写出多步计划并勾选进度）、**hierarchical delegation**（任务分层委派，子任务可由更小的 agent loop 完成以保持上下文干净）、**persistent memory**（通过读写文件维护跨 turn 状态，区别于纯上下文窗口）、**extreme context engineering**（在 prompt 中显式给出大量过程性指令，区别于单纯的上下文压缩 / 重组 / 检索）。公理起点是「语言模型的上下文窗口有限 + 单调成本随序列长度增长」：要让模型在长程任务里不丢状态，必须把状态外置到文件、把计划外置到显式列表、把指令子集分到子 agent。四个组件各自对应一种外置策略（计划 / 子任务边界 / 跨 turn 状态 / 过程性指令）。这四项与 2025-2026 主流 agent 框架（Claude Code、Cursor、Aider 等）的设计选择基本对齐；同一底座模型在不同 scaffold 组合下的 benchmark 分数可能差几倍。
 
-> [!NOTE]
-> **基准饱和与坐标移动**：早期 GPT-3 X-Large 在 MMLU 上只有 43.9%，但刷到接近饱和后被 MMLU-Pro 替代（具体口径见 §11.4.2）。GPQA 论文里 GPT-4 few-shot CoT 在 Diamond 子集上是 38.8%，而当前榜单上 GPQA Diamond 与 SWE-bench Verified 已被多个前沿模型刷到 90% 上下。基准饱和与坐标快速移动说明同一模型在不同时间窗的分数几乎不能直接横比，评估时需要同时记录版本、日期和 prompt 模板。
+**基准饱和与坐标移动**：早期 GPT-3 X-Large 在 MMLU 上只有 43.9%，但刷到接近饱和后被 MMLU-Pro 替代（具体口径见 §11.4.2）。GPQA 论文里 GPT-4 few-shot CoT 在 Diamond 子集上是 38.8%，而当前榜单上 GPQA Diamond 与 SWE-bench Verified 已被多个前沿模型刷到 90% 上下。基准饱和与坐标快速移动说明同一模型在不同时间窗的分数几乎不能直接横比，评估时需要同时记录版本、日期和 prompt 模板。
 
 ### 11.6.1 SWE-bench
 
@@ -562,7 +551,7 @@ reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward
 
 [Terminal-Bench](https://www.tbench.ai/) 把任务放在通用终端环境中，要求模型通过 shell、文件系统和命令行工具完成开放式工作流。它比单步问答更接近真实工程任务，因此能更直接暴露 agent scaffold 在规划、执行和恢复错误上的差异。
 
-数据集构造与难度口径。Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 个任务构成 Terminal-Bench 2.0 数据集（[arXiv:2601.11868](https://arxiv.org/abs/2601.11868) 与官方 https://www.tbench.ai/，后续版本可能扩展）。论文署名作者由 Mike A. Merrill 领衔，完整合著者名单需查官方 PDF 首列与致谢页。
+数据集构造与难度口径。Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 个任务构成 Terminal-Bench 2.0 数据集（[arXiv:2601.11868](https://arxiv.org/abs/2601.11868) 与官方 https://www.tbench.ai/，后续版本可能扩展）。论文由 Mike A. Merrill、Alexander G. Shaw、Nicholas Carlini 等署名。
 
 Terminal-Bench 与 Cybench 的难度口径不同。Cybench 用人类「首次解决时间」（FST）作为难度锚点（见 §11.6.3），Terminal-Bench 则通过环境多样性和人工解法时长分布来体现任务量级，因此同一道题在不同 benchmark 上不能直接横比。
 
@@ -608,8 +597,7 @@ Terminal-Bench 与 Cybench 的难度口径不同。Cybench 用人类「首次解
 
 ## 11.7 纯推理基准
 
-> [!NOTE]
-> 本节聚焦 ARC-AGI 系列：1 / 2 / 3 三代的任务形态与 o1/o3 test-time compute 范式对纯推理任务的改变。读完后的能力：能解释为什么 reasoning model 的出现把 ARC-AGI 这类「剥离语言的归纳推理」基准从「无法解」推到「接近饱和」，以及 ARC-AGI-3 引入交互环境后带来的新维度。
+本节聚焦 ARC-AGI 系列：1 / 2 / 3 三代的任务形态与 o1/o3 test-time compute 范式对纯推理任务的改变。读完后的能力：能解释为什么 reasoning model 的出现把 ARC-AGI 这类「剥离语言的归纳推理」基准从「无法解」推到「接近饱和」，以及 ARC-AGI-3 引入交互环境后带来的新维度。
 
 这类基准试图剥离知识，仅评估模型的抽象推理能力。
 
@@ -637,8 +625,7 @@ ARC-AGI-1:
 
 ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到交互环境：模型在环境中尝试操作、观察反馈并调整策略，覆盖了 ARC-AGI-1/2 未涉及的「规则未知环境下的探索与归纳」。这是 ARC-AGI 系列首次引入交互环境的新成员。
 
-> [!NOTE]
-> **ARC-AGI-1 自 o1/o3 后已基本解决**：ARC-AGI-1 早期传统 LLM 几乎无法通过，但在 OpenAI o1、o3 引入 test-time compute / search 后分数迅速上升至接近饱和，ARC-AGI-2 也正在被快速解决。这条经验观察支撑的论断是：test-time compute 在模式归纳类任务上能补足「参数中未压缩的推理能力」——纯语言建模 + scaling 并不能直接产生模式归纳能力，但配合搜索与自适应步数就能。这是 reasoning model 范式（CoT + search + test-time adaptation）改变纯推理任务解法空间的关键转折点，常作为 reasoning 模型价值的代表性证据。
+**ARC-AGI-1 自 o1/o3 后已基本解决**：ARC-AGI-1 早期传统 LLM 几乎无法通过，但在 OpenAI o1、o3 引入 test-time compute / search 后分数迅速上升至接近饱和，ARC-AGI-2 也正在被快速解决。这条经验观察支撑的论断是：test-time compute 在模式归纳类任务上能补足「参数中未压缩的推理能力」——纯语言建模 + scaling 并不能直接产生模式归纳能力，但配合搜索与自适应步数就能。这是 reasoning model 范式（CoT + search + test-time adaptation）改变纯推理任务解法空间的关键转折点，常作为 reasoning 模型价值的代表性证据。
 
 ![图 11.7-4 ARC-AGI-3 交互环境](images/11-7-4-arc-agi-3-environment.png)
 
@@ -650,8 +637,7 @@ ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到�
 
 ## 11.8 安全基准
 
-> [!NOTE]
-> 本节覆盖四类安全评估视角：HarmBench（行为拒答率）/ AIR-Bench（监管与政策对齐）/ Jailbreaking（绕过对齐的攻击）/ 部署前测试（监管机构预审）。读完后的能力：能区分「能力」（capability）与「倾向」（propensity）两类风险评估口径，以及 dual-use 场景下安全边界对评估设计的约束。
+本节覆盖四类安全评估视角：HarmBench（行为拒答率）/ AIR-Bench（监管与政策对齐）/ Jailbreaking（绕过对齐的攻击）/ 部署前测试（监管机构预审）。读完后的能力：能区分「能力」（capability）与「倾向」（propensity）两类风险评估口径，以及 dual-use 场景下安全边界对评估设计的约束。
 
 对于 AI 来说，安全意味着什么？
 
@@ -711,8 +697,7 @@ ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到�
 
 ## 11.9 真实性
 
-> [!NOTE]
-> 本节回答一个核心问题：现有考试型 benchmark 与真实使用场景的距离有多大？通过 GDPval / Clio / MedHELM 三个案例，展示「真实任务 + 真实分布」评估的工程成本与隐私边界。读完后的能力：能在「考试型」与「职业型」评估之间做出选择权衡。
+本节回答一个核心问题：现有考试型 benchmark 与真实使用场景的距离有多大？通过 GDPval / Clio / MedHELM 三个案例，展示「真实任务 + 真实分布」评估的工程成本与隐私边界。读完后的能力：能在「考试型」与「职业型」评估之间做出选择权衡。
 
 语言模型在实践中被广泛应用：
 
@@ -754,8 +739,7 @@ GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重�
 
 ## 11.10 有效性
 
-> [!NOTE]
-> 本节覆盖两类「让分数失真」的源头：训练-测试重叠（contamination，§11.10.1 的四条路线）与数据集质量（题目噪声、scaffold 漏洞、§11.10.2）。读完后的能力：能在面对任一 benchmark 分数时，系统检查「题是否干净」「模型是否可能见过题」「scoring 是否真的奖励了目标行为」三步。
+本节覆盖两类「让分数失真」的源头：训练-测试重叠（contamination，§11.10.1 的四条路线）与数据集质量（题目噪声、scaffold 漏洞、§11.10.2）。读完后的能力：能在面对任一 benchmark 分数时，系统检查「题是否干净」「模型是否可能见过题」「scoring 是否真的奖励了目标行为」三步。
 
 评估的有效性面临两大核心挑战。数据污染的源头在训练侧——具体去重与过滤方案在 [第 10 章 §10.2.2 数据去重](../chapter10/chapter10_数据工程.md) 详细展开，本节只关注"如何在评估时检测并控制 contamination"。
 
@@ -805,8 +789,7 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 
 ## 11.11 我们到底在评估什么？
 
-> [!NOTE]
-> 本节回到 evaluation 最底层的边界问题：评估对象是「方法」（method）还是「模型/系统」（model/system）？两种范式对应不同的科学价值与工程价值。读完后的能力：能在引用任何榜单或论文实验结果前，先定位它属于哪一种范式，再判断结论适用范围。
+本节回到 evaluation 最底层的边界问题：评估对象是「方法」（method）还是「模型/系统」（model/system）？两种范式对应不同的科学价值与工程价值。读完后的能力：能在引用任何榜单或论文实验结果前，先定位它属于哪一种范式，再判断结论适用范围。
 
 评估对象必须先说清楚：当前比较的是方法还是模型/系统。这个边界就是评估的 rules of the game。
 
