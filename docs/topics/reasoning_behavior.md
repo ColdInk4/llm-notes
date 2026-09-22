@@ -318,7 +318,7 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 
 ## 参考资料
 
-- [Brenner / Cohen-Addad / Woodruff：AI 辅助求解宇宙弦引力辐射功率谱解析解](https://arxiv.org/abs/2503.04735)
+- [Brenner / Cohen-Addad / Woodruff：AI 辅助求解宇宙弦引力辐射功率谱解析解](https://arxiv.org/abs/2603.04735)
 - [Tony Feng：Eigenweights for arithmetic Hirzebruch Proportionality（Aletheia 代理生成 Type A、C、D 群族 eigenweights 的一般情形）](https://arxiv.org/abs/2601.23245)
 - [Google DeepMind 团队 Denny Zhou 的 LLM 推理研究探讨](https://dennyzhou.github.io/LLM-Reasoning-Stanford-CS-25.pdf)
 - [DeepSeek-R1 的训练经验总结](https://arxiv.org/abs/2501.12948)

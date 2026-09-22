@@ -493,7 +493,7 @@ $$
 
 ![图 9.5-1 标准 $B \times S$ 张量](images/9-5-1-selective-batching.png)
 
-*图 9.5-1 标准 $B \times S$ 张量*
+*图 9.5-1 标准 `` $`B \times S`$ `` 张量*
 
 图 9.5-1 展示的是标准 batching 把序列堆叠成 $B \times S \times H$ 张量的形态：纵向是 batch，横向是 sequence，所有 sequence 假设等长。不同长度的请求很难直接放进这种整齐张量，因此 serving engine 需要在 attention 与非 attention 算子上采取不同打包方式。
 

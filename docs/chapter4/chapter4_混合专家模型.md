@@ -75,7 +75,7 @@ MoE 通过将原本的单一前馈网络（如 MLP/FFN）替换为由多个并�
 
 *图 4.1-1 常见 MoE routing 选择方向*
 
-图 4.1-1 分上下两栏对比常见 routing 变体。上栏是 Top-k routing（图中画的是 Top-2 情形）：router 给出每个 expert 的选择概率（token "The" 对 FFN1 是 $p = 0.65$、FFN2 是 $p = 0.3$），每个 token 取分数最高的 k 个 FFN 并行计算，两路输出经 Add + Normalize 合并；旁注按 k 列出 Switch Transformer（k=1）、Gshard / Grok / Mixtral（k=2）、Qwen / DBRX（k=4）、DeepSeek（7），标为 "Used in most MoEs"。下栏是 Hash routing：token 不看 router 分数，直接由 Hash Function 查表落到固定 FFN（图中 "The" → FFN2、"Dog" → FFN4），旁注标为 "Common baseline"，并注明出处 [Fedus et al 2022]。
+图 4.1-1 分上下两栏对比常见 routing 变体。上栏是 Top-k routing（图中画的是 Top-2 情形）：router 给出每个 expert 的选择概率（token "The" 对 FFN1 是 $p = 0.65$、FFN2 是 $p = 0.3$），每个 token 取分数最高的 k 个 FFN 并行计算，两路输出经 Add + Normalize 合并；旁注按 k 列出 Switch Transformer（k=1）、GShard / Grok / Mixtral（k=2）、Qwen / DBRX（k=4）、DeepSeek（V1/V2/V4-Pro: 6, V3: 8），标为 "Used in most MoEs"。下栏是 Hash routing：token 不看 router 分数，直接由 Hash Function 查表落到固定 FFN（图中 "The" → FFN2、"Dog" → FFN4），旁注标为 "Common baseline"，并注明出处 [Fedus et al 2022]。
 
 两类的共同账本在后面反复出现：无论按分数还是按哈希选，最终都要把 token 重排到对应 expert 的计算批次里，负载倾斜会直接变成设备等待和通信尾延迟。
 

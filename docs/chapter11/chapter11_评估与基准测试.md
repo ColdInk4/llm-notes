@@ -95,7 +95,7 @@
 
 *图 11.1-5 DeepSeek-R1 基准性能*
 
-[DeepSeek-R1 论文 Table 3 报告的基准性能](https://arxiv.org/pdf/2501.12948)，展示了 DeepSeek-R1 在 AIME 2024、Codeforces、GPQA Diamond、MATH-500 等基准上的性能。
+[DeepSeek-R1 论文 Table 3 报告的基准性能](https://arxiv.org/abs/2501.12948)，展示了 DeepSeek-R1 在 AIME 2024、Codeforces、GPQA Diamond、MATH-500 等基准上的性能。
 
 ![图 11.1-6 Llama 4 基准性能](images/11-1-6-llama4-benchmarks.png)
 
@@ -351,7 +351,7 @@ GPT-2 的关键观察是：在大规模、多样化训练下，模型对从未�
 
 #### 常识推理任务
 
-[HellaSwag](https://arxiv.org/pdf/1905.07830)是一个常识推理任务。通常是给定一个视频片段或一段文字描述（premise），然后给出四个选项（A, B, C, D），要求选出最符合常识、最自然、最可能发生的后续动作。它强调的是日常生活的常识推理（commonsense reasoning）和行为合理性判断。
+[HellaSwag](https://arxiv.org/abs/1905.07830)是一个常识推理任务。通常是给定一个视频片段或一段文字描述（premise），然后给出四个选项（A, B, C, D），要求选出最符合常识、最自然、最可能发生的后续动作。它强调的是日常生活的常识推理（commonsense reasoning）和行为合理性判断。
 
 ![图 11.3-4 HellaSwag 常识推理样例](images/11-3-4-hellaswag-examples.png)
 
@@ -389,9 +389,9 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ### 11.4.1 MMLU (Massive Multitask Language Understanding)
 
-[MMLU](https://arxiv.org/pdf/2009.03300.pdf) 包含 57 个学科（从数学、历史到法律、伦理）的多项选择题。问题源自网络，由学生收集。它更侧重于知识而非语言理解。
+[MMLU](https://arxiv.org/abs/2009.03300) 包含 57 个学科（从数学、历史到法律、伦理）的多项选择题。问题源自网络，由学生收集。它更侧重于知识而非语言理解。
 
-最初用 GPT-3 的少样本提示进行评估时，最大型号的 X-Large（175B）只能取得 43.9% 的平均准确率，而 Small（2.7B）、Medium（6.7B）、Large（13B）三档分别是 25.9%、24.9%、26.0%，基本停在 25% 的随机基线上（[Hendrycks et al., 2020, arXiv:2009.03300](https://arxiv.org/pdf/2009.03300.pdf) Table 1）。
+最初用 GPT-3 的少样本提示进行评估时，最大型号的 X-Large（175B）只能取得 43.9% 的平均准确率，而 Small（2.7B）、Medium（6.7B）、Large（13B）三档分别是 25.9%、24.9%、26.0%，基本停在 25% 的随机基线上（[Hendrycks et al., 2020, arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1）。
 
 几年之后，MMLU 已经接近饱和。这恰恰说明单一知识基准很容易从「有区分度」变成「只剩刷榜价值」。公理上是 difficulty / validity 失衡：当模型的能力下限被推到随机基线之上，准确率开始进入饱和区，分数差异逐渐由题目噪声与 prompt 模板而非真实能力决定。
 
@@ -494,7 +494,7 @@ AlpacaEval 2.0 的一个重要变化，是用回归方式修正长度偏置，�
 
 ### 11.5.4 WildBench
 
-[WildBench](https://arxiv.org/pdf/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（论文 §2.1）。主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude 3 Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。
+[WildBench](https://arxiv.org/abs/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（论文 §2.1）。主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude 3 Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。
 
 论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。这条性质对应第一性原理的「基元不变性」：不同 LLM 裁判只要共享同一份 checklist，得到的相对排名就保持单调一致。因此 WildBench 度量的是「LLM-as-judge 这一整类尺子给出的相对秩序」——具体 judge 的绝对刻度会被多 judge ensemble 稀释。
 
@@ -677,7 +677,7 @@ ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到�
 
 ### 11.8.3 越狱（Jailbreaking）
 
-即使模型被训练为拒绝有害请求，[攻击者也能通过自动优化提示（如 Greedy Coordinate Gradient, GCG）来绕过安全防护](https://arxiv.org/pdf/2307.15043)。这类攻击甚至能从开源模型迁移到闭源模型。
+即使模型被训练为拒绝有害请求，[攻击者也能通过自动优化提示（如 Greedy Coordinate Gradient, GCG）来绕过安全防护](https://arxiv.org/abs/2307.15043)。这类攻击甚至能从开源模型迁移到闭源模型。
 
 ![图 11.8-6 模型越狱案例](images/11-8-6-jailbreak-example.png)
 
@@ -713,7 +713,7 @@ ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到�
 
 ### 11.9.1 GDPval
 
-[GDPval](https://arxiv.org/pdf/2510.04374) 试图把评估拉回真实职业场景：任务来自美国 GDP 贡献较高行业中的职业工作，目标是衡量模型在专业工作流中的实际可用性。公理起点是「真实使用分布应当与经济活动权重对齐」：把样本按行业 GDP 占比采样，让评估结果对部署决策更可迁移。
+[GDPval](https://arxiv.org/abs/2510.04374) 试图把评估拉回真实职业场景：任务来自美国 GDP 贡献较高行业中的职业工作，目标是衡量模型在专业工作流中的实际可用性。公理起点是「真实使用分布应当与经济活动权重对齐」：把样本按行业 GDP 占比采样，让评估结果对部署决策更可迁移。
 
 GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重要：它试图用经济活动权重来定义真实使用分布，同时也天然面临隐私、版权和专家评分成本的约束。
 
@@ -751,7 +751,7 @@ GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重�
 
 #### 路线 1：尝试从模型中推断训练集和测试集的重叠部分
 
-公理：测试集中的样本应当可交换（exchangeability），即打乱顺序后模型的概率输出不变。若模型对某个排列显著更偏好，则可推断它曾接触过该集合的特定顺序。[PROVING TEST SET CONTAMINATION IN BLACK BOX LANGUAGE MODELS](https://arxiv.org/pdf/2310.17623) 利用这一性质给出 black-box 模型污染的可证明下界。
+公理：测试集中的样本应当可交换（exchangeability），即打乱顺序后模型的概率输出不变。若模型对某个排列显著更偏好，则可推断它曾接触过该集合的特定顺序。[PROVING TEST SET CONTAMINATION IN BLACK BOX LANGUAGE MODELS](https://arxiv.org/abs/2310.17623) 利用这一性质给出 black-box 模型污染的可证明下界。
 
 ![图 11.10-1 训练-测试重叠推断思路](images/11-10-1-contamination-exchangeability.png)
 
@@ -893,7 +893,7 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - [Zou 等, Universal and Transferable Adversarial Attacks (GCG), arXiv:2307.15043](https://arxiv.org/abs/2307.15043)（§11.8.3）
 - [Clio, arXiv:2412.13678](https://arxiv.org/abs/2412.13678)（§11.9.2）
 - [MedHELM, arXiv:2505.23802](https://arxiv.org/abs/2505.23802)（§11.9.3 §3）
-- [GDPval, arXiv:2510.04374](https://arxiv.org/pdf/2510.04374)（§11.9.1 §2）
+- [GDPval, arXiv:2510.04374](https://arxiv.org/abs/2510.04374)（§11.9.1 §2）
 - ["Do Large Language Model Benchmarks Test Reliability?" (Platinum), arXiv:2502.03461](https://arxiv.org/abs/2502.03461)（§11.10.2）
 - [Zhu 等, Establishing Best Practices for Building Rigorous Agentic Benchmarks, arXiv:2507.02825](https://arxiv.org/abs/2507.02825)（§11.10.2 §1 §5.2）
 - [DeepSeek-R1, arXiv:2501.12948](https://arxiv.org/abs/2501.12948)（图 11.1-5 Table 3）
@@ -916,9 +916,9 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 
 - §11.3 perplexity 公理起点：language model as distribution $p(x)$ 与 $\mathrm{PPL}=e^L$ 定义见 lecture_12.py L60-L106；Jozefowicz 等 2016 1BW 困惑度 51.3 → 30.0 见 [arXiv:1602.02410](https://arxiv.org/abs/1602.02410) §2 / Table 2。
 - §11.4 知识类基准：MMLU GPT-3 X-Large 43.9% / Small 25.9% / Medium 24.9% / Large 26.0% 见 [arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1；MMLU-Pro 12,032 题 + 14 学科 + 来源组成 6,810 + 4,083 + 598 + 541 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §3 Table 1；GPT-4o MMLU 88.7% (CoT) / 87.2% (direct) 与 MMLU-Pro 72.6% 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §4 Table 2；GPQA 448 / 546 / 198 题数 + 61 PhD contractors + 65% / 74% 专家准确率 + 34.1% ± 2.3% 非专家准确率 + GPT-4 38.7% / 39.7% / 38.8% 见 [arXiv:2311.12022](https://arxiv.org/abs/2311.12022) §1 §3.1 §3.2 §4 Table 5；HLE 2,500 题 + 14% multimodal + 24% / 76% MCQ / EM + $500K 奖金见 [arXiv:2501.14249](https://arxiv.org/abs/2501.14249) §2。
-- §11.5 指令遵循基准：Chatbot Arena BT 公理 $p(A \succ B) = \sigma(\alpha_A - \alpha_B)$ 与 $\prod_{(i,j)} p(i \succ j)^{[i \succ j]}$ 见 [arXiv:2403.04132](https://arxiv.org/abs/2403.04132) §3；WildBench 1024 题（从 1M 中筛出）+ WB-Reward / WB-Score Pearson 相关系数 + 多 judge ensemble 见 [arXiv:2406.04770](https://arxiv.org/pdf/2406.04770) §2.1 §3.1 §3.2 §4.2 Table 3；AlpacaEval 2.0 length-controlled win rate 见 [arXiv:2404.04475](https://arxiv.org/abs/2404.04475)；LLM-as-judge 四类偏差（length / position / self-preference / style）见 [arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3。
+- §11.5 指令遵循基准：Chatbot Arena BT 公理 $p(A \succ B) = \sigma(\alpha_A - \alpha_B)$ 与 $\prod_{(i,j)} p(i \succ j)^{[i \succ j]}$ 见 [arXiv:2403.04132](https://arxiv.org/abs/2403.04132) §3；WildBench 1024 题（从 1M 中筛出）+ WB-Reward / WB-Score Pearson 相关系数 + 多 judge ensemble 见 [arXiv:2406.04770](https://arxiv.org/abs/2406.04770) §2.1 §3.1 §3.2 §4.2 Table 3；AlpacaEval 2.0 length-controlled win rate 见 [arXiv:2404.04475](https://arxiv.org/abs/2404.04475)；LLM-as-judge 四类偏差（length / position / self-preference / style）见 [arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3。
 - §11.6 智能体基准：SWE-bench 2,294 题 + 12 仓库见 [arXiv:2310.06770](https://arxiv.org/abs/2310.06770) §3；Terminal-Bench 2.0 数据集构造（93 contributors / 229 tasks / 89 tasks 入 2.0 / frontier < 65%）见 [arXiv:2601.11868](https://arxiv.org/abs/2601.11868) §2 / 摘要；Cybench 40 题 + FST 2 分钟到 24 小时 54 分钟见 [arXiv:2408.08926](https://arxiv.org/abs/2408.08926) §5 / Figure 3；MLE-bench 75 题 + o1-preview + AIDE pass@1 16.9% / pass@8 34.1% 见 [arXiv:2410.07095](https://arxiv.org/abs/2410.07095) Table 2 / §1。
 - §11.8 安全基准：HarmBench 510 行为类别见 [arXiv:2402.04249](https://arxiv.org/abs/2402.04249) §3；AIR-Bench 314 风险类别 + 5,694 提示见 [arXiv:2407.17436](https://arxiv.org/abs/2407.17436) §3。
-- §11.9 真实性：GDPval 44 职业 + 9 行业见 [arXiv:2510.04374](https://arxiv.org/pdf/2510.04374) §2；MedHELM 121 临床任务 + 29 临床医生贡献见 [arXiv:2505.23802](https://arxiv.org/abs/2505.23802) §3。
+- §11.9 真实性：GDPval 44 职业 + 9 行业见 [arXiv:2510.04374](https://arxiv.org/abs/2510.04374) §2；MedHELM 121 临床任务 + 29 临床医生贡献见 [arXiv:2505.23802](https://arxiv.org/abs/2505.23802) §3。
 - §11.10 有效性：contamination 四条路线的公理起点见 [arXiv:2310.17623](https://arxiv.org/abs/2310.17623) §3 与 [arXiv:2410.08385](https://arxiv.org/abs/2410.08385) §1；τ-bench airline 子集 38% trivial 胜率见 [arXiv:2507.02825](https://arxiv.org/abs/2507.02825) §1 §5.2。
 - §11.11 rules of the game：method vs model/system 的 ImageNet 时代 vs foundation-model 时代边界见 lecture_12.py L379-L390；nanoGPT speedrun 范式见 lecture_12.py L384-L386。

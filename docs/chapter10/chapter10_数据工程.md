@@ -571,7 +571,7 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 - [The Stack v2, arXiv:2402.19173](https://arxiv.org/abs/2402.19173)（3.28B files / 104.2M repos / 67.5TB → 32.1TB 去重 / 约 900B 训练 tokens）
 - [HF `bigcode/the-stack-v2`](https://huggingface.co/datasets/bigcode/the-stack-v2)
 - [Common Crawl 官方 crawl 公告（CC-MAIN-2026-17）](https://commoncrawl.org/blog/april-2026-crawl-archive-now-available)
-- [Common Crawl 官方 about 页面](https://commoncrawl.org/big-picture/)（约每月发布一次、每次通常超过 20 亿网页、归档总量超过 10 PiB）
+- [Common Crawl 官方 about 页面](https://commoncrawl.org/about/)（约每月发布一次、单次通常超过 20 亿网页、归档总量超过 10 PiB）
 - [OpenWebMath, arXiv:2310.06786](https://arxiv.org/abs/2310.06786)
 - [phi-1, arXiv:2306.11644](https://arxiv.org/abs/2306.11644)
 - [Kandpal et al., arXiv:2202.06539](https://arxiv.org/abs/2202.06539)

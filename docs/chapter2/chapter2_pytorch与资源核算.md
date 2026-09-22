@@ -132,7 +132,7 @@ $$
 
 *图 2.1-4 GPU 计算与存储分层*
 
-图 2.1-4 把 GPU 抽象成 Compute 与 Memory 两个层次：上层是大量 ALU / Tensor Core 组成的计算单元，下层是 HBM 这样的高带宽显存。Compute 与 Memory 之间通过一条总线相连，每次算子要先把数据从 Memory 搬到 Compute，算完再写回 Memory。本节后面 §2.1.4 的 arithmetic intensity 和 roofline 都是基于这一分层结构。
+图 2.1-4 把 GPU 抽象成 Compute 与 Memory 两个层次：上层是大量 ALU / Tensor Core 组成的计算单元，下层是 HBM 这样的高带宽显存。Compute 与 Memory 之间通过一条总线相连，每次算子要先把数据从 Memory 搬到 Compute，算完再写回 Memory。本节后面 §2.1.3 的 arithmetic intensity 与 roofline 小节都基于这一分层结构展开。
 
 估算训练时间时要在厂商峰值上乘以 MFU；估算最大模型时也要考虑 optimizer、activation、通信缓冲和碎片。H100、H200 与 B200 这类指标更适合作数量级估算样例，具体训练计划仍应通过 benchmark 验证。
 
