@@ -85,7 +85,7 @@
 
 ### 第一性原理方法论（Aristotle 框架）
 
-第一性原理 = 方法论，不是分类。Aristotle 把 archai（ἀρχαί）定义为「**the first basis from which a thing is known**」（Posterior Analytics I.3）——认识的最初出发点，不可再向下推导的起点。CS336 课件在 lecture_09 / lecture_13 / lecture_16 反复用这个语义。每段论证必须满足三条硬约束：
+第一性原理 = 方法论，不是分类。Aristotle 把 archai（ἀρχαί）定义为「**the first basis from which a thing is known**」（Metaphysics V.1，Bekker 1013a14–15）——认识的最初出发点，不可再向下推导的起点。CS336 课件在 lecture_09 / lecture_13 / lecture_16 反复用这个语义。每段论证必须满足三条硬约束：
 
 1. **公理起点明确**：每段论证标注从哪个公理 / 公式 / 定理 / 物理约束推导过来（如「从 `loss(N,D)=E+A/N^α+B/D^β` 推导 Chinchilla 比例」、「从 policy gradient theorem + baseline invariance 推导 baseline 选取」、「从 roofline 算力 / 带宽约束推导 arithmetic intensity」、「从 `6ND` FLOPs 推导训练 FLOPs」、「从 attention / FFN / Norm 数学定义推导各自功能」）。不要直接抛概念名词而不交代公理来源。
 2. **推导链完整**：从公理起点到结论中间步骤不跳，不写「显然」「可以看到」「经验上」等省略语。读者沿论证链应能逐步看到从公理到结论的中间步骤。
