@@ -52,13 +52,13 @@ $$
 
 #### 第二步：计算硬件算力
 
-查阅 [NVIDIA H100 产品页](https://www.nvidia.com/en-sg/data-center/h100/)，其 FP16/BF16 的峰值算力约为 **1979 TFLOP/s**（每秒万亿次浮点运算）。下面三张图按"数字总览 → 性能明细 → 稀疏路径"三个子问题展开。
+查阅 [NVIDIA H100 产品页](https://www.nvidia.com/en-sg/data-center/h100/)，其 FP16/BF16 的峰值算力约为 **1979 TFLOP/s**（每秒万亿次浮点运算）。下面三张图先给出 GPU 计算与存储的分层结构，再展开 H100 各精度的峰值表，最后解释 1,979 这个数字背后的稀疏路径。
 
-![图 2.1-1 H100 数值细览](images/2-1-1-h100-spec-overview.png)
+![图 2.1-1 GPU 计算与存储分层](images/2-1-1-compute-memory-bound.png)
 
-*图 2.1-1 H100 数值细览*
+*图 2.1-1 GPU 计算与存储分层*
 
-图 2.1-1 给出 H100 各精度峰值的总览，是后续查 H100 数字的入口。
+图 2.1-1 把 GPU 抽象成 Compute 与 Memory 两个层次：上层是大量 ALU / Tensor Core 组成的计算单元，下层是 HBM 这样的高带宽显存。Compute 与 Memory 之间通过一条总线相连，每次算子要先把数据从 Memory 搬到 Compute，算完再写回 Memory。本章后面 §2.1.4 的 arithmetic intensity 和 roofline 都是基于这一分层结构。
 
 但是要注意，这个值是 NVIDIA H100 GPU 在使用 FP16 或 BF16 数据类型、且启用结构化稀疏（Structured Sparsity）时可达到的理论最大计算吞吐量（[NVIDIA H100 产品页](https://www.nvidia.com/en-sg/data-center/h100/)）。训练普通的稠密 Transformer（dense，无结构化稀疏）时，应按 dense 峰值估算，约为稀疏峰值的一半，即约 989.5 TFLOP/s。
 
@@ -66,7 +66,7 @@ $$
 
 *图 2.1-2 H100 性能明细*
 
-图 2.1-2 把图 2.1-1 拆到 FP64 / FP32 / TF32 / BF16 / FP16 / FP8 / INT8 几条横向赛道，并区分 Tensor Core 与 CUDA Core。粗估训练时间时只需对照 BF16 / FP16 Tensor Core 那一行。
+图 2.1-2 把 H100 的精度峰值按 FP64 / FP32 / TF32 / BF16 / FP16 / FP8 / INT8 拆到同一张表里，并标出 Tensor Core 与 CUDA Core 两条路径。粗估训练时间时只需对照 BF16 / FP16 Tensor Core 那一行。
 
 ![图 2.1-3 三类稀疏剪枝对比](images/2-1-3-structured-sparsity.png)
 
@@ -128,11 +128,13 @@ $$
 - **Memory capacity**：参数、梯度、优化器状态和激活都要占显存。AdamW 朴素训练中，优化器状态常常比参数本身更大；checkpointing、ZeRO/FSDP 和低精度训练都是在不同位置减内存。
 - **Memory bandwidth**：推理、小 batch matmul 和逐元素算子经常受 HBM 带宽限制。roofline 分析用算术强度判断一个算子更可能是 compute-bound 还是 memory-bound。
 
-![图 2.1-4 compute 与 memory bottleneck](images/2-1-4-compute-memory-bound.png)
+![图 2.1-4 H100 SXM 与 H100 NVL 规格对比](images/2-1-4-h100-spec-overview.png)
 
-*图 2.1-4 compute 与 memory bottleneck*
+*图 2.1-4 H100 SXM 与 H100 NVL 规格对比*
 
-因此，估算训练时间时要在厂商峰值上乘以 MFU；估算最大模型时也要考虑 optimizer、activation、通信缓冲和碎片。H100、H200 与 B200 这类指标更适合作数量级估算样例，具体训练计划仍应通过 benchmark 验证。
+图 2.1-4 给出 H100 SXM 与 H100 NVL 两类形态的横向规格对照：SXM5 BF16 Tensor Core 1,979 teraFLOPS（dense 为一半，约 989.5 teraFLOPS）、HBM 80 GB、3.35 TB/s；NVL 形态把显存扩到 94 GB、带宽提到 3.9 TB/s，但 BF16 Tensor Core 降到 1,671 teraFLOPS。本章后面的例子按 SXM5 规格估算（与 [NVIDIA H100 datasheet](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/H100/H100-datasheet-us-update.pdf) 一致），如换 NVL 或 PCIe 形态需按该形态的峰值重算。
+
+估算训练时间时要在厂商峰值上乘以 MFU；估算最大模型时也要考虑 optimizer、activation、通信缓冲和碎片。H100、H200 与 B200 这类指标更适合作数量级估算样例，具体训练计划仍应通过 benchmark 验证。
 
 #### Arithmetic intensity 与 roofline
 
@@ -901,7 +903,7 @@ output = x @ w # 输出向量
 ```
 当输入与权重都用 `torch.randn`（即 `x_j ~ N(0,1)`、`W_{ij} ~ N(0,1)`）独立采样时， $y_i = \sum_j W_{ij} x_j$ 的方差满足 $\mathrm{Var}(y_i) = \sum_j \mathrm{Var}(W_{ij})\mathrm{Var}(x_j) = n$（[Goodfellow et al. *Deep Learning* §8.4 Parameter Initialization Strategies](https://www.deeplearningbook.org/contents/optimization.html)），所以 `output` 的标准差为 `` $`\sqrt{n} = \sqrt{\text{input_dim}}`$ ``。例如 `input_dim = 16384` 时 `output` 标准差约为 128，远大于 `x` 的标准差 1，会逐层放大导致梯度爆炸（gradient explosion），使训练过程变得极不稳定，甚至无法收敛。
 
-为了克服这个问题，需要一种对输入维度 `input_dim` 不敏感的初始化方法。CS336 代码讲义采用按 fan-in 缩放：权重除以输入维度的平方根 $\sqrt{d_{\text{in}}}$ ，把 $\mathrm{Var}(y_i)$ 拉回 $O(1)$ 。这里的 $d_{\text{in}}$ 对应代码里的 `input_dim`。
+为了克服这个问题，需要一种对输入维度 `input_dim` 不敏感的初始化方法。常用的做法是按 fan-in 缩放：权重除以输入维度的平方根 $\sqrt{d_{\text{in}}}$ ，把 $\mathrm{Var}(y_i)$ 拉回 $O(1)$ 。这里的 $d_{\text{in}}$ 对应代码里的 `input_dim`。
 
 区分两个容易混用的名字： $W_{ij} \sim U[-1/\sqrt{n}, 1/\sqrt{n}]$ 这种只看 fan-in 的缩放，在 Glorot 与 Bengio 的论文里叫 **standard initialization**（式 1），是他们用作对照的基线；论文提出的 **Xavier / Glorot 初始化**（式 16）同时兼顾前向激活方差与反向梯度方差，取
 
