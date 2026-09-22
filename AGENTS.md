@@ -2,7 +2,7 @@
 
 本文件适用于整个 `llm-notes` 仓库。所有维护者和自动化 coding agent 在修改前都应先阅读这里的说明，并以 `STYLE.md` 的写作与排版约定为准。
 
-AGENTS.md 是**流程规范**：回答前复核、修改前必读、审计循环、联网求证门槛、commit 约定。STYLE.md 是**写作规范**：Markdown 排版、提示块用法、术语口径、来源记录格式。两份文档在以下四处必须保持一致：(1) 禁用句式清单；(2) 提示块 5 种 alert 语义；(3) 章节末来源记录的 3 段结构；(4) GitHub 渲染安全规则（4 种公式渲染失败模式与自检 rg）。修改 `AGENTS.md` 后须 `cp AGENTS.md CLAUDE.md` 一并提交。
+AGENTS.md 是**流程规范**：回答前复核、修改前必读、审计循环、联网求证门槛、commit 约定。STYLE.md 是**写作规范**：Markdown 排版、提示块用法、术语口径、来源记录格式。两份文档在以下五处必须保持一致：(1) 禁用句式清单；(2) 提示块 5 种 alert 语义；(3) 章节末来源记录的 3 段结构；(4) GitHub 渲染安全规则（4 种公式渲染失败模式与自检 rg）；(5) 第一性原理三条硬约束与逻辑审计 logic_finding 字段口径。修改 `AGENTS.md` 后须 `cp AGENTS.md CLAUDE.md` 一并提交。
 
 ## 回答前复核
 
@@ -178,6 +178,16 @@ sub-agent 的审计主体是「通读全文 + 读本地 PNG + WebFetch 一手页
 
 prompt 要求 sub-agent 只报 `refuted + tentative`、**不再报 `confirmed`**，可显著减少低信号 confirmed informational finding，把篇幅留给可执行的 refuted 修复。
 
+**逻辑审计 finding schema（logic_finding，与 verdict 三档并用）**：
+
+`rg` 只能抓句式骨架（禁用句式 / 作者声音 / 元叙述），抓不到推导跳步、经验伪装推导、结论无证据；逻辑质量由结构化 finding 字段强制，与 `search_query_1/2/3` 强制 WebSearch 同理——写在 prompt 里的方法论倡议无效，StructuredOutput 必填字段才执行。凡 finding 涉及论证质量（对应 STYLE.md「第一性原理方法论」三条硬约束），必须按 logic_finding 三字段报告：
+
+- `claim`：被质疑的论断原文 + `file:line`；
+- `axiom_source`：该论断的公理来源（公式 / 定理 / 物理约束 / 代码接口 / lecture 原文）；无推导路径、属经验或类比则标 `vibes`；
+- `gap`：从公理到结论跳过的中间步骤，或经验判断被写成推导的原句位置。
+
+logic_finding 只报 `refuted + tentative`，与 verdict 三档对齐。fix 阶段按方案 A 重新 WebFetch 一手源 + 重读 lecture 抽文 / `lecture_NN.py` 后就地修复，notes 附 `first-principle derivation: [路径]` 与 `lecture read: [路径列表]`。
+
 ### 审计-fix 一体化（方案 A）
 
 每个章节的 audit 与 fix 由**同一个 sub-agent** 在两次明确分开的小阶段内完成，避免跨 agent 印象传染：
@@ -256,7 +266,7 @@ prompt 要求 sub-agent 只报 `refuted + tentative`、**不再报 `confirmed`**
 | 8 | **跨章引用缩写违规** | ch4 L112/537/547 写 `EP / ETP / EDP`，跨章引用应使用完整 H3 标题「第 N 章 §X.Y 章节标题」 | grep「ch[0-9]+」、「第 N 章 §」+ 缩写模式 |
 | 9 | **sub-agent 报告机制漏洞** | ch1 L288 教训：audit-fix agent 报告「改前/改后」时，notes 里的「旧值」可能是已经改过的最终值而不是 git HEAD 改前值 | prompt 强制 agent 在 notes 字段附「`git show <commit-hash>:<file>:<line>` 改前值」+「`git show HEAD:<file>:<line>` 改后值」 |
 | 10 | **结构性内容改动必读课程材料** | ch13 教训：agent 改了 80 行 PPO 详细推导（policy gradient → REINFORCE → TRPO → PPO-clip），但 transcript 显示 **0 次 Read lecture 抽文 / lecture_13.py**——agent 凭印象压缩，notes 写「Read ch12 §12.4 验证 PPO 推导已讲过」也是凭印象编的 | prompt 强制 agent 改结构性内容前必须 `Read` 课程材料，并把 read 路径写进 notes 字段「`lecture read: [路径列表]`」 |
-| 11 | **论证必走第一性原理（Aristotle 框架）** | 第一性原理 = 方法论（不是分类）。Aristotle 把 archai 定义为「**the first basis from which a thing is known**」（Metaphysics V.1，Bekker 1013a14–15）——认识的最初出发点，不可再向下推导的起点。三条审计要求：(1) **公理起点明确**——每段论证标注从哪个公理 / 公式 / 定理 / 物理约束推导过来；(2) **推导链完整**——从公理到结论中间步骤不跳，不写「显然」「可以看到」；(3) **经验 vs 推导清楚区分**——vibes / 行业惯例 / 类比的段落明确标注「这是经验 / 类比，不是公理推导」，不伪装成推导。本仓库典型公理起点（来自 CS336 lecture_09 / 13 / 16）：scaling law `loss(N,D)=E+A/N^α+B/D^β` 推导 Chinchilla 比例 / 临界 batch size / train-vs-inference-optimal；roofline 算力 / 带宽物理约束推导 arithmetic intensity 与瓶颈切换；policy gradient theorem + baseline invariance 推导 PPO / REINFORCE / GRPO 的 baseline 选取；compute / memory / bandwidth 账本（`6ND` FLOPs / `12 N_param` 字节 / pipeline bubble）推导训练时间与资源；attention / FFN / Norm 数学定义推导各自功能；top-k gating / load balancing loss 推导 MoE 训练目标。**当前无清晰推导路径**的论域（明确标注为 vibes / 经验 / 类比，不假装是推导）：数据 filter / dedup / mixing 阈值（lecture_13 L802 明说「data processing is... a lot just based on kind of vibes」）；GRPO 加的 length normalizer + std normalization（lecture_16 L164-167 明说「if you try to derive GRPO from first principles following the policy gradient and baseline theorems you'll end up with something different」）；现代组件具体值选择（SwiGLU / RoPE / RMSNorm 是 scaling 拟合后的「幸存者」）。**与结构审计 5 问并列、互不重复**：第一性原理关心「论证是否从公理推导」，结构审计关心「位置是否成立」——先确认推导来源，再走结构审计确认每个单元必要性 | 写章节或做章节级调整前必须列出本章节每个论证的「推导来源」，notes 字段附「first-principle derivation: [路径]」与「vibes / 待推导: [路径]」 |
+| 11 | **论证必走第一性原理（Aristotle 框架）** | 第一性原理 = 方法论（不是分类）。Aristotle 把 archai 定义为「**the first basis from which a thing is known**」（Metaphysics V.1，Bekker 1013a14–15）——认识的最初出发点，不可再向下推导的起点。三条审计要求：(1) **公理起点明确**——每段论证标注从哪个公理 / 公式 / 定理 / 物理约束推导过来；(2) **推导链完整**——从公理到结论中间步骤不跳，不写「显然」「可以看到」；(3) **经验 vs 推导清楚区分**——vibes / 行业惯例 / 类比的段落明确标注「这是经验 / 类比，不是公理推导」，不伪装成推导。本仓库典型公理起点（来自 CS336 lecture_09 / 13 / 16）：scaling law `loss(N,D)=E+A/N^α+B/D^β` 推导 Chinchilla 比例 / 临界 batch size / train-vs-inference-optimal；roofline 算力 / 带宽物理约束推导 arithmetic intensity 与瓶颈切换；policy gradient theorem + baseline invariance 推导 PPO / REINFORCE / GRPO 的 baseline 选取；compute / memory / bandwidth 账本（`6ND` FLOPs / `12 N_param` 字节 / pipeline bubble）推导训练时间与资源；attention / FFN / Norm 数学定义推导各自功能；top-k gating / load balancing loss 推导 MoE 训练目标。**当前无清晰推导路径**的论域（明确标注为 vibes / 经验 / 类比，不假装是推导）：数据 filter / dedup / mixing 阈值（lecture_13 L802 明说「data processing is... a lot just based on kind of vibes」）；GRPO 加的 length normalizer + std normalization（lecture_16 L164-167 明说「if you try to derive GRPO from first principles following the policy gradient and baseline theorems you'll end up with something different」）；现代组件具体值选择（SwiGLU / RoPE / RMSNorm 是 scaling 拟合后的「幸存者」）。**与结构审计 5 问并列、互不重复**：第一性原理关心「论证是否从公理推导」，结构审计关心「位置是否成立」——先确认推导来源，再走结构审计确认每个单元必要性 | 写章节或做章节级调整前必须列出本章节每个论证的「推导来源」，notes 字段附「first-principle derivation: [路径]」与「vibes / 待推导: [路径]」；audit finding 按「逻辑审计 finding schema」报 claim / axiom_source / gap 三字段（见「三阶段循环」节） |
 | 12 | **fix verification 误判「字段未公开」而整段删除** | Phase 11.3 ch4 agent 把「DeepSeek V4-Pro 演进」整段删除：表行「总参数 / 激活参数」两列写「未公开」→ agent 推断「不完整就别列」，连带把 §4.3 节首描述、§4.3.2「DeepSeek V4 的改进」整节、§4.6 表头与 V4-Pro 行、章节末来源记录的 V4-Pro config 全部删除；但 ch3 §3.2.5.7.3 与 ch14 都在引用 `DeepSeek-V4-Pro/config.json` 的 `index_topk: 1024` / `compress_ratios` / `swiglu_limit: 10.0`——删除破坏跨章一致性 | sub-agent 删前必须 `rg "<key>"` 全仓库扫引用方 + `git log -S "<key>" -- <file>` 看历史上是否有完整版本可恢复 + WebFetch 一手 config.json / 论文确认「未公开」字段是否真的不可得；不要把「数据稀疏」与「数据错误」混为一谈；同样警惕把 swiglu_limit / num_hash_layers / scoring_func 等「字段非主流」当成「应替换为更主流来源」 |
 
 **每条都按方案 A 就地 Edit 修复**（不归到独立 round），并跑禁用句式 + 元叙述两类 rg 自检零命中才算完成。
@@ -356,5 +366,6 @@ prompt 要求 sub-agent 只报 `refuted + tentative`、**不再报 `confirmed`**
 | 图意核对 sub-task 模板 / 删图判定 | STYLE.md「图意核对」「图片」 | 4 个检查项 + 两图视觉内容一致即可删 |
 | 修改后自检 1（禁用句式 rg）与第 7 层 | STYLE.md「跨章引用格式」 | rg pattern 抓「第 N 章 §X.Y」与「chapterN」缩写 |
 | 修改后自检 4（GitHub 渲染安全 rg） | STYLE.md「公式与排版」渲染条目 +「HTML」金额 span 例外 | 4 种渲染失败模式（开 `$` 紧贴 / 斜体图注 / `}_`·`|_` 切碎 / 字面金额）的 rg 与修复规则一一对应；图注用 `` `` $`expr`$ `` ``、金额用 `<span>$</span>` |
+| 逻辑审计 finding schema（logic_finding） | STYLE.md「第一性原理方法论（Aristotle 框架）」三条硬约束 | `claim` / `axiom_source` / `gap` 必填字段与「公理起点明确 / 推导链完整 / 经验 vs 推导清楚区分」一一对应；`rg` 只作句式兜底，不承担逻辑审计 |
 
 AGENTS.md 与 STYLE.md 任何一侧调整规则时，另一侧必须同步引用对应章节；同一 commit 内完成。

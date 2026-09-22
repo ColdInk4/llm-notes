@@ -91,6 +91,8 @@
 2. **推导链完整**：从公理起点到结论中间步骤不跳，不写「显然」「可以看到」「经验上」等省略语。读者沿论证链应能逐步看到从公理到结论的中间步骤。
 3. **经验 vs 推导清楚区分**：vibes / 行业惯例 / 类比的段落明确标注「这是经验 / 类比，不是公理推导」，不能伪装成推导。本仓库**当前**无清晰推导路径的论域（明确标注为 vibes / 经验 / 类比，不假装是推导）：数据 filter / dedup / mixing 阈值（lecture_13 L802 明说「data processing is... a lot just based on kind of vibes」）；GRPO 加的 length normalizer + std normalization（lecture_16 L164-167 明说「if you try to derive GRPO from first principles... you'll end up with something different」）；现代组件具体值选择（SwiGLU / RoPE / RMSNorm 是 scaling 拟合后的「幸存者」）。这类论域的正文写法：给出「目前业界做法」+ 引用典型代表（如 FineWeb MinHash + LSH + 阈值 0.75），并把该判断明确表述为经验规则（「业界经验」「拟合结果」），不伪装成从公理推导。推导补全与否在 chat / sub-agent 流程里核验，笔记正文不写「待补」标记。
 
+审计执行侧与本节同步：`rg` 只兜底句式骨架，逻辑质量由 finding 强制字段保证——涉及论证质量的 finding 必须按 AGENTS.md「逻辑审计 finding schema」给出 `claim`（论断原文 + file:line）、`axiom_source`（公理来源，或标 `vibes`）、`gap`（跳步位置），与上面三条硬约束一一对应；只报 `refuted + tentative`。
+
 #### 整条认识链：从问题到结论
 
 第一性原理覆盖的不只是公式，也覆盖概念定义、叙述组织、实验建立和证据解释。每个重要段落、表格或核心图都应沿下面的认识链展开：
