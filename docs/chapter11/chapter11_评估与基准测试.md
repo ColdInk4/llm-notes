@@ -75,9 +75,9 @@
 
 第三种定义是**人类更偏好它的回答**。Chatbot Arena（现改名 LMArena）通过匿名两两比较来估计偏好，但偏好会混合正确性、风格、长度、礼貌程度和用户分布。
 
-![图 11.1-3 LM Arena 人类偏好榜单](images/11-1-3-lmarena-preference-leaderboard.png)
+![图 11.1-3 LMArena 人类偏好榜单](images/11-1-3-lmarena-preference-leaderboard.png)
 
-*图 11.1-3 LM Arena 人类偏好榜单*
+*图 11.1-3 LMArena 人类偏好榜单*
 
 第四种定义是**真实用户愿意持续使用或付费**。OpenRouter 这类使用量排名更接近市场反馈，但它同时受价格、可得性、生态集成、默认路由和社区热度影响。
 
@@ -418,7 +418,7 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 把选项从 4 增到 10 并加入 CoT 评估后，模型在 MMLU-Pro 上的得分相对 MMLU 下降 16%–33%：领先模型 GPT-4o 在 MMLU-Pro 上只有 72.6%，而它在 MMLU 上是 88.7%（CoT）/ 87.2%（direct）。
 
-公理层面，两项设计同时起作用：(a) 选项数从 4 增到 10 把随机基线从 25% 压到 10%，让准确率不再轻易触顶；(b) CoT 把「选择答案」这一动作从「字面猜测」转化为「逐步推理」，让分数差异主要由推理深度而非格式投机带来。两项合起来同时改善区分度和稳定性：GPT-4o、Claude-3-Opus、GPT-4-Turbo 的分差从 MMLU 上的约 2% 拉开到 MMLU-Pro 上的约 9%，prompt 变体带来的分数波动也从 MMLU 的 4%–5% 收窄到 2%。
+公理层面，两项设计同时起作用：(a) 选项数从 4 增到 10 把随机基线从 25% 压到 10%，让准确率不再轻易触顶；(b) CoT 把「选择答案」这一动作从「字面猜测」转化为「逐步推理」，让分数差异主要由推理深度而非格式投机带来。两项合起来同时改善区分度和稳定性：GPT-4o、Claude 3 Opus、GPT-4-Turbo 的分差从 MMLU 上的约 2% 拉开到 MMLU-Pro 上的约 9%，prompt 变体带来的分数波动也从 MMLU 的 4%–5% 收窄到 2%。
 
 ### 11.4.3 GPQA (Graduate-Level Google-Proof Q&A)
 
@@ -494,11 +494,11 @@ AlpacaEval 2.0 的一个重要变化，是用回归方式修正长度偏置，�
 
 ### 11.5.4 WildBench
 
-[WildBench](https://arxiv.org/pdf/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（论文 §2.1）。主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude-3-Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。
+[WildBench](https://arxiv.org/pdf/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（论文 §2.1）。主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude 3 Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。
 
 论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。这条性质对应第一性原理的「基元不变性」：不同 LLM 裁判只要共享同一份 checklist，得到的相对排名就保持单调一致。因此 WildBench 度量的是「LLM-as-judge 这一整类尺子给出的相对秩序」——具体 judge 的绝对刻度会被多 judge ensemble 稀释。
 
-WildBench 与 Chatbot Arena 高度相关。论文 §4.2 Table 3 报告的 Pearson 相关系数随 baseline（GPT-4-Turbo / Claude-3-Haiku / 三个模型平均）与长度阈值 $K$（500 字符 / 无阈值）取值不同；其中 WB-Reward 在 GPT-4-Turbo baseline + $K{=}500$ 设置下对 top-ranking 模型达 0.99，三个 baseline 平均 + $K{=}500$ 下为 0.98，Claude-3-Haiku baseline + 无阈值下为 0.985，WB-Score 0.955，均高于 ArenaHard 的 0.91 与 AlpacaEval 2.0 length-controlled win rate 的 0.89（论文同时报告其他 baseline 与 $K$ 取值的相关系数随设置变化）。这些数值随评测设置而异，但总体说明 WildBench 已成为新基准有效性的”事实上的”检验标准之一。
+WildBench 与 Chatbot Arena 高度相关。论文 §4.2 Table 3 报告的 Pearson 相关系数随 baseline（GPT-4-Turbo / Claude-3-Haiku / 三个模型平均）与长度阈值 $K$（500 字符 / 无阈值）取值不同；其中 WB-Reward 在 GPT-4-Turbo baseline + $K = 500$ 设置下对 top-ranking 模型达 0.99，三个 baseline 平均 + $K = 500$ 下为 0.98，Claude-3-Haiku baseline + 无阈值下为 0.985，WB-Score 0.955，均高于 ArenaHard 的 0.91 与 AlpacaEval 2.0 length-controlled win rate 的 0.89（论文同时报告其他 baseline 与 $K$ 取值的相关系数随设置变化）。这些数值随评测设置而异，但总体说明 WildBench 已成为新基准有效性的”事实上的”检验标准之一。
 
 ![图 11.5-5 WildBench 构建流程](images/11-5-5-wildbench-pipeline.png)
 
@@ -869,4 +869,4 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - 来源：本章以公开评估资料、论文与模型技术报告为主；现代榜单、模型分数和 benchmark 声明按官方榜单、论文或模型卡逐条复核。
 - 课程映射：Lecture 12 提供 difficulty、realism、validity、rules of the game、contamination、agent benchmark 和安全评估主线；evaluation 主线对应本笔记第 11 章。
 - 来源说明：现代榜单、模型分数和 benchmark 声明随官方来源更新；本节事实声明的数字（WildBench Table 3、MLE-bench Table 2 / §1、GPQA §1 §3 §4、HLE 2500 题 + 14% multimodal、Terminal-Bench 93/229/89、Cybench 40 + 24h54m、SWE-bench 2294、MMLU-Pro 12032、τ-bench 38%、GPQA Diamond 榜单超过 94%、SWE-bench Verified 榜单最高 76.8%）均来自对应 arXiv 一手页面、HF / 官方仓库或官方榜单。
-- 查阅日期：2026-05-28（首次成体系核证）；2026-09-05（Section 11.4.1 MMLU Table 1、Section 11.4.2 MMLU-Pro、Section 11.4.3 GPQA 分档准确率、Section 11.5.4 WildBench 小节编号与相关系数、Section 11.10.2 agentic benchmark 复核，参考文献补全）；2026-09-16（§11.3 perplexity 公理起点、§11.4 MMLU / MMLU-Pro / GPQA / HLE 第一性原理强化与段落拆段、§11.5 Chatbot Arena BT 公理 + LLM-as-judge 偏差公理 + WildBench Pearson 数字修正、§11.6 agent scaffold 四组件公理 + Terminal-Bench 拆段、§11.7 ARC-AGI 第一性原理、§11.8 propensity vs capability 公理、§11.10 contamination 四路线公理 + Docent 拆段、§11.11 method vs system 公理、本章总结三条规则公理化）；2026-09-22（§11.6 基准饱和段的 GPQA Diamond 榜单（gpqa.ai）与 SWE-bench Verified 榜单最高分（swebench.com）复核，§11.6.2 Terminal-Bench 数据集构造段「后续版本可能扩展」trailing-comment 撤回 + 论文署名元句改写为 `[Merrill 等, 2026, arXiv:2601.11868](...)` 完整链接形式，arXiv:2601.11868 一手页面复核确认标题、作者、提交日期、89 任务数与摘要描述）。
+- 查阅日期：2026-05-28（首次成体系核证）；2026-09-05（Section 11.4.1 MMLU Table 1、Section 11.4.2 MMLU-Pro、Section 11.4.3 GPQA 分档准确率、Section 11.5.4 WildBench 小节编号与相关系数、Section 11.10.2 agentic benchmark 复核，参考文献补全）；2026-09-16（§11.3 perplexity 公理起点、§11.4 MMLU / MMLU-Pro / GPQA / HLE 第一性原理强化与段落拆段、§11.5 Chatbot Arena BT 公理 + LLM-as-judge 偏差公理 + WildBench Pearson 数字修正、§11.6 agent scaffold 四组件公理 + Terminal-Bench 拆段、§11.7 ARC-AGI 第一性原理、§11.8 propensity vs capability 公理、§11.10 contamination 四路线公理 + Docent 拆段、§11.11 method vs system 公理、本章总结三条规则公理化）；2026-09-22（§11.6 基准饱和段的 GPQA Diamond 榜单（gpqa.ai）与 SWE-bench Verified 榜单最高分（swebench.com）复核，§11.6.2 Terminal-Bench 数据集构造段「后续版本可能扩展」trailing-comment 撤回 + 论文署名元句改写为 `[Merrill 等, 2026, arXiv:2601.11868](...)` 完整链接形式，arXiv:2601.11868 一手页面复核确认标题、作者、提交日期、89 任务数与摘要描述）；2026-09-22（Phase 14.1v2 audit-fix：图 11.1-3 alt text + caption 的 "LM Arena" 统一改为 "LMArena"，§11.4.2 与 §11.5.4 中 "Claude-3-Opus" 统一改为 "Claude 3 Opus"，§11.5.4 WildBench 段落中 `$K{=}500$` 改写为 `$K = 500$`；MMLU-Pro 12032 题 / 14 学科 / 来源 6810+4083+598+541、GPQA 448/546/198、GPQA 专家 65%/74% / 非专家 34.1%±2.3% / GPT-4 38.7/39.7/38.8%、HLE 2500 题 + 14% multimodal + 24%/76% MCQ/EM + $500K 奖金、SWE-bench 2294 题 / 12 仓库、SWE-bench Verified 76.8% 最高（Claude Sonnet 4.6）、Cybench 40 题 + FST 2 分钟到 24 小时 54 分钟、MLE-bench 75 题 + o1-preview+AIDE pass@1 16.9% / pass@8 34.1%、WildBench 1024 题 + WB-Reward500^gpt4t P-Cor_top 0.992 + WB-Score 0.955 + ArenaHard 0.91 + AlpacaEval 2.0 LC 0.89、DeepSeek-R1 arXiv:2501.12948 标题复核 等数字均已联网核对无误，无需再改）。

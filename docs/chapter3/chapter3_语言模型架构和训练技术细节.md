@@ -845,7 +845,7 @@ $$
 
 MLA 在 attention 路径中增加了投影或重构计算。KV cache 和 HBM bandwidth 已成为瓶颈时，这些额外计算可以换取更低的显存占用和读取量。
 
-RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_k^R$ ，其中 $d_c$ 是 shared KV latent 的维度、 $d_k^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_k^R = 64$，约为 $d_k / 3$—— $d_k = qk\\_nope\\_head\\_dim + qk\\_rope\\_head\\_dim = 128 + 64 = 192$，其中 $64/192$ 用于位置编码；具体字段见 [`deepseek-ai/DeepSeek-V2-Chat` 的 `config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)）。
+RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_k^R$ ，其中 $d_c$ 是 shared KV latent 的维度、 $d_k^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_k^R = 64$，约为 $d_k / 3$—— $d_k$ 由 `qk_nope_head_dim`（128）与 `qk_rope_head_dim`（64）相加得到 $192$ ，其中 $64/192$ 用于位置编码；具体字段见 [`deepseek-ai/DeepSeek-V2-Chat` 的 `config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)）。
 
 ![图 3.2-17 MLA 实验](images/3-2-17-mla-experiment.png)
 
@@ -969,7 +969,7 @@ CSA 层执行流程可以概括为：先对 KV cache 做可学习的加权压缩
 
 HCA 的目标是极低成本地维护一个覆盖十万级 token 的全局背景视野。它只做压缩，不做稀疏选择。
 
-其实 HCA 与 CSA 类似，但压缩率 m 比 CSA 要大得多，多个 token 的局部信息被融合。`DeepSeek-V4-Pro/config.json` 的 `compress_ratios` 逐层给出这两档取值（`num_hidden_layers = 61` 配置下，列表本身含 62 个数值，最后一项对应 MTP/next-token 层）：开头两层是 `128, 128`，之后按 `4, 128` 反复交替 29 对共 58 个值，再追加一个 `4` 与一个 `0` 收尾（即全分辨率 full-attention 层）。因此 HCA 层压缩率 128、CSA 层压缩率 4，序列中只有首尾几层与该交替模式不完全吻合——最末 `0` 走 SWA/全分辨率路径，开头两层为 HCA bootstrap。因为压缩得足够狠，序列长度变得极短。所以 HCA 可以在这个极短的序列上进行**密集注意力**，让每个 token 都能不丢失地看到整个全局背景。由于序列短，计算成本完全可控。
+其实 HCA 与 CSA 类似，但压缩率 m 比 CSA 要大得多，多个 token 的局部信息被融合。`DeepSeek-V4-Pro/config.json` 的 `compress_ratios` 逐层给出这两档取值（`num_hidden_layers = 61` 配置下，列表本身含 60 个数值）：开头两层是 `128, 128`，之后按 `4, 128` 反复交替 28 对共 56 个值，最后以一个 `4, 0` 收尾（即末尾两层 HCA 压缩率 4、SWA/全分辨率 full-attention 层 0）。因此 HCA 层压缩率 128、CSA 层压缩率 4，序列中只有首尾几层与该交替模式不完全吻合——最末 `0` 走 SWA/全分辨率路径，开头两层为 HCA bootstrap。因为压缩得足够狠，序列长度变得极短。所以 HCA 可以在这个极短的序列上进行**密集注意力**，让每个 token 都能不丢失地看到整个全局背景。由于序列短，计算成本完全可控。
 
 ### 3.2.5.8 线性时间替代：linear attention / Mamba-2 / Gated DeltaNet
 
@@ -1049,7 +1049,7 @@ $$
 
 ![图 3.3-1 d_ff&d_model](images/3-3-1-ffn-model-dim-ratio.png)
 
-*图 3.3-1 各模型族 $`d_{\text{ff}}/d_{\text{model}}`$ 实测值对照表*
+*图 3.3-1 截图中的 $d_{\text{ff}}/d_{\text{model}}$ 对照表；其中 "Qwen 14B = 2.67" 一项实际对应 Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`），原版 Qwen-14B 的 `intermediate_size = 27392`、 $d_{\text{ff}}/d_{\text{model}} \approx 5.35$ ，§3.3.1 正文按代际列出原版与各代际具体值*
 
 以 PaLM 为例，它虽然是 SwiGLU 模型，但把 $d_{\text{ff}}$ 直接设为 $4d_{\text{model}}$，没有做 2/3 缩放。LLaMA-2 70B 与 Mistral-7B v0.1 落在 3.5 倍附近：LLaMA-2 70B 的 `hidden_size = 8192`、`intermediate_size = 28672`，Mistral-7B v0.1 的 `hidden_size = 4096`、`intermediate_size = 14336`，两者都是 $d_{\text{ff}}/d_{\text{model}} = 3.5$。两个模型都用 GQA（`num_key_value_heads = 8`），共享 KV 省下的预算被重新分配给 MLP，于是在 $8/3$ 的基础上再乘约 1.33。
 
@@ -1085,7 +1085,7 @@ T5 和 LaMDA 是明显例外，T5 把这个比例推到 16。PaLM 540B 也不在
 
 ![图 3.3-3 attention head ratio](images/3-3-3-head-dim-ratio.png)
 
-*图 3.3-3 多数模型让 head 数量乘以 head dim 接近 model dim，但也存在 T5、LaMDA 等例外*
+*图 3.3-3 截图，多数模型让 head 数量乘以 head dim 接近 model dim；其中 PaLM 行 head dim 标注为 258、ratio 1.48 与 PaLM 540B 实际值（head dim 256、 $48 \times 256 / 18432 \approx 0.67$ ，论文 Table 1）不一致，§3.3.2 正文给出正确数字*
 
 Bhojanapalli 等人在 [*Low-Rank Bottleneck in Multi-head Attention Models*, arXiv:2002.07028](https://arxiv.org/abs/2002.07028) 中提出，如果 head dim 过小而头数继续增加，attention 矩阵会落入低秩瓶颈，限制表达能力。1:1 比例附近则一般没有表现出明显的低秩约束，这是当前主流模型能稳定落在这条经验线上的部分原因。
 
