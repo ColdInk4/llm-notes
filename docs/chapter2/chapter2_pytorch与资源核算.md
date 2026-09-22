@@ -52,35 +52,35 @@ $$
 
 #### 第二步：计算硬件算力
 
-查阅 [NVIDIA H100 产品页](https://www.nvidia.com/en-sg/data-center/h100/)，其 FP16/BF16 的峰值算力约为 **1979 TFLOP/s**（每秒万亿次浮点运算）。下面三张图先给出 GPU 计算与存储的分层结构，再展开 H100 各精度的峰值表，最后解释 1,979 这个数字背后的稀疏路径。
-
-![图 2.1-1 GPU 计算与存储分层](images/2-1-1-compute-memory-bound.png)
-
-*图 2.1-1 GPU 计算与存储分层*
-
-图 2.1-1 把 GPU 抽象成 Compute 与 Memory 两个层次：上层是大量 ALU / Tensor Core 组成的计算单元，下层是 HBM 这样的高带宽显存。Compute 与 Memory 之间通过一条总线相连，每次算子要先把数据从 Memory 搬到 Compute，算完再写回 Memory。本章后面 §2.1.4 的 arithmetic intensity 和 roofline 都是基于这一分层结构。
+查阅 [NVIDIA H100 产品页](https://www.nvidia.com/en-sg/data-center/h100/)，其 FP16/BF16 的峰值算力约为 **1979 TFLOP/s**（每秒万亿次浮点运算）。下面三张图先展开 H100 各精度的峰值表，再解释 1,979 这个数字背后的稀疏路径，最后给出 H100 SXM 与 NVL 两类形态的规格对照。
 
 但是要注意，这个值是 NVIDIA H100 GPU 在使用 FP16 或 BF16 数据类型、且启用结构化稀疏（Structured Sparsity）时可达到的理论最大计算吞吐量（[NVIDIA H100 产品页](https://www.nvidia.com/en-sg/data-center/h100/)）。训练普通的稠密 Transformer（dense，无结构化稀疏）时，应按 dense 峰值估算，约为稀疏峰值的一半，即约 989.5 TFLOP/s。
 
-![图 2.1-2 H100 性能明细](images/2-1-2-h100-performance-details.png)
+![图 2.1-1 H100 性能明细](images/2-1-1-h100-performance-details.png)
 
-*图 2.1-2 H100 性能明细*
+*图 2.1-1 H100 性能明细*
 
-图 2.1-2 把 H100 的精度峰值按 FP64 / FP32 / TF32 / BF16 / FP16 / FP8 / INT8 拆到同一张表里，并标出 Tensor Core 与 CUDA Core 两条路径。粗估训练时间时只需对照 BF16 / FP16 Tensor Core 那一行。
+图 2.1-1 把 H100 的精度峰值按 FP64 / FP32 / TF32 / BF16 / FP16 / FP8 / INT8 拆到同一张表里，并标出 Tensor Core 与 CUDA Core 两条路径。粗估训练时间时只需对照 BF16 / FP16 Tensor Core 那一行。
 
-![图 2.1-3 三类稀疏剪枝对比](images/2-1-3-structured-sparsity.png)
+![图 2.1-2 三类稀疏剪枝对比](images/2-1-2-structured-sparsity.png)
 
-*图 2.1-3 三类稀疏剪枝对比（非结构化、结构化、N:M 半结构化）*
+*图 2.1-2 三类稀疏剪枝对比（非结构化、结构化、N:M 半结构化）*
 
-图 2.1-3 解释 H100 的 1,979 TFLOP/s 为什么是"含 2:4 稀疏"的数字：1,979 走的是右图 N:M 半结构化路径，dense Transformer 不能直接套这个峰值。
+图 2.1-2 解释 H100 的 1,979 TFLOP/s 为什么是"含 2:4 稀疏"的数字：1,979 走的是右图 N:M 半结构化路径，dense Transformer 不能直接套这个峰值。
 
-按剪枝粒度，常见稀疏方式分成三类（图 2.1-3 从左到右）：
+按剪枝粒度，常见稀疏方式分成三类（图 2.1-2 从左到右）：
 
 - **非结构化剪枝**：按权重绝对值大小随机置零，不考虑位置；压缩率最高，但内存访问不连续，普通 GPU 难以直接加速。
 - **结构化剪枝**：整通道（channel）、整行或整列地移除，矩阵形状本身改变，通用硬件可以直接加速，但灵活性低，容易导致精度大幅下降。
 - **半结构化（N:M）**：在每 M 个连续权重中剪掉 N 个（例如 2:4 表示每 4 个里留 2 个），NVIDIA Ampere 架构的 Tensor Core 已原生支持，能兼顾稀疏度和硬件效率。
 
 模型压缩中常说的 n:m 稀疏属于第三类，即每 m 个连续权重里剪掉 n 个，常见形式包括 2:4、4:8、8:16。H100 给出的 1,979 TFLOP/s 即对应 2:4 structured sparsity 路径；普通 dense Transformer 应按一半 (989.5 TFLOP/s) 估算。
+
+![图 2.1-3 H100 SXM 与 H100 NVL 规格对比](images/2-1-3-h100-spec-overview.png)
+
+*图 2.1-3 H100 SXM 与 H100 NVL 规格对比*
+
+图 2.1-3 给出 H100 SXM 与 H100 NVL 两类形态的横向规格对照：SXM5 BF16 Tensor Core 1,979 teraFLOPS（dense 为一半，约 989.5 teraFLOPS）、HBM 80 GB、3.35 TB/s；NVL 形态把显存扩到 94 GB、带宽提到 3.9 TB/s，但 BF16 Tensor Core 降到 1,671 teraFLOPS。本节后面的例子按 SXM5 规格估算（与 [NVIDIA H100 datasheet](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/H100/H100-datasheet-us-update.pdf) 一致），如换 NVL 或 PCIe 形态需按该形态的峰值重算。
 
 上述 989.5 TFLOP/s 是 H100 的理论峰值，但实际运行模型时，由于各种软硬件开销，你几乎不可能达到 100% **模型算力利用率 (MFU, Model FLOPs Utilization)**，通常按 30%–60% 的利用率估算更现实。这里取 50% 用作后续估计。
 
@@ -128,11 +128,11 @@ $$
 - **Memory capacity**：参数、梯度、优化器状态和激活都要占显存。AdamW 朴素训练中，优化器状态常常比参数本身更大；checkpointing、ZeRO/FSDP 和低精度训练都是在不同位置减内存。
 - **Memory bandwidth**：推理、小 batch matmul 和逐元素算子经常受 HBM 带宽限制。roofline 分析用算术强度判断一个算子更可能是 compute-bound 还是 memory-bound。
 
-![图 2.1-4 H100 SXM 与 H100 NVL 规格对比](images/2-1-4-h100-spec-overview.png)
+![图 2.1-4 GPU 计算与存储分层](images/2-1-4-compute-memory-bound.png)
 
-*图 2.1-4 H100 SXM 与 H100 NVL 规格对比*
+*图 2.1-4 GPU 计算与存储分层*
 
-图 2.1-4 给出 H100 SXM 与 H100 NVL 两类形态的横向规格对照：SXM5 BF16 Tensor Core 1,979 teraFLOPS（dense 为一半，约 989.5 teraFLOPS）、HBM 80 GB、3.35 TB/s；NVL 形态把显存扩到 94 GB、带宽提到 3.9 TB/s，但 BF16 Tensor Core 降到 1,671 teraFLOPS。本章后面的例子按 SXM5 规格估算（与 [NVIDIA H100 datasheet](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/H100/H100-datasheet-us-update.pdf) 一致），如换 NVL 或 PCIe 形态需按该形态的峰值重算。
+图 2.1-4 把 GPU 抽象成 Compute 与 Memory 两个层次：上层是大量 ALU / Tensor Core 组成的计算单元，下层是 HBM 这样的高带宽显存。Compute 与 Memory 之间通过一条总线相连，每次算子要先把数据从 Memory 搬到 Compute，算完再写回 Memory。本节后面 §2.1.4 的 arithmetic intensity 和 roofline 都是基于这一分层结构。
 
 估算训练时间时要在厂商峰值上乘以 MFU；估算最大模型时也要考虑 optimizer、activation、通信缓冲和碎片。H100、H200 与 B200 这类指标更适合作数量级估算样例，具体训练计划仍应通过 benchmark 验证。
 
