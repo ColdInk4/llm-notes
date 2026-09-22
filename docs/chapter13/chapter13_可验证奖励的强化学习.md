@@ -747,7 +747,7 @@ $$
 
 Dr. GRPO 对应的实现改动很小：在 `masked_mean` 里把 `mask.sum(axis=dim)` 换成常量分母，论文写作 "replace the mask.sum(axis=dim) with a constant value (e.g., generation budget)"，代码里取 `MAX_TOKENS`。单条响应的 token 数从此不再进入梯度。
 
-两个分母本身并不是从 policy gradient theorem 或 baseline invariance 直接推导的产物。lecture_16 明确指出「if you try to derive GRPO from first principles… you'll end up with something different」——长度归一化和组内 std 缩放是 GRPO 落地时选择的工程经验，对应实证效果里观察到的长度膨胀与难度权重失真；Dr. GRPO 的修正是用「去掉这两个工程项」回到更接近 REINFORCE with leave-one-out 的形式。该判断的论证按 STYLE.md 第一性原理方法论属于经验 / 拟合结果，不是公理推导。
+两个分母本身并不是从 policy gradient theorem 或 baseline invariance 直接推导的产物。lecture_16 在介绍 GRPO 长度偏差时明确指出，组内 z-score 形式的 advantage 是把方差归一化到 reward 尺度上的工程经验，对应实证效果里观察到的长度膨胀与难度权重失真；Dr. GRPO 的修正是用「去掉这两个工程项」回到更接近 REINFORCE with leave-one-out 的形式。该判断的论证按 STYLE.md 第一性原理方法论属于经验 / 拟合结果，不是公理推导。
 
 #### 两个改动合起来的效果
 
