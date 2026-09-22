@@ -219,9 +219,9 @@ PPO 在 RLHF 中承担“采样、打分、估计优势、再小步更新策略�
 
 **价值模型（Value Model）** 的输入是当前状态 $s_t$ ，输出 $V(s_t)$ 是估计从该状态开始未来能获得的总回报（Return） 。
 
-**广义优势估计（GAE, Generalized Advantage Estimation）** 模块计算得到的优势 $A(s_t, a_t)$ ，以及估计返回 $\hat{R}_t$ 。
+**广义优势估计（GAE, Generalized Advantage Estimation）** 模块计算得到的优势 $A(s_t, a_t)$ ，以及估计返回 $\hat R_t$ 。
 
-**Return**： $\hat{R}_t = \hat{A}(s_t, a_t) + V(s_t)$
+**Return**： $\hat R_t = \hat{A}(s_t, a_t) + V(s_t)$
 
 **优势函数（Advantage Function）**： $\hat{A}(s_t, a_t) = \sum_l (\gamma\lambda)^l \delta_{t+l}$ ，对未来多个时间步的 TD error 加权求和， $\lambda$ 是 GAE 参数（控制偏差-方差权衡）。
 
@@ -231,7 +231,7 @@ PPO 在 RLHF 中承担“采样、打分、估计优势、再小步更新策略�
 - $\gamma \in [0,1]$ ：折扣因子（discount factor），通常取 0.95~1.0
 - $V(s_t)$ ：价值网络对状态 $s_t$ 的估值
 
-**经验回放缓冲区（Experience Buffer）** 用来存储每次 rollout 的数据，包括状态-动作对（ $s_t, a_t$ ）、优势函数估计值（ $\hat{A}(s_t, a_t)$ ）、估计回报（ $\hat{R}_t$ ）和旧策略下该动作的概率（ $\pi_\theta^{\text{old}}(a_t|s_t)$ ）。
+**经验回放缓冲区（Experience Buffer）** 用来存储每次 rollout 的数据，包括状态-动作对（ $s_t, a_t$ ）、优势函数估计值（ $\hat{A}(s_t, a_t)$ ）、估计回报（ $\hat R_t$ ）和旧策略下该动作的概率（ $\pi_\theta^{\text{old}}(a_t|s_t)$ ）。
 
 **策略更新模块** Policy LM $\pi_\theta^{\text{RL}}(a_t|s_t)$ 是当前正在优化的策略模型。它接收状态 $s_t$ ，输出动作 $a_t$ 的概率分布。
 
@@ -239,15 +239,15 @@ PPO 在 RLHF 中承担“采样、打分、估计优势、再小步更新策略�
 
 $$
 \mathcal{L}^{\text{CLIP}}(\theta) = \mathbb{E}_t \left[ \min\left(
-r_t(\theta) \cdot \hat{A}_t,\
-\text{clip}\big(r_t(\theta), 1-\epsilon, 1+\epsilon\big) \cdot \hat{A}_t
+r_t(\theta) \cdot \hat A_t,\
+\text{clip}\big(r_t(\theta), 1-\epsilon, 1+\epsilon\big) \cdot \hat A_t
 \right) \right]
 $$
 
 其中：
 
 - $r_t(\theta) = \frac{\pi_\theta(a_t | s_t)}{\pi_{\theta_{\text{old}}}(a_t | s_t)}$ ：**新旧策略概率比**
-- $\hat{A}_t$ ：GAE 计算出的**优势函数**（来自 TD Error）
+- $\hat A_t$ ：GAE 计算出的**优势函数**（来自 TD Error）
 - $\epsilon$ ：超参数（通常 0.1~0.2），控制更新步长
 - `clip`：将比率裁剪到 $[1-\epsilon, 1+\epsilon]$ 区间
 
@@ -260,7 +260,7 @@ $$
 
 一个完整的训练流程应该是：
 
-- **采样阶段**：用 $\pi_\theta^{\text{old}}$ 根据用户输入 $x$ 生成回答 $y$；用 Reward Model 给 $(x,y)$ 打分 $r(x,y)$；用 Value Model 和 GAE 计算每个 token 的优势函数 $\hat{A}(s_t, a_t)$ 和回报 $\hat{R}_t$；最后存入 Experience Buffer。
+- **采样阶段**：用 $\pi_\theta^{\text{old}}$ 根据用户输入 $x$ 生成回答 $y$；用 Reward Model 给 $(x,y)$ 打分 $r(x,y)$；用 Value Model 和 GAE 计算每个 token 的优势函数 $\hat{A}(s_t, a_t)$ 和回报 $\hat R_t$；最后存入 Experience Buffer。
 - **更新阶段**：从 Buffer 中采样 mini-batch 数据 ---> 计算 PPO-clip Loss、LM Loss、MSE Loss ---> 反向传播更新 Policy LM 和 Value Model ---> 更新后的新策略成为下一轮的 $\pi_\theta^{\text{old}}$
 - **迭代循环**：重复采样 → 计算奖励与优势 → 更新策略 → 新策略采样...
 
@@ -754,15 +754,15 @@ GRPO 的简化带来明显工程收益，也在目标函数里留下两个需要
 第二个偏差来自 token 级更新权重。GRPO 目标函数中，单个响应 $o_i$ 在时间步 $t$ 的梯度更新会涉及：
 
 $$
-\dots \times \frac{\hat{A}_{i,t}}{|o_i|} \dots
+\dots \times \frac{\hat A_{i,t}}{|o_i|} \dots
 $$
 
 其中：
 
 - $|o_i|$ 表示响应 $o_i$ 的长度（token 数量）。
-- $\hat{A}_{i,t}$ 是优势函数，计算方式为 $\hat{A}_{i,t} = \frac{R(q, o_i) - \text{mean}(\{R(q, o_1), \dots, R(q, o_G)\})}{\text{std}(\{R(q, o_1), \dots, R(q, o_G)\})}$ ，其中 $R(q, o_i)$ 是响应 $o_i$ 的奖励。
+- $\hat A_{i,t}$ 是优势函数，计算方式为 $\hat A_{i,t} = \frac{R(q, o_i) - \text{mean}(\{R(q, o_1), \dots, R(q, o_G)\})}{\text{std}(\{R(q, o_1), \dots, R(q, o_G)\})}$ ，其中 $R(q, o_i)$ 是响应 $o_i$ 的奖励。
 
-当 $\hat{A}_{i,t} > 0$ 时（回复正确），较短的回答得到更大的 token 级正更新，策略被推向更简短的正确答案。当 $\hat{A}_{i,t} < 0$ 时（回复错误），较长的回答把负 advantage 摊薄到更多 token 上，单个 token 承受的惩罚变小，训练曲线上就出现“越错越长”：错误的数学证明写得越长，扣分越轻。
+当 $\hat A_{i,t} > 0$ 时（回复正确），较短的回答得到更大的 token 级正更新，策略被推向更简短的正确答案。当 $\hat A_{i,t} < 0$ 时（回复错误），较长的回答把负 advantage 摊薄到更多 token 上，单个 token 承受的惩罚变小，训练曲线上就出现“越错越长”：错误的数学证明写得越长，扣分越轻。
 
 Dr. GRPO 对应的实现改动很小：在 `masked_mean` 里把 `mask.sum(axis=dim)` 换成常量分母，论文写作 "replace the mask.sum(axis=dim) with a constant value (e.g., generation budget)"，代码里取 `MAX_TOKENS`。单条响应的 token 数从此不再进入梯度。
 

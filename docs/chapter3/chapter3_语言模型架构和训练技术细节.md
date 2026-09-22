@@ -118,7 +118,7 @@ $$
 Q = X W^Q, \quad K = X W^K, \quad V = X W^V
 $$
 
-其中 $W^Q, W^K, W^V$ 的形状均为$[d_{\text{model}}, d_{\text{model}}]$，因此 $Q, K, V$ 的形状保持$[\text{batch}, \text{seq}, d_{\text{model}}]$。随后计算注意力输出：
+其中 $W^Q, W^K, W^V$ 的形状均为 $[d_{\text{model}}, d_{\text{model}}]$，因此 $Q, K, V$ 的形状保持 $[\text{batch}, \text{seq}, d_{\text{model}}]$。随后计算注意力输出：
 
 $$
 \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right)V
@@ -201,7 +201,7 @@ $$
 
 **缩放因子 $\sqrt{d_k}$ 的作用**
 
-原始论文 §3.2.1（Vaswani et al., 2017）正文说明：$d_k$ 较大时点积的绝对值会变得很大，将 softmax 推入梯度极小的区域，因此对点积做 $1/\sqrt{d_k}$ 的缩放。论文同节脚注 4 给出方差推导的完整形式：假设 $q, k$ 各分量独立且零均值、方差为 1，则点积 $Q \cdot K = \sum_{i=1}^{d_k} q_i k_i$ 满足
+原始论文 §3.2.1（Vaswani et al., 2017）正文说明： $d_k$ 较大时点积的绝对值会变得很大，将 softmax 推入梯度极小的区域，因此对点积做 $1/\sqrt{d_k}$ 的缩放。论文同节脚注 4 给出方差推导的完整形式：假设 $q, k$ 各分量独立且零均值、方差为 1，则点积 $Q \cdot K = \sum_{i=1}^{d_k} q_i k_i$ 满足
 
 $$
 \text{Var}(Q \cdot K) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = d_k \cdot \text{Var}(q_i k_i)
@@ -745,7 +745,7 @@ $$
 \theta_i = 10000^{-2i/d}
 $$
 
-其中， $i$ 是维度索引（从 0 开始）， $d$ 是嵌入向量的总维度。这一形式继承自 Vaswani 2017 的 long-term decay 表达（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864) §3.2.2 / §3.3）；RoFormer §3.2.2 Eq. 15 的旋转矩阵形式取 $10000^{-2(i-1)/d}$（$i \in [1, d/2]$，one-indexed），§3.3 Properties of RoPE 文本形式取 $10000^{-2i/d}$（one-indexed，范围按上下文隐含），正文采用 zero-indexed 形式 $10000^{-2i/d}$（$i \in [0, d/2-1]$），与 §3.2.2 矩阵形式给出同一组 $d/2$ 个角频率，仅 $i$ 起点差 1。
+其中， $i$ 是维度索引（从 0 开始）， $d$ 是嵌入向量的总维度。这一形式继承自 Vaswani 2017 的 long-term decay 表达（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864) §3.2.2 / §3.3）；RoFormer §3.2.2 Eq. 15 的旋转矩阵形式取 $10000^{-2(i-1)/d}$（ $i \in [1, d/2]$，one-indexed），§3.3 Properties of RoPE 文本形式取 $10000^{-2i/d}$（one-indexed，范围按上下文隐含），正文采用 zero-indexed 形式 $10000^{-2i/d}$（ $i \in [0, d/2-1]$），与 §3.2.2 矩阵形式给出同一组 $d/2$ 个角频率，仅 $i$ 起点差 1。
 
 这种高维嵌入方法的关键是：每两个维度组成一对二维子空间，并按对应频率旋转。不同维度对拥有不同旋转速度，因此可以同时编码高频近距离信息和低频远距离信息。
 
@@ -843,7 +843,7 @@ $$
 
 MLA 在 attention 路径中增加了投影或重构计算。KV cache 和 HBM bandwidth 已成为瓶颈时，这些额外计算可以换取更低的显存占用和读取量。
 
-RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_k^R$ ，其中 $d_c$ 是 shared KV latent 的维度、$d_k^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_k^R = 64$，约为 $d_k / 3$——$d_k = qk\_nope\_head\_dim + qk\_rope\_head\_dim = 128 + 64 = 192$，其中 $64/192$ 用于位置编码；具体字段见 [`deepseek-ai/DeepSeek-V2-Chat` 的 `config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)）。
+RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_k^R$ ，其中 $d_c$ 是 shared KV latent 的维度、 $d_k^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_k^R = 64$，约为 $d_k / 3$—— $d_k = qk\_nope\_head\_dim + qk\_rope\_head\_dim = 128 + 64 = 192$，其中 $64/192$ 用于位置编码；具体字段见 [`deepseek-ai/DeepSeek-V2-Chat` 的 `config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)）。
 
 ![图 3.2-17 MLA 实验](images/3-2-17-mla-experiment.png)
 
@@ -958,7 +958,7 @@ CSA 使用可学习的加权压缩机制：模型会为每个 token 计算压缩
 
 压缩后，如果对所有块做密集注意力，复杂度依然是平方级的。CSA 接着用稀疏注意力只挑选最相关的块。
 
-先使用**闪电索引器**快速计算当前查询 token 与所有压缩后 KV 块的相关性分数。根据索引分数，只为当前查询 token 保留分数最高的 $k$ 个压缩 KV 块。若原序列长度记为 $S$ 、压缩比记为 $m$（每 $m$ 个 token 合成一个压缩块），块级密集注意力的复杂度为 $O((S/m)^2)$；稀疏选择 top-$k$ 块后进一步降为 $O(k)$，与原始序列长度 $S$ 解耦，但实际 wall-clock 还需计入闪电索引器自身的开销。在 V4 中，Flash 的 **k=512**，Pro 的 **k=1024**；Pro 的这个数字就写在 `DeepSeek-V4-Pro/config.json` 的 `index_topk: 1024` 里，配套的闪电索引器规格是 `index_n_heads: 64`、`index_head_dim: 128`。它和 MoE routing 的 top-k 是两个独立旋钮：同一份 config 中 MoE 侧写的是 `num_experts_per_tok: 6`、`n_routed_experts: 384`，`index_topk` 控制稀疏注意力挑多少个压缩 KV 块，`num_experts_per_tok` 控制每个 token 激活多少个专家。
+先使用**闪电索引器**快速计算当前查询 token 与所有压缩后 KV 块的相关性分数。根据索引分数，只为当前查询 token 保留分数最高的 $k$ 个压缩 KV 块。若原序列长度记为 $S$ 、压缩比记为 $m$（每 $m$ 个 token 合成一个压缩块），块级密集注意力的复杂度为 $O((S/m)^2)$；稀疏选择 top- $k$ 块后进一步降为 $O(k)$，与原始序列长度 $S$ 解耦，但实际 wall-clock 还需计入闪电索引器自身的开销。在 V4 中，Flash 的 **k=512**，Pro 的 **k=1024**；Pro 的这个数字就写在 `DeepSeek-V4-Pro/config.json` 的 `index_topk: 1024` 里，配套的闪电索引器规格是 `index_n_heads: 64`、`index_head_dim: 128`。它和 MoE routing 的 top-k 是两个独立旋钮：同一份 config 中 MoE 侧写的是 `num_experts_per_tok: 6`、`n_routed_experts: 384`，`index_topk` 控制稀疏注意力挑多少个压缩 KV 块，`num_experts_per_tok` 控制每个 token 激活多少个专家。
 
 
 CSA 层执行流程可以概括为：先对 KV cache 做可学习的加权压缩，再利用闪电索引器低成本选出最相关的 top-k 块，最终核心 attention 只在稀疏选择的块上进行计算。
@@ -1019,7 +1019,7 @@ $$
 
 本节把架构选择转成可检验的超参数实验：每次只改变一个候选变量（FFN expansion、head dim、宽深比或词表大小），固定 tokenizer、训练 tokens、optimizer、batch、scheduler 和评测集，记录 pretraining loss、吞吐和显存。曲线的最低点、斜率和资源代价分别对应质量、缩放趋势与工程约束，具体数值属于实验拟合而非普遍定律。
 
-这一节给出训练一个新 dense decoder 时常用的几个超参数经验区间：FFN expansion ratio（§3.3.1）、head dim 与 model dim 的比例（§3.3.2）、宽深比（§3.3.3）、vocab size（§3.3.4）、dropout 与 weight decay（§3.3.5）。这些区间描述的是分布中心，不是固定常数；具体模型的层数、头数、$d_{\text{ff}}$ 与正则化设置写在各自的论文、模型卡和官方 config 里，读配置时按这些一手数字对照本节即可。
+这一节给出训练一个新 dense decoder 时常用的几个超参数经验区间：FFN expansion ratio（§3.3.1）、head dim 与 model dim 的比例（§3.3.2）、宽深比（§3.3.3）、vocab size（§3.3.4）、dropout 与 weight decay（§3.3.5）。这些区间描述的是分布中心，不是固定常数；具体模型的层数、头数、 $d_{\text{ff}}$ 与正则化设置写在各自的论文、模型卡和官方 config 里，读配置时按这些一手数字对照本节即可。
 
 当你突然被要求训练一个新语言模型时，会对超参数产生很多疑问，因为它们的数量相当多。你应该意识到的一个关键点是：在不同成功模型中，实际上只有少数几个超参数会被调整。业界遵循着相当明确的经验法则和指导原则。比如前馈网络的尺寸应该扩大多少？注意力头数量该如何设定？词表规模多大合适？前馈层（FFN）大小应该比隐藏层大小大多少？有多少个头，num_heads 是否总是应该能整除隐藏层大小？人们是如何扩展这些模型的，是变得更深（deep）还是变得更宽（wide）？
 
@@ -1051,15 +1051,15 @@ $$
 
 ![图 3.3-1 d_ff&d_model](images/3-3-1-ffn-model-dim-ratio.png)
 
-*图 3.3-1 横轴为不同模型族，纵轴为 $d_{\text{ff}}/d_{\text{model}}$ 实测值，标注 GLU 经验值 $8/3$ 与非 GLU 经验值 $4$ 的位置*
+*图 3.3-1 横轴为不同模型族，纵轴为 $`d_{\text{ff}}/d_{\text{model}}`$ 实测值，标注 GLU 经验值 $`8/3`$ 与非 GLU 经验值 $`4`$ 的位置*
 
 以 PaLM 为例，它虽然是 SwiGLU 模型，但把 $d_{\text{ff}}$ 直接设为 $4d_{\text{model}}$，没有做 2/3 缩放。LLaMA-2 70B 与 Mistral-7B v0.1 落在 3.5 倍附近：LLaMA-2 70B 的 `hidden_size = 8192`、`intermediate_size = 28672`，Mistral-7B v0.1 的 `hidden_size = 4096`、`intermediate_size = 14336`，两者都是 $d_{\text{ff}}/d_{\text{model}} = 3.5$。两个模型都用 GQA（`num_key_value_heads = 8`），共享 KV 省下的预算被重新分配给 MLP，于是在 $8/3$ 的基础上再乘约 1.33。
 
-保持 MHA 的模型仍按 $8/3$ 经验值落地。LLaMA-2 7B/13B 用 MHA（`num_key_value_heads = num_attention_heads`），FFN expansion 沿用 $8/3$ 左右而没有 GQA 下的 1.33 倍放大；LLaMA-1 7B 的 `hidden_size = 4096`、`intermediate_size = 11008`，$d_{\text{ff}}/d_{\text{model}} \approx 2.687$。
+保持 MHA 的模型仍按 $8/3$ 经验值落地。LLaMA-2 7B/13B 用 MHA（`num_key_value_heads = num_attention_heads`），FFN expansion 沿用 $8/3$ 左右而没有 GQA 下的 1.33 倍放大；LLaMA-1 7B 的 `hidden_size = 4096`、`intermediate_size = 11008`， $d_{\text{ff}}/d_{\text{model}} \approx 2.687$。
 
-GQA 模型则分布在 $2.66\text{–}2.86$ 区间。DeepSeek-LLM-67B-base（[`deepseek-ai/deepseek-llm-67b-base`](https://huggingface.co/deepseek-ai/deepseek-llm-67b-base) 的 `config.json`：`hidden_size = 8192`、`intermediate_size = 22016`、`hidden_act: silu` 即 SwiGLU、`num_key_value_heads = 8` 即 GQA、$d_{\text{ff}}/d_{\text{model}} \approx 2.687$）与 Yi-34B（`hidden_size = 7168`、`intermediate_size = 20480`、SwiGLU，$d_{\text{ff}}/d_{\text{model}} \approx 2.857$）采用不同的 `hidden_size`，并非「共享同一组维度」。两者都落在 $2.66\text{–}2.86$ 区间但具体值不同，读配置时按各 checkpoint 字段确认。
+GQA 模型则分布在 $2.66\text{–}2.86$ 区间。DeepSeek-LLM-67B-base（[`deepseek-ai/deepseek-llm-67b-base`](https://huggingface.co/deepseek-ai/deepseek-llm-67b-base) 的 `config.json`：`hidden_size = 8192`、`intermediate_size = 22016`、`hidden_act: silu` 即 SwiGLU、`num_key_value_heads = 8` 即 GQA、 $d_{\text{ff}}/d_{\text{model}} \approx 2.687$）与 Yi-34B（`hidden_size = 7168`、`intermediate_size = 20480`、SwiGLU， $d_{\text{ff}}/d_{\text{model}} \approx 2.857$）采用不同的 `hidden_size`，并非「共享同一组维度」。两者都落在 $2.66\text{–}2.86$ 区间但具体值不同，读配置时按各 checkpoint 字段确认。
 
-Qwen 系列在不同代际之间来回摆动而非单调收敛。原版 Qwen-14B（`hidden_size = 5120`、`intermediate_size = 27392`，`hidden_act: silu`，实际为 SwiGLU）$d_{\text{ff}}/d_{\text{model}} \approx 5.35$，Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`，SwiGLU）回到约 $2.675$，Qwen2-7B（`hidden_size = 3584`、`intermediate_size = 18944`，SwiGLU）再次跳到约 $5.29$，明显偏离 $8/3$。原版 Qwen-14B 没有沿用 GLU 的 2/3 缩放，反而把 expansion 推到约 5 倍；Qwen1.5 才把这条经验值拉回 8/3 附近；Qwen2 又回到高 expansion 区段。整体看，Qwen 系列并非单调逼近 $8/3$，而是按代际目标在不同取值之间反复调整，读配置时需要按代核对。
+Qwen 系列在不同代际之间来回摆动而非单调收敛。原版 Qwen-14B（`hidden_size = 5120`、`intermediate_size = 27392`，`hidden_act: silu`，实际为 SwiGLU） $d_{\text{ff}}/d_{\text{model}} \approx 5.35$，Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`，SwiGLU）回到约 $2.675$，Qwen2-7B（`hidden_size = 3584`、`intermediate_size = 18944`，SwiGLU）再次跳到约 $5.29$，明显偏离 $8/3$。原版 Qwen-14B 没有沿用 GLU 的 2/3 缩放，反而把 expansion 推到约 5 倍；Qwen1.5 才把这条经验值拉回 8/3 附近；Qwen2 又回到高 expansion 区段。整体看，Qwen 系列并非单调逼近 $8/3$，而是按代际目标在不同取值之间反复调整，读配置时需要按代核对。
 
 **例外二：T5 模型**
 
@@ -1083,7 +1083,7 @@ $$
 \frac{\text{NumHeads} \cdot \text{HeadDim}}{\text{ModelDim}} \approx 1
 $$
 
-T5 和 LaMDA 是明显例外，T5 把这个比例推到 16。PaLM 540B 也不在 1 附近：论文 Table 1 给出 118 层、48 个头、$d_{\text{model}}=18432$，并注明 attention head size 恒为 256，因此 $48 \times 256 / 18432 \approx 0.67$。这里 $48 \times 256 = 12288 < d_{\text{model}}=18432$，差值来自输出投影 $W^O$ 把拼接后的 head 输出（$h \times d_k = 12288$ 维）再投到 $d_{\text{model}}=18432$ 维。PaLM 论文 §2.1 所谓「parallel」指的是 block 层面把 attention 与 MLP 并行作用在同一份 `LayerNorm(x)` 输出上（$y = x + \mathrm{MLP}(\mathrm{LN}(x)) + \mathrm{Attention}(\mathrm{LN}(x))$，Wang & Komatsuzaki 2021 / GPT-J 风格），并非 head 输出按并行相加；head 输出仍按标准方式 Concat 后经 $W^O$ 投影。除这类特殊设计外，1:1 仍是更常见的起点。
+T5 和 LaMDA 是明显例外，T5 把这个比例推到 16。PaLM 540B 也不在 1 附近：论文 Table 1 给出 118 层、48 个头、 $d_{\text{model}}=18432$，并注明 attention head size 恒为 256，因此 $48 \times 256 / 18432 \approx 0.67$。这里 $48 \times 256 = 12288 < d_{\text{model}}=18432$，差值来自输出投影 $W^O$ 把拼接后的 head 输出（ $h \times d_k = 12288$ 维）再投到 $d_{\text{model}}=18432$ 维。PaLM 论文 §2.1 所谓「parallel」指的是 block 层面把 attention 与 MLP 并行作用在同一份 `LayerNorm(x)` 输出上（ $y = x + \mathrm{MLP}(\mathrm{LN}(x)) + \mathrm{Attention}(\mathrm{LN}(x))$，Wang & Komatsuzaki 2021 / GPT-J 风格），并非 head 输出按并行相加；head 输出仍按标准方式 Concat 后经 $W^O$ 投影。除这类特殊设计外，1:1 仍是更常见的起点。
 
 ![图 3.3-3 attention head ratio](images/3-3-3-head-dim-ratio.png)
 
@@ -1101,7 +1101,7 @@ Bhojanapalli 等人在 [*Low-Rank Bottleneck in Multi-head Attention Models*, ar
 
 ![图 3.3-5 宽度与深度](images/3-3-5-depth-width-ratio.png)
 
-*图 3.3-5 宽深比通常以 $d_{\text{model}}/n_{\text{layer}}$ 观察，不同模型族集中在一段经验区间内*
+*图 3.3-5 宽深比通常以 $`d_{\text{model}}/n_{\text{layer}}`$ 观察，不同模型族集中在一段经验区间内*
 
 主流 dense decoder-only 模型的宽深比集中在每层约 100–200 个隐藏维度，即 $d_{\text{model}}/n_{\text{layer}} \approx 100\text{–}200$。按各模型官方 config 计算：BLOOM 176B 14336/70 ≈ **205**、T5 v1.1 XXL 4096/24 ≈ **171**、PaLM 540B 18432/118 ≈ **156**、GPT-3 175B 12288/96 = **128**、OPT-6.7B 与 Mistral-7B v0.1 4096/32 = **128**、Qwen-7B 与 OLMo-3-7B 同样是 4096/32 = **128**、Qwen2-7B 3584/28 = **128**、LLaMA-1 7B 4096/32 = **128**、LLaMA-1 65B 与 LLaMA-3 70B 8192/80 ≈ **102**、Gemma 3 27B 5376/62 ≈ **87**、Gemma 4 E2B 1536/35 ≈ **44**、Gemma 4 31B dense 5376/60 ≈ **90**。
 
@@ -1109,7 +1109,7 @@ encoder-decoder 族整体更窄：T5-11B 的 `d_model = 1024` 配 `num_layers = 
 
 宽深比的考量非常重要，它会控制可用并行度。如果采用流水线并行，通常会将不同层切割后分配到不同设备或设备块上；对于特别宽的模型，可以采用张量并行，将矩阵切片分布到多个 GPU 上。不同并行范式会产生不同约束：张量并行需要非常高速的网络，而流水线并行对网络速度或延迟的要求可以稍低。因此网络约束可能反过来影响宽度-深度的决策。
 
-抛开这些限制，宽深比对模型性能仍可通过一组控制实验来观察。Kaplan 等人在固定非嵌入参数量的前提下扫描模型形状（图 5 中分别是 50M 与 25M 两组），横轴是宽深比 $d_{\text{model}}/n_{\text{layer}}$，纵轴是损失相对 $L(N)$ 拟合基线的百分比增幅。结论是形状影响很轻微：宽深比变化 40 倍时损失只抬高几个百分点，$(n_{\text{layer}}, d_{\text{model}}) = (6, 4288)$ 的损失落在 GPT-2 所用 $(48, 1600)$ 配置的 3% 以内。
+抛开这些限制，宽深比对模型性能仍可通过一组控制实验来观察。Kaplan 等人在固定非嵌入参数量的前提下扫描模型形状（图 5 中分别是 50M 与 25M 两组），横轴是宽深比 $d_{\text{model}}/n_{\text{layer}}$，纵轴是损失相对 $L(N)$ 拟合基线的百分比增幅。结论是形状影响很轻微：宽深比变化 40 倍时损失只抬高几个百分点， $(n_{\text{layer}}, d_{\text{model}}) = (6, 4288)$ 的损失落在 GPT-2 所用 $(48, 1600)$ 配置的 3% 以内。
 
 ![图 3.3-6 宽深比实验](images/3-3-6-depth-width-experiment.png)
 
@@ -1180,7 +1180,7 @@ $$
 
 其中：
 
-**$Z$**：softmax 的归一化因子（partition function），$Z = \sum_{i=1}^{V} \exp(z_i)$
+**$Z$**：softmax 的归一化因子（partition function）， $Z = \sum_{i=1}^{V} \exp(z_i)$
 
 **$\lambda$**：权重系数（PaLM 使用 **$10^{-4}$**）
 
