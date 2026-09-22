@@ -1175,7 +1175,7 @@ Qwen3 的后训练流程围绕两类控制展开：
 
 表格按列展开 Stage 2 Reasoning RL、Stage 3 Thinking Mode Fusion 和 Stage 4 General RL 之后的成绩，Stage 3 和 Stage 4 各分 Thinking 与 Non-Thinking 两列，绿色和红色数字是相对上一阶段的增减。
 
-通用与格式类任务一路上升：LiveBench 从 68.6 到 70.9 再到 74.9，Arena-Hard 从 86.8 经 89.4 升到 93.8；衡量模式切换是否被遵守的 ThinkFollow 在 Stage 3 的 Thinking 模式为 88.7、Stage 4 的 Thinking 模式进一步升到 98.9（[Qwen3 Tech Report Table 22](https://arxiv.org/html/2505.09388)，Stage 2 无 ThinkFollow 数据）。代价出现在推理密集任务上：Thinking 模式下 AIME 2024 从 83.8 降到 81.9 再到 81.4，LiveCodeBench v5 从 68.4 经 67.2 降到 65.7。Qwen3 报告把这种回退归因于模型被摊到更广的通用任务上、专门能力被稀释。工程上这是一个明确的取舍：换来的是通用可用性和模式可控性，付出的是数学与代码分数的小幅下降。
+通用与格式类任务一路上升：LiveBench 从 68.6 到 70.9 再到 74.9，Arena-Hard 从 86.8 经 89.4 升到 93.8；衡量模式切换是否被遵守的 ThinkFollow（in-house 数据集）只在 Stage 3 报：Thinking 模式 88.7、Non-Thinking 模式 98.9（Stage 2 无数据，Stage 4 合并报；[Qwen3 Tech Report Table 22](https://arxiv.org/html/2505.09388)）。代价出现在推理密集任务上：Thinking 模式下 AIME 2024 从 83.8 降到 81.9 再到 81.4，LiveCodeBench v5 从 68.4 经 67.2 降到 65.7。Qwen3 报告把这种回退归因于模型被摊到更广的通用任务上、专门能力被稀释。工程上这是一个明确的取舍：换来的是通用可用性和模式可控性，付出的是数学与代码分数的小幅下降。
 
 #### Qwen3-Coder-Next：agentic RL
 

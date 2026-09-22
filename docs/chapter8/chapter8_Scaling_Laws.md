@@ -948,7 +948,7 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 | Chinchilla | 约 20 |
 | LLaMA 65B | 约 22 |
 | Llama 2 70B | 约 29 |
-| Mistral 7B | 约 137（论文原文「超过 1T tokens」/ 7.3B params）；UCStrategies 2026 估约 8T tokens / 7.3B params ≈ 1,100 tokens/param（无外部引用），分歧源自未官方披露 |
+| Mistral 7B | 约 137（论文 [arXiv:2310.06825](https://arxiv.org/abs/2310.06825) PDF 全文未披露训练 token 数；Mistral AI 公告 blog 提及「exceeding one trillion tokens」需 WebFetch 一手核证；UCStrategies 2026 估约 8T tokens / 7.3B params ≈ 1,100 tokens/param 无外部引用，分歧源自未官方披露） |
 | Llama 3 70B | 约 215（约 15T 语料 / 70B） |
 
 一个简单账本是：训练只付一次，但推理会在模型生命周期里反复付费。若两个模型 pretraining loss 接近，较小模型通常更容易部署，KV cache 更小，单 token latency 和服务成本也更低。因此生产系统常愿意用更多训练 tokens 换一个更小、更便宜的 serving 模型。
@@ -1323,7 +1323,7 @@ StepFun 还检查训练设置的鲁棒性。它把 MoE、不同 dataset 和不�
 
 图 8.6-33 是一个工程案例，也是 §8.6.4“Optimizer Scaling：新 optimizer 的规模风险”讨论的具体失效样本。左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线， $10^{21}$ 处的虚线把图分成 fit 与 extrapolation 两段。
 
-图中外推区的三个点展示 Cautious AdamC 的失败形态： $10^{21}$ 处标注 `+0.8%`， $10^{22}$ 处标注 `2.5% miss`， $10^{23}$ 处标注 *Run Diverged*。caption 将这组设置概括为 *Cautious AdamC + Sqrt batch-size scaling of learning rates*，并指出需要重新设计参数化、缩放或 optimizer 才能修复外推。
+图中外推区的三个点展示 Cautious AdamC 的失败形态：博客正文（attempt 1）原文写「the 1e22 held-out run missed the forecast by 2.5%, and the 1e23 run diverged」，故 $10^{22}$ 处标注 `2.5% miss`， $10^{23}$ 处标注 *Run Diverged*；$10^{21}$ attempt 1 数字未给（attempt 2 给 +0.5% 不属于 attempt 1 描述）。caption 将这组设置概括为 *Cautious AdamC + Sqrt batch-size scaling of learning rates*，并指出需要重新设计参数化、缩放或 optimizer 才能修复外推。
 
 Open Athena / Marin 的 Delphi 博客 [*Scaling Laws That Extrapolate 300× Past the Fit*](https://openathena.ai/blog/delphi) 给出 fix 之后的结果：把 optimizer 从 Cautious AdamC 换成 AdamH（Adam with Hyperball——按 Frobenius 范数把权重重新缩放到当前 $\lVert W\rVert_F$ 球面上，等价于把 weight decay 从超参搜索里拿掉），并把 LR scaling 规则写成 $\eta_0\sqrt{B/B_0}\,(T_0/T)^{0.3}$——保留 $\sqrt{\mathrm{batch}}$ 项，再乘上随 token horizon 衰减的 $(T_0/T)^{0.3}$ 因子。在这套 fix 下， $10^{21}$、 $10^{22}$、 $10^{23}$ 三档 held-out 预测全部落在 observed Paloma macro loss 的 $\sim 0.5\%$ 误差带内；其中 $10^{23}$、25B 参数、600B tokens 的预注册预测相对实测偏差约 $0.2\%$，对应博客标题 *Extrapolate 300× Past the Fit* 的口径（外推到拟合所用最大 compute 的约 300 倍）。attempt 1 在一批重复文本 batch 上出现 spike 时，博客先把原因定位到 $\sqrt{B}$ 规则在该规模下给出的 learning rate 偏大，再把 max grad norm 从 1.0 收紧到 0.1，attempt 2 即未复现 spike。
 
@@ -1547,7 +1547,7 @@ Muon 相关（2026-09-05 复核）：Keller Jordan, [`Muon: An optimizer for hid
 - §8.3.3 effective data 公式与 Figure 1 右图 8.67B / 6.34B IsoFLOP 星点、Figure 3 100M unique tokens IsoLoss contours、Figure 4 三档 IsoFLOP 预算（$9.3 \times 10^{20}$、$2.1 \times 10^{21}$、$9.3 \times 10^{21}$）及 Appendix F "Do Excess Parameters Hurt, Plateau or Help?" 见 [Muennighoff et al., arXiv:2305.16264](https://arxiv.org/abs/2305.16264)。
 - §8.3.3 data selection 与 quality-quantity tradeoff（图 8.3-10 DataComp A–F bucket 实验）见 [Goyal et al., arXiv:2404.07177](https://arxiv.org/abs/2404.07177)。
 - §8.4.2 内部 Method 3 underfit 复核（数据 forensics 重拟合）见 [Besiroglu et al., arXiv:2404.10102](https://arxiv.org/abs/2404.10102)。
-- §8.4.3 tokens-per-parameter 表（GPT-3 ≈ 2、Chinchilla ≈ 20、LLaMA 65B ≈ 22、Llama 2 70B ≈ 29、Mistral 7B ≈ 137、Llama 3 70B ≈ 215）来源：CS336 2026 Lecture 9 slide "Important note – train-optimal is likely not what you want"（抽文 `lecture_09.txt` L502–L512）。Mistral 7B 训练 token 数官方未公开；论文 [arXiv:2310.06825](https://arxiv.org/abs/2310.06825) 原文「exceeding one trillion tokens」（超过 1T tokens / 7.3B params ≈ 137 tokens/param）；UCStrategies 2026 估约 8T tokens / 7.3B params ≈ 1,100 tokens/param（80% 多语种 web + 20% code, 2023-03 cutoff，无外部引用）。两个数字均为二手估计，论文原文「超过 1T」是较稳下限；笔记采用论文「超过 1T」口径并标注 UCStrategies 8T 高位估计。
+- §8.4.3 tokens-per-parameter 表（GPT-3 ≈ 2、Chinchilla ≈ 20、LLaMA 65B ≈ 22、Llama 2 70B ≈ 29、Mistral 7B ≈ 137、Llama 3 70B ≈ 215）来源：CS336 2026 Lecture 9 slide "Important note – train-optimal is likely not what you want"（抽文 `lecture_09.txt` L502–L512）。Mistral 7B 训练 token 数官方未公开；论文 [arXiv:2310.06825](https://arxiv.org/abs/2310.06825) PDF 全文 abstract 与正文未披露训练 token 数（仅描述模型架构与 fine-tuning）；Mistral AI 公告 [blog](https://mistral.ai/news/announcing-mistral-7b/) 提及「exceeding one trillion tokens」（需 WebFetch 一手 URL 二次核证）；UCStrategies 2026 估约 8T tokens / 7.3B params ≈ 1,100 tokens/param（80% 多语种 web + 20% code, 2023-03 cutoff，无外部引用）。两个数字均为二手估计，下限 ≈ 137 tokens/param（按公告「超过 1T」/ 7.3B params）；笔记采用 ≈ 137 口径并标注 UCStrategies 8T 高位估计。
 - §8.6.1 MiniCPM muP 超参数（`Scale_emb = 12`、`Scale_depth = 1.4`、`init_std = 0.1`、`base LR = 0.01`）见 [MiniCPM paper Appendix A.1, arXiv:2404.06395](https://arxiv.org/abs/2404.06395)；CerebrasGPT µP 对照实验覆盖范围（111M / 256M / 590M / 1.3B / 2.7B）与 §3.3 Pile test loss 数值（µP 比 SP 平均低约 0.43%、µP 残差标准差 ≈ 0.04% vs SP ≈ 0.66%）见 [Cerebras-GPT §2.4 / Table 3 / §3.3, arXiv:2304.03208](https://arxiv.org/abs/2304.03208)。
 - §8.6.1 MiniCPM $D_{\mathrm{opt}}/N_{\mathrm{opt}} \approx 192$ 与 Llama 2 反推 70–100 见 MiniCPM 论文 §4.5 "Measuring the Scaling Law with WSD LRS"（同 [arXiv:2404.06395](https://arxiv.org/abs/2404.06395)）。
 - §8.6.2 DeepSeek LLM multi-step schedule（warmup 2000 steps、peak 段、80% 降到 31.6%、90% 降到 10%）见 [DeepSeek LLM §2.3 Figure 1, arXiv:2401.02954](https://arxiv.org/abs/2401.02954)；DeepSeek-V3 多段 schedule（10T tokens cosine + 500B final 段切换到 $7.3\times10^{-6}$）见 [DeepSeek-V3 §4.2, arXiv:2412.19437](https://arxiv.org/abs/2412.19437)。
