@@ -494,7 +494,7 @@ $$
 \begin{aligned}
 \mathcal J_{\text{GRPO}}(\theta)
 = \mathbb{E} \bigg[
-& q \sim P(Q),\ \{o_i\}_{i=1}^G \sim \pi_{\theta_{\text{old}}}(O|q)
+& q \sim P(Q),\ \{o_i : 1 \le i \le G\} \sim \pi_{\theta_{\text{old}}}(O|q)
 \bigg] \frac{1}{G} \sum_{i=1}^{G} \bigg(
 \min \bigg(
 \frac{\pi_\theta(o_i|q)}{\pi_{\theta_{\text{old}}}(o_i|q)} A_i, \\
