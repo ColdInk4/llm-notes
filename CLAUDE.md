@@ -385,5 +385,6 @@ logic_finding 只报 `refuted + tentative`，与 verdict 三档对齐。fix 阶�
 | 修改后自检 1（禁用句式 rg）与第 7 层 | STYLE.md「跨章引用格式」 | rg pattern 抓「第 N 章 §X.Y」与「chapterN」缩写 |
 | 修改后自检 4（GitHub 渲染安全 rg） | STYLE.md「公式与排版」渲染条目 +「HTML」金额 span 例外 | 8 种渲染失败模式（开 `$` 紧贴 / 斜体图注 / `}_`·`|_` 切碎 / 字面金额 / math 内裸 `^*`·`_*` / math 内 `\_` 单反斜杠 / display 内裸 `<` / `\operatorname` 宏禁用）的 rg 与修复规则一一对应；图注用 `` `` $`expr`$ `` ``、金额用 `<span>$</span>`、星号用 `\ast`、下划线用 `\\_`（标点前缀 `_` 含 `\\_` 与 prime `'_{` 两种开者，同段 `_{` 配对时 `\\_` 改连字符 `fan-in`、prime 后移 `g_{i,t}'`）、小于号用 `\lt`、函数名用 `\mathrm` |
 | 逻辑审计 finding schema（logic_finding） | STYLE.md「第一性原理方法论（Aristotle 框架）」三条硬约束 | `claim` / `axiom_source` / `gap` 必填字段与「公理起点明确 / 推导链完整 / 经验 vs 推导清楚区分」一一对应；`rg` 只作句式兜底，不承担逻辑审计 |
+| 章节末「来源与更新记录」段外部来源 URL 完整链接 | STYLE.md「章节末『来源与更新记录』约定」新增 hard rule | 来源段每条 arXiv ID / HF ID / 官方 URL / DOI / 案件号都挂完整 markdown 链接，格式与正文一致；裸 ID 仅当紧邻前一行已挂同一链接时可省；混用裸 ID 与完整 URL 视为不一致 |
 
 AGENTS.md 与 STYLE.md 任何一侧调整规则时，另一侧必须同步引用对应章节；同一 commit 内完成。

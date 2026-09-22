@@ -339,6 +339,8 @@ CS336 2026 的公开课件和课程视频可以作为课程材料来源。若某
 2. **课程来源**：CS336 lecture 编号与映射，按 `sources/cs336-2026.md` 给出的对应关系引用，不写本地整理路径或字幕文件路径。
 3. **本节事实声明的来源指向**：正文里出现「按 …」「参见 …」的具体定位（论文 § 编号 + 段首句、模型卡具体字段名等）。
 
+**外部来源必须挂完整 markdown 链接**：本段出现的每一条外部来源（arXiv ID、HF dataset 或 model id、官方文档 URL、论文 DOI、官方技术报告 PDF、法院/政府案件页 URL）都要挂完整 markdown 链接，格式与正文出现的链接一致——例如 `[arXiv:2306.11644](https://arxiv.org/abs/2306.11644)`、`[HF bigcode/the-stack-v2](https://huggingface.co/datasets/bigcode/the-stack-v2)`、`[Anthropic Copyright Settlement site](https://www.anthropiccopyrightsettlement.com/)`。裸 `arXiv:2306.11644` / 裸 `HF org/name` 仅当紧邻前一行已挂同一完整链接时可省。混用裸 ID 与完整 URL 视为链接格式不一致——读者与 audit agent 直接看来源段就应能跳转核证，不必回头翻章节正文。
+
 核验工作**不在「来源与更新记录」段保留「待核验 / 不确定 / 需复核 / tentative」子段**——这些元叙述外移到 chat / sub-agent transcript。sandbox 拦截一手 URL 时，主 agent 把链接发给用户、由用户在 IDE 浏览器或 curl 外部环境打开后复制内容回来核验；核验完成才写入笔记。commit 前用 `rg "待.*核|待核|不确定|需核|需复核|缺口|以.*为准|本节以|未能核"` 扫正文与来源记录段，命中后清零。
 
 当某个章节涉及多个官方源的最新口径时，在「来源与更新记录」单独列一条「来源对齐」小节，记录哪些字段以哪个官方源为准、哪些字段多源对齐、哪些字段存在版本分歧。这样读者在引用具体数字时不用回头翻章节正文。
