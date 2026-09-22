@@ -870,12 +870,12 @@ $BK$ 是损失对最后一层输出的 element-wise 偏导项，相对 $4 B D K$
 本例 $N_{\text{param}} = D^2 + D K$。把前向与反向合并：
 
 $$
-F_{\text{step}} = F_{\text{forward}} + F_{\text{backward}} = 2 B N_{\text{param}} + 4 B N_{\text{param}} = 6 B N_{\text{param}} .
+F_{\text{step}} = F_{\text{forward}} + F_{\text{backward}} = 2 B N_{\text{param}} + \bigl(4 B N_{\text{param}} - 2 B D^2\bigr) = 6 B N_{\text{param}} - 2 B D^2 .
 $$
 
-其中反向是前向的 2 倍，写成每 token $6 N_{\text{param}}$ FLOPs。这一 per-token 公式与 Kaplan 2020 / Chinchilla 2022 等论文给出的 LM 训练 FLOPs 估算一致（详见章节末来源记录）；沿 step 数 $S$ 求和得整段训练的总 FLOPs $\approx 6 N_{\text{param}} \cdot N_{\text{token}}$，与 §2.1.1 的 $F_{\text{total}} \approx 6 N_{\text{param}} N_{\text{token}}$ 一致。
+通用多层网络（每层都既算 activation grad 又算 weight grad）回到 $6 B N_{\text{param}}$ / step 形式：每层反向都是前向的 2 倍。这一 per-token 公式与 Kaplan 2020 / Chinchilla 2022 等论文给出的 LM 训练 FLOPs 估算一致（详见章节末来源记录）；沿 step 数 $S$ 求和得整段训练的总 FLOPs $\approx 6 N_{\text{param}} \cdot N_{\text{token}}$，与 §2.1.1 的 $F_{\text{total}} \approx 6 N_{\text{param}} N_{\text{token}}$ 一致。
 
-通用多层网络（每层都既算 activation grad 又算 weight grad）回到这一 $6 B N_{\text{param}}$ / step 形式：每层反向都是前向的 2 倍。本例反向少一项 $2 B D D$（即 $dL / d x = G_{h_1} W_1^{\mathrm{T}}$），因为 `x` 是叶子（`requires_grad=False`），activation grad 不再向 `x` 之下继续传播；`requires_grad=True` 的中间张量在反向中收到上游梯度并继续回传，链路走到叶子为止，而中间张量的 `.grad` 默认不写入，需要 `retain_grad()` 才保存。
+本例反向比前向略低于 2 倍：少了一项 $2 B D^2$（即 $\partial L / \partial x = G_{h_1} W_1^{\mathrm{T}}$），因为 `x` 是叶子（`requires_grad=False`），activation grad 不再向 `x` 之下继续传播；`requires_grad=True` 的中间张量在反向中收到上游梯度并继续回传，链路走到叶子为止，而中间张量的 `.grad` 默认不写入，需要 `retain_grad()` 才保存。
 
 ## 2.5 模型构建与训练基础
 
@@ -899,7 +899,7 @@ nn.Parameter 是 torch.Tensor 的子类，因此它“表现得像一个张量�
 x = nn.Parameter(torch.randn(input_dim)) # 输入向量
 output = x @ w # 输出向量
 ```
-当输入与权重都用 `torch.randn`（即 `x_j ~ N(0,1)`、`W_{ij} ~ N(0,1)`）独立采样时， $y_i = \sum_j W_{ij} x_j$ 的方差满足 $\mathrm{Var}(y_i) = \sum_j \mathrm{Var}(W_{ij})\mathrm{Var}(x_j) = n$（[Goodfellow et al. *Deep Learning* §8.4 Parameter Initialization Strategies](https://www.deeplearningbook.org/contents/optimization.html)），所以 `output` 的标准差为 $\sqrt{n} = \sqrt{\text{input\\_dim}}$。例如 `input_dim = 16384` 时 `output` 标准差约为 128，远大于 `x` 的标准差 1，会逐层放大导致梯度爆炸（gradient explosion），使训练过程变得极不稳定，甚至无法收敛。
+当输入与权重都用 `torch.randn`（即 `x_j ~ N(0,1)`、`W_{ij} ~ N(0,1)`）独立采样时， $y_i = \sum_j W_{ij} x_j$ 的方差满足 $\mathrm{Var}(y_i) = \sum_j \mathrm{Var}(W_{ij})\mathrm{Var}(x_j) = n$（[Goodfellow et al. *Deep Learning* §8.4 Parameter Initialization Strategies](https://www.deeplearningbook.org/contents/optimization.html)），所以 `output` 的标准差为 `` $`\sqrt{n} = \sqrt{\text{input_dim}}`$ ``。例如 `input_dim = 16384` 时 `output` 标准差约为 128，远大于 `x` 的标准差 1，会逐层放大导致梯度爆炸（gradient explosion），使训练过程变得极不稳定，甚至无法收敛。
 
 为了克服这个问题，需要一种对输入维度 `input_dim` 不敏感的初始化方法。CS336 代码讲义采用按 fan-in 缩放：权重除以输入维度的平方根 $\sqrt{d_{\text{in}}}$ ，把 $\mathrm{Var}(y_i)$ 拉回 $O(1)$ 。这里的 $d_{\text{in}}$ 对应代码里的 `input_dim`。
 
@@ -1445,7 +1445,7 @@ class CruncherCheckpointed(nn.Module):
 - [Nemotron 3 Super, arXiv:2604.12374](https://arxiv.org/abs/2604.12374)：NVFP4 全程预训练 25T token 的首个生产级模型，查阅日期 2026-09-03。
 - [FP8-LM, arXiv:2310.18313](https://arxiv.org/abs/2310.18313)：Microsoft 提出的 FP8 大模型训练框架，查阅日期 2026-09-03。
 - [FP8 Formats for Deep Learning, arXiv:2209.05433](https://arxiv.org/abs/2209.05433)：Micikevicius et al. 2022 NVIDIA FP8 E4M3/E5M2 格式规范，查阅日期 2026-09-03。
-- [Mixed Precision Training, arXiv:1710.03740](https://arxiv.org/abs/1710.03740)：Narang et al. 2018 半精度训练策略，查阅日期 2026-09-22。
+- [Mixed Precision Training, arXiv:1710.03740](https://arxiv.org/abs/1710.03740)：Micikevicius et al. 2017（ICLR 2018）半精度训练策略，查阅日期 2026-09-22。
 - [Glorot & Bengio 2010](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf)：式 1 standard initialization 与式 16 normalized（Xavier / Glorot）initialization，查阅日期 2026-09-03。
 - [Goodfellow et al. *Deep Learning* §8.4](https://www.deeplearningbook.org/contents/optimization.html)：参数初始化策略与式 8.23，查阅日期 2026-09-03。
 - [LLaMA, arXiv:2302.13971](https://arxiv.org/abs/2302.13971) Table 1：预训练数据各子集磁盘大小，查阅日期 2026-09-03。

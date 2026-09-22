@@ -491,11 +491,11 @@ $$
 
 静态 batching 要等一批请求一起开始，并且常被最长请求拖住。`continuous batching` 使用 iteration-level scheduling：每个 generation step 都可以把新请求加入 batch，把完成请求移出 batch。
 
-![图 9.5-1 Selective batching](images/9-5-1-selective-batching.png)
+![图 9.5-1 标准 $B \times S$ 张量](images/9-5-1-selective-batching.png)
 
-*图 9.5-1 Selective batching*
+*图 9.5-1 标准 $B \times S$ 张量*
 
-图 9.5-1 说明了另一个细节：不同长度 sequence 很难整齐堆成一个 $B \times S \times H$ 张量。Attention 部分依赖各自上下文长度，通常需要按 sequence 或 block 处理。
+图 9.5-1 展示的是标准 batching 把序列堆叠成 $B \times S \times H$ 张量的形态：纵向是 batch，横向是 sequence，所有 sequence 假设等长。不同长度的请求很难直接放进这种整齐张量，因此 serving engine 需要在 attention 与非 attention 算子上采取不同打包方式。
 
 Non-attention MLP 部分可以把不同请求的 token 拼成一个更大的 token batch 来计算。`continuous batching` 处理请求什么时候进出 batch，`selective batching` 处理不同算子用什么形状打包更合适。
 
