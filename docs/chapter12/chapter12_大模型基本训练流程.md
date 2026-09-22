@@ -478,7 +478,7 @@ $$
 
 [Dubois et al., 2023, *AlpacaFarm: A Simulation Framework for Methods that Learn from Human Feedback*, arXiv:2305.14387](https://arxiv.org/abs/2305.14387) §4.3 Figure 5 从另一个角度补上噪声维度：在真实人类偏好和 AlpacaFarm 带标注方差的模拟偏好下，胜率都会先升后降复现出过优化；换成方差很低的 GPT-4 直接偏好后，过优化消失。两篇合起来支持一个工程结论：过优化的强度取决于奖励源的噪声结构，同一套 RLHF 算法在不同奖励源上会给出不同的过优化曲线。
 
-图 12.5-4 的三个面板对应三种奖励源：（a）人类偏好、（b）带标注方差的 AlpacaFarm 模拟偏好、（c）方差很低的单 prompt GPT-4 偏好，Gao 与 AlpacaFarm 的过优化证据分别落在这些曲线上。工程上需要配合 held-out human eval、KL 约束、早停、长度监控和多样性指标，防止模型在代理奖励上升时失去校准或发生 mode collapse。
+[Dubois et al., 2023, *AlpacaFarm*](https://arxiv.org/abs/2305.14387) §4.3 Figure 5 的三个面板对应三种奖励源：（a）人类偏好、（b）带标注方差的 AlpacaFarm 模拟偏好、（c）方差很低的单 prompt GPT-4 偏好；前两个面板胜率先升后降复现出 overoptimization，第三个面板没有出现这条曲线（caption 直引："Human and AlpacaFarm preferences result in over-optimization, while simple GPT-4 preference does not"）。Gao §2.1 给出的 proxy RM 过优化曲线（KL 拟合）在这三种奖励源下被进一步约束——只有奖励源含噪声时 overoptimization 才会出现，噪声极低的 GPT-4 偏好下这条曲线消失。工程上需要配合 held-out human eval、KL 约束、早停、长度监控和多样性指标，防止模型在代理奖励上升时失去校准或发生 mode collapse。
 
 mode collapse 是另一类副作用。经过强偏好优化后，模型可能减少输出多样性，变得更确定、更模板化。此时模型已经不再只是校准的概率模型，采样温度和概率分布的含义都会改变。部署时需要同时评估质量、安全、长度、校准、多样性和用户偏好。这是 RLHF 的经验观察：mode collapse 的触发阈值随采样策略、reward shape、KL 系数变化，是实验拟合出来的量，从 policy gradient 目标推不出具体数值。
 
