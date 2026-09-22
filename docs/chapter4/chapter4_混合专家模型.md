@@ -116,7 +116,7 @@ per-expert balancing 和 per-device balancing 解决两个层级的问题。前�
 
 *图 4.1-2 基于 per-expert bias 的负载均衡*
 
-图 4.1-2 转写 DeepSeek-V3 per-expert bias 的门控式与配套损失。上半部分给出门控值 $g'_{i,t}$ 的选择规则： $s_{i,t} + b_i$ 进入 $\{s_{j,t} + b_j\}$ 的 Top- $K_r$ 时 $g'_{i,t} = s_{i,t}$，否则为 0——偏置只改变哪个 expert 被选中，被选 expert 仍按原始分数 $s_{i,t}$ 加权，这套机制被论文命名为 auxiliary loss free balancing。下半部分引用论文的 Complementary Sequence-Wise Auxiliary Loss 式 (17)–(20)： $\mathcal L_{\text{Bal}} = \alpha \sum_{i} f_i P_i$， $f_i$ 是该序列内 expert $i$ 进入 Top- $K_r$ 的频次， $P_i$ 是归一化打分在序列上的均值，用来防止单条序列内出现极端倾斜；图末括注点明这套方法并非完全无辅助损失。边界条件与更新式见上文负载均衡三路线：per-expert bias 在 batch 级在线调度，序列级损失只兜底防单序列极端倾斜。
+图 4.1-2 转写 DeepSeek-V3 per-expert bias 的门控式与配套损失。上半部分给出门控值 $g_{i,t}'$ 的选择规则： $s_{i,t} + b_i$ 进入 $\{s_{j,t} + b_j\}$ 的 Top- $K_r$ 时 $g_{i,t}' = s_{i,t}$，否则为 0——偏置只改变哪个 expert 被选中，被选 expert 仍按原始分数 $s_{i,t}$ 加权，这套机制被论文命名为 auxiliary loss free balancing。下半部分引用论文的 Complementary Sequence-Wise Auxiliary Loss 式 (17)–(20)： $\mathcal L_{\text{Bal}} = \alpha \sum_{i} f_i P_i$， $f_i$ 是该序列内 expert $i$ 进入 Top- $K_r$ 的频次， $P_i$ 是归一化打分在序列上的均值，用来防止单条序列内出现极端倾斜；图末括注点明这套方法并非完全无辅助损失。边界条件与更新式见上文负载均衡三路线：per-expert bias 在 batch 级在线调度，序列级损失只兜底防单序列极端倾斜。
 
 假设一共有 $E$ 个专家，输入为 $x$ ，门控函数为 $G(\cdot)$ 用于决定每个专家的权重， $E_i(\cdot)$ 表示第 $i$ 个专家的输出，则 token-choice routing 和 expert-choice routing 的通用门控机制可以写成：
 
@@ -1049,7 +1049,7 @@ MoE 稳定性通常需要同时处理路由更新、激活异常值和损失尖�
 
     这条机制既削弱「富者愈富」正反馈（→ 极端塌缩），又保留路由决策的自由度。**收敛到完全均衡的解析条件目前没有公开推导**（ $f_i$ 受 batch 采样、router 演化、专家权重变化共同影响，是非平稳信号）， $\gamma = 0.001$ 是经验值，工程上 $\gamma$ 过大容易震荡、 $\gamma$ 过小收敛太慢——属于「论文给常数 + 工程调」的典型模式。
 
-- **seq-wise balance auxiliary loss**：NoAux-TC 不替代、而**配合**一条权重极小的序列级辅助损失。论文 §2.1.2 给出的形式是 $\mathcal L_{\text{Bal}} = \alpha \sum_{i} f_i P_i$： $f_i$ 是该序列内 expert $i$ 进入 Top- $K_r$ 的频次（式 18）， $P_i$ 是归一化打分 $s'_{i,t} = s_{i,t} / \sum_{j} s_{j,t}$ 在序列上的均值（式 19–20）。机制上，选择频次 $f_i$ 与分数质量 $P_i$ 同时集中到少数 expert 的序列会让乘积和升高，这项损失惩罚的正是单条序列内部的极端倾斜； $\alpha = 0.0001$（§4.2 训练超参），与 batch 级 per-expert bias 粒度互补。[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) 报告这套组合在完整预训练中做到「无不可恢复的 loss spike、无回滚」（14.8T tokens 与训练配置见 §4.2，2.788M H800 GPU-hours 见 Table 1）。
+- **seq-wise balance auxiliary loss**：NoAux-TC 不替代、而**配合**一条权重极小的序列级辅助损失。论文 §2.1.2 给出的形式是 $\mathcal L_{\text{Bal}} = \alpha \sum_{i} f_i P_i$： $f_i$ 是该序列内 expert $i$ 进入 Top- $K_r$ 的频次（式 18）， $P_i$ 是归一化打分 $s_{i,t}' = s_{i,t} / \sum_{j} s_{j,t}$ 在序列上的均值（式 19–20）。机制上，选择频次 $f_i$ 与分数质量 $P_i$ 同时集中到少数 expert 的序列会让乘积和升高，这项损失惩罚的正是单条序列内部的极端倾斜； $\alpha = 0.0001$（§4.2 训练超参），与 batch 级 per-expert bias 粒度互补。[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) 报告这套组合在完整预训练中做到「无不可恢复的 loss spike、无回滚」（14.8T tokens 与训练配置见 §4.2，2.788M H800 GPU-hours 见 Table 1）。
 
 - **node-limited routing**：把每 token 激活的 expert 数限制在最多 $M=4$ 个节点上，配合 `routed_scaling_factor=2.5` 与 `n_group=8`、`topk_group=4` 三个路由字段。这条机制从通信账本（ $\text{all-to-all volume} \propto \text{tokens} \times \text{active nodes}$ ）出发压住跨节点 dispatch 带宽与 straggler 尾延迟；训练的数值稳定性由前面的 per-expert bias、seq-wise loss 与 FP8 数值路径共同承担。
 
