@@ -546,7 +546,7 @@ vLLM 的 PagedAttention 借鉴操作系统分页思想，把每个序列的 KV c
 
 *图 9.5-6 PagedAttention copy-on-write*
 
-图 9.5-6 展示分叉处的 `copy-on-write`：两条路径原本共享尚未填满的 Block 1（ref count = 2），要在同一 block 里写入不同 token（“fathers” 与 “mothers”）时，服务端先把 Block 1 复制到空闲的 Block 3（ref count 降为 1），再让两条路径各自写入；已经填满的完整共享 block（如 Block 0）继续共享。分叉从新 block 开始时，各请求只需分配自己的新 block。
+图 9.5-6 展示分叉处的 `copy-on-write`：两条路径原本共享尚未填满的 Block 1（ref count = 2），要在同一 block 里写入不同 token（“fathers” 与 “mothers”）时，服务端先把 Block 1 复制到空闲的 Block 3（ref count 降为 1），再让两条路径各自写入；已经填满的完整共享 block（如 Block 7，即两条路径都已完成填写的 “Four score and seven”）继续共享。分叉从新 block 开始时，各请求只需分配自己的新 block。
 
 PagedAttention 和 FlashAttention 的层级不同：
 
