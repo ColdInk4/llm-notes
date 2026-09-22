@@ -948,7 +948,7 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 | Chinchilla | 约 20 |
 | LLaMA 65B | 约 22 |
 | Llama 2 70B | 约 29 |
-| Mistral 7B | 约 1,100（官方披露 8T+ tokens / 7.3B params） |
+| Mistral 7B | 官方未披露训练 token 数（社区估计约 8T tokens / 7.3B params → 约 1,100 tokens/param，但该 token 数为社区估计非官方披露） |
 | Llama 3 70B | 约 215（约 15T 语料 / 70B） |
 
 一个简单账本是：训练只付一次，但推理会在模型生命周期里反复付费。若两个模型 pretraining loss 接近，较小模型通常更容易部署，KV cache 更小，单 token latency 和服务成本也更低。因此生产系统常愿意用更多训练 tokens 换一个更小、更便宜的 serving 模型。
@@ -1450,7 +1450,7 @@ $$
 \lVert\Delta W_l\rVert_\ast \sqrt{n_{l-1}} = \Theta(\sqrt{n_l})
 $$
 
-这就是 learning-rate scaling 的来源。把 $\lVert\Delta W_l\rVert_\ast = \eta_l \lVert g_l\rVert \lVert h_{l-1}\rVert$（Adam 把 $\lVert g_l/\sqrt{v_l}\rVert_2$ 量级记为 $\lVert g_l\rVert$ 同样适用），代入 $\lVert g_l\rVert = \Theta(\sqrt{n_l})$、 $\lVert h_{l-1}\rVert = \Theta(\sqrt{n_{l-1}})$，解 $\eta_l \sqrt{n_l n_{l-1}} = \Theta(\sqrt{n_l/n_{l-1}})$ 得到 $\eta_l = \Theta(1/n_{l-1})$。因此图 8.6-40 的简化线性层里，Adam 对 hidden matrix 的 learning-rate factor 是 $1/n_{l-1}$；Tensor Programs V（[arXiv:2203.03466](https://arxiv.org/abs/2203.03466) §4 Table 3）给出的完整规则区分 hidden weight、output weight 和 input weights / biases 三大类：hidden weights 上 SGD 的 LR = $\Theta(1)$、Adam 的 LR = $1/\mathrm{fan\_in}$；output weights 上 SGD 的 LR = $1/\mathrm{fan\_in}$、Adam 的 LR = $1/\mathrm{fan\_in}$；input weights 与 biases 上 SGD 的 LR = $\mathrm{fan\_out}$、Adam 的 LR = $\Theta(1)$。三类参数的 Init.Var. 分别是 hidden weights $1/\mathrm{fan\_in}$（即 Init.Std = $1/\sqrt{\mathrm{fan\_in}}$）、output weights $1/\mathrm{fan\_in}^2$（即 Init.Std = $1/\mathrm{fan\_in}$）、input weights / biases $1/\mathrm{fan\_in}$。相邻层等宽时退化为常见的 hidden Adam LR = $1/n$、output LR = $1/n$（hidden 与 output 在等宽条件下形式一致，但 hidden 与 output 的 Init.Std 仍分别为 $1/\sqrt{n}$ 和 $1/n$），与 Tensor Programs V §B.1 给出的 Transformer 实施规则一致。标准参数化在同一张表里的对应项是 hidden weights 初始化标准差 $\Theta(1/\sqrt{n_{l-1}})$、learning rate $\Theta(1)$；两者差别集中在 per-parameter LR 缩放以及 fan-out 小于 fan-in 时的初始化项。具体规则取决于 optimizer 和参数类型；Transformer 的 embedding、attention / MLP matrices、output head、bias 与 norm 参数需要分别处理。
+这就是 learning-rate scaling 的来源。把 $\lVert\Delta W_l\rVert_\ast = \eta_l \lVert g_l\rVert \lVert h_{l-1}\rVert$（Adam 把 $\lVert g_l/\sqrt{v_l}\rVert_2$ 量级记为 $\lVert g_l\rVert$ 同样适用），代入 $\lVert g_l\rVert = \Theta(\sqrt{n_l})$、 $\lVert h_{l-1}\rVert = \Theta(\sqrt{n_{l-1}})$，解 $\eta_l \sqrt{n_l n_{l-1}} = \Theta(\sqrt{n_l/n_{l-1}})$ 得到 $\eta_l = \Theta(1/n_{l-1})$。因此图 8.6-40 的简化线性层里，Adam 对 hidden matrix 的 learning-rate factor 是 $1/n_{l-1}$；Tensor Programs V（[arXiv:2203.03466](https://arxiv.org/abs/2203.03466) §4 Table 3）给出的完整规则区分 hidden weight、output weight 和 input weights / biases 三大类：hidden weights 上 SGD 与 Adam 的 LR 都是 $\Theta(1)$；output weights 上 SGD 与 Adam 的 LR 都是 $1/\mathrm{fan\_in}$；input weights 与 biases 上 SGD 的 LR = $\mathrm{fan\_out}$、Adam 的 LR = $\Theta(1)$。三类参数的 Init.Var. 分别是 hidden weights $1/\mathrm{fan\_in}$（即 Init.Std = $1/\sqrt{\mathrm{fan\_in}}$）、output weights $1/\mathrm{fan\_in}^2$（即 Init.Std = $1/\mathrm{fan\_in}$）、input weights / biases $1/\mathrm{fan\_in}$。相邻层等宽时退化为常见的 hidden Adam LR = $1/n$、output LR = $1/n$（hidden 与 output 在等宽条件下形式一致，但 hidden 与 output 的 Init.Std 仍分别为 $1/\sqrt{n}$ 和 $1/n$），与 Tensor Programs V §B.1 给出的 Transformer 实施规则一致。标准参数化在同一张表里的对应项是 hidden weights 初始化标准差 $\Theta(1/\sqrt{n_{l-1}})$、learning rate $\Theta(1)$；两者差别集中在 per-parameter LR 缩放以及 fan-out 小于 fan-in 时的初始化项。具体规则取决于 optimizer 和参数类型；Transformer 的 embedding、attention / MLP matrices、output head、bias 与 norm 参数需要分别处理。
 
 ![图 8.6-40 muP mini recap](images/8-6-40-mup-mini-recap.png)
 
