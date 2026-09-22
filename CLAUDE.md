@@ -118,7 +118,7 @@ rg -n '\\operatorname' <modified-markdown-files>
 
 - **WebSearch 与 WebFetch 必须并用**——只 WebFetch 不 WebSearch 是 sub-agent 的常见偷懒模式。每轮广查 / 审计每个 sub-agent 的硬性最小值：
   - WebSearch ≥ 5 次，覆盖"是不是真存在 / 是不是真作者 / 是不是真数字"三种目的
-  - WebFetch ≥ 5 个不同 URL，其中至少 2 个为 `arxiv.org/pdf/{id}` 或 `/html/{id}` 的正文（非 abstract）
+  - WebFetch ≥ 5 个不同 URL，其中至少 2 个为 `arxiv.org/pdf/{id}` 或 `/html/{id}` 的正文（非 abstract）；sandbox 对 `arxiv.org` abs 路径常返回「Unable to verify domain」、对 `/pdf/` 返回压缩对象流（FlateDecode streams，不可直接解析），实际可读正文只能走 `/html/{id}`；html 截断（附录 / Table / Figure 数值）或 sandbox 拦截时退到 `/pdf/{id}` 配合 `pdftotext -layout` 本地抽目标句前后 ≥6 行
   - finding 的 `web_evidence.search_query` 必须实际跑过；不能写"未跑"
 - WebSearch 关键词模板（必须包含具体名词）：
   - arXiv 复核：`"Hestness 2017 arxiv 1712.00409 ImageNet"` / `"Rafailov DPO arxiv 2305.18290 authors"`
@@ -138,6 +138,8 @@ arXiv `abs/{id}` 页只有 abstract 与 metadata，绝大多数具体数字（�
 3. 引用该论文的下游论文 / 官方 model card / 榜单页做交叉核对。
 
 仅基于 abstract 出 finding 时，必须在 finding 证据字段显式标记 `source=abstract-only` 并降级为 `tentative`；不允许把 `abs/{id}` 的内容当成"已验证"结论写入 fix。
+
+4. **WebFetch 缺引文或被截断（`truncated` / `not visible`）时，该 finding 保持未核**，换 PDF 路径 `curl -sL arxiv.org/pdf/{id} -o /tmp/{id}.pdf && pdftotext -layout /tmp/{id}.pdf` 抽目标句前后 ≥6 行；附录与 Table 数字常在 html 截断区，直接上 PDF。完整实操模板见 `memory/webfetch-full-text-required.md`。摘要式 WebFetch 返回「XX 是 YY」但不给原文引文时，与 abstract-only 同等待遇——保持 `tentative`、补 PDF 抽文后才能下 verdict。
 
 ### sub-agent 必读课件与必读图
 

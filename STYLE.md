@@ -355,6 +355,6 @@ CS336 2026 的公开课件和课程视频可以作为课程材料来源。若某
 
 这些句式只在 `AGENTS.md` 维护审计流程用，**禁止**出现在 `docs/` 任何位置——正文、章节末「来源与更新记录」、附注、表注、图注。讲义要么按权威源直接给出事实（数字 + 出处），要么省略该数据点；未核到的字段不写入笔记，由主 agent 在 chat 流程核验后再写入。
 
-引用 arXiv 时，正文应基于论文正文 Figure / Table 与公式，而不仅是 abstract；abstract 仅用于核对标题、作者与提交日期（与 `AGENTS.md`「必须读原论文，不能只读 abstract」同步）。
+引用 arXiv 时，正文应基于论文正文 Figure / Table 与公式，而不仅是 abstract；abstract 仅用于核对标题、作者与提交日期（与 `AGENTS.md`「必须读原论文，不能只读 abstract」同步）。WebFetch 拿到正文时 `/html/{id}` 优先；html 截断（附录 / Table / Figure 数值）或 sandbox 拦截时退到 `/pdf/{id}` 配合 `pdftotext -layout` 本地抽文——参见 `AGENTS.md`「工具用法」节的 sandbox 现实注释与「必须读原论文」节第 4 条。
 
 「修辞层规则」节专管作者声音穿帮（作者选择 / 免责声明 / 写作计划承诺），「验证流程不进正文」节专管审计 / 搜证元句；两者分工明确，rg 自检覆盖两条规则的全部反例。
