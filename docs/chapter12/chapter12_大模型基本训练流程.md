@@ -311,7 +311,7 @@ RLHF / DPO 数据的质量不止取决于标注一致性，还取决于标注者
 - **标注者人群与 demographic transfer**：InstructGPT 的标注指南把评价目标定义为 helpful / truthful / harmless 三组属性，而承担标注的人群本身高度集中：[InstructGPT, arXiv:2203.02155](https://arxiv.org/abs/2203.02155) Appendix B.3 Table 12 对 19 名自愿受访标注者的统计给出 undergraduate degree 52.6% + master's degree 36.8% ≈ 89.4%，国籍分布以 Filipino 22% 与 Bangladeshi 22% 居前。这套偏好分布把模型对齐的目标锁定在特定标注池上，与一般人类偏好之间存在系统差距；标注池的地理、学历和行业构成不公开时，后训练出来的模型就难以复现。
 
   Annotator 人口与对齐结果之间的传递有可观察的偏差（demographic transfer）：[Santurkar et al., 2023, *Whose Opinions Do Language Models Reflect?*, ICML 2023, arXiv:2303.17548](https://arxiv.org/abs/2303.17548) §4.1 把 base LM 与 RLHF 模型的代表性方向并列——base LM "being most aligned with lower income, moderate, and **Protestant or Roman Catholic** groups"，RLHF 模型（InstructGPT 系列）"align more with people who are **liberal, high income, well-educated, and not religious or belong to religions other than Buddhists, Muslims, and Hindus**"。该结论把 RLHF 的代表性整体向世俗化、高学历、高收入平移。
-  宗教维度上，论文给 RLHF 模型列出的对齐群体是「不信仰宗教，或信仰佛教、伊斯兰教、印度教之外宗教」的人群，这个集合排除 Buddhist / Muslim / Hindu 三类；与 base LM 集中代表的 Protestant / Roman Catholic 相比，RLHF 后模型的代表重心从主流基督教移向论文列举的 liberal、高收入、高学历与非宗教群体。论文下一句指出，这批对齐群体的人口构成与 InstructGPT 论文报告的众包标注者吻合，标注池的人口结构直接写进对齐方向。后训练数据若想复现 InstructGPT 的对齐方向，prompt pool 与 RLHF 后训练数据在人口维度上的分布要与论文标注池对齐。
+  宗教维度上，论文给 RLHF 模型列出的对齐群体是「不信仰宗教，或信仰佛教、伊斯兰教、印度教之外宗教」的人群，这个集合按字面排除 Buddhist / Muslim / Hindu 三类；与 base LM 集中代表的 Protestant / Roman Catholic 相比，RLHF 模型的代表性在 base 群体的基础上叠加了世俗化与高学历 / 高收入维度，但并未脱离基督教范围（Jewish 仍在对齐集合内）。论文下一句指出，这批对齐群体的人口构成与 InstructGPT 论文报告的众包标注者吻合，标注池的人口结构直接写进对齐方向。后训练数据若想复现 InstructGPT 的对齐方向，prompt pool 与 RLHF 后训练数据在人口维度上的分布要与论文标注池对齐。
 - **专家 vs 普通人**：[Hosking, Blunsom, Bartolo, 2024, *Human Feedback is not Gold Standard*, ICLR 2024, arXiv:2309.16349](https://arxiv.org/abs/2309.16349) 定义了 Harmful / Fluency / Scope / Repetition / Refusal / Formatting / Relevance / Factuality / Inconsistency / Contradiction 共 10 类错误。scope、fluency、harmfulness 三类在实验模型上出现率低于 1%，被排除在对照之外；余下 7 类由论文作者各标注 300 条样本作为 expert 基线，再与 Prolific 上招募的众包 annotator 对照。结论是众包标注系统性低估 factuality 与 inconsistency 错误，而且 assertive（语气更确信）的输出会放大这一差距——标注者更容易相信语气确定的回答。
 - **LLM-as-judge 与 self-bootstrapping**：Anthropic Constitutional AI（[Bai et al., 2022, arXiv:2212.08073](https://arxiv.org/abs/2212.08073)）是"早期 self-bootstrapping 范式"——用 LLM 自身按宪法规则打标，再训练下一代。Zephyr（[Tunstall et al., 2023, *Zephyr: Direct Distillation of LM Alignment*, arXiv:2310.16944](https://arxiv.org/abs/2310.16944)）把这条路线推到整链无人工标注：dSFT 用 UltraChat，dDPO 用 UltraFeedback 中 GPT-4 打分的 AI feedback。多数"开源 DPO 数据集"因此实际是 LLM 蒸馏而非人类偏好，复现与对比时要先看清楚人类占比。
 - **长度攻击的工程经验**：[Singhal et al., 2024, *A Long Way to Go: Investigating Length Correlations in RLHF*, arXiv:2310.03716](https://arxiv.org/abs/2310.03716) §3.2 Table 2 把 reward 换成纯长度函数（LPPO），模拟偏好胜率在 WebGPT 56% / Stack 59% / RLCD 64%，与用学到的 reward model 做标准 PPO 的 58% / 58% / 63% 基本持平。这与"人类偏好更偏向长回答"的偏差直接相关。减少这种偏差的工程做法是按 reward / cost 联合归一化或让 reward model 看不出长度。
@@ -360,7 +360,7 @@ DPO 的目标是把 pairwise preference data 直接写成监督式损失。给�
 | 主要风险 | reward hacking、训练不稳定 | 偏好对质量、长度偏差 | 失去参考模型约束 | 长度归一化引入新偏置 |
 | 工程代价 | 4 个模型 + KL 调参 | 2 个模型 + $\beta$ 调参 | 1 个模型 + $\beta, \gamma$ 调参 | 2 个模型 + $\beta$ 调参 |
 
-Llama 3 技术报告把 DPO + rejection sampling 作为 RLHF 主线。Llama 团队在 §4.1 比较 PPO 与 DPO 后选择 DPO——这是工程选择，不是公理推导；同一份 PPO/DPO 代码换不同的偏好数据仍会得到不同行为。Llama 3 tech report（Grattafiori et al., 2024, [arXiv:2407.21783](https://arxiv.org/abs/2407.21783)；早期版本以 Dubey et al. 署名）§4.1 "Modeling" 把后训练组织成多轮外循环，每轮依次做 reward modeling、rejection sampling、SFT 和 DPO；rejection sampling 对每个 prompt 从最新 chat 模型（通常是上一轮后训练的最佳 checkpoint，即上一轮 DPO 之后的模型）采样 K 个回答，K 在 §4.2.2 "SFT Data" 中明确为「typically between 10 and 30」，由 reward model 选出最优候选，再混回本轮的 SFT 数据。
+Llama 3 技术报告把 DPO + rejection sampling 作为 RLHF 主线。Llama 3 §4.1.4 在介绍 post-training 流程时直接以 DPO 替换 InstructGPT（[arXiv:2203.02155](https://arxiv.org/abs/2203.02155)）的 PPO-based RLHF，理由是「We also explored on-policy algorithms such as PPO, but found that DPO required less compute for large-scale models and performed better, especially on instruction following benchmarks like IFEval」——这是工程选择，不是公理推导；同一份 PPO/DPO 代码换不同的偏好数据仍会得到不同行为。Llama 3 tech report（Grattafiori et al., 2024, [arXiv:2407.21783](https://arxiv.org/abs/2407.21783)；早期版本以 Dubey et al. 署名）§4.1 "Modeling" 把后训练组织成多轮外循环，每轮依次做 reward modeling、rejection sampling、SFT 和 DPO；rejection sampling 对每个 prompt 从最新 chat 模型（通常是上一轮后训练的最佳 checkpoint，即上一轮 DPO 之后的模型）采样 K 个回答，K 在 §4.2.2 "SFT Data" 中明确为「typically between 10 and 30」，由 reward model 选出最优候选，再混回本轮的 SFT 数据。
 
 Llama 1（[arXiv:2302.13971](https://arxiv.org/abs/2302.13971)）没有偏好阶段，§4 Instruction Finetuning 只做了一次 LLaMA-I 消融，沿用 Chung et al. 2022 的 Flan 式指令微调协议；Llama 2 的公开材料以 rejection sampling + PPO 为主（[arXiv:2307.09288](https://arxiv.org/abs/2307.09288)），DPO 从 Llama 3 起才进入 Llama 系列的后训练原语。
 
@@ -368,9 +368,9 @@ Llama 1（[arXiv:2302.13971](https://arxiv.org/abs/2302.13971)）没有偏好阶
 
 ### 12.5.1 DPO 与 PPO 的训练路径
 
-![图 12.5-1 DPO 与 PPO 的训练路径](images/12-5-1-dpo-vs-ppo.png)
+![图 12.5-1 AlpacaFarm Table 2：PPO 与 DPO 胜率对比](images/12-5-1-dpo-vs-ppo.png)
 
-*图 12.5-1 DPO 与 PPO 的训练路径*
+*图 12.5-1 AlpacaFarm Table 2：PPO 与 DPO 胜率对比*
 
 图 12.5-1 把 PPO 和 DPO 放在 AlpacaFarm 模拟偏好与人类偏好两个口径下做横向对比：模拟胜率 PPO 46.8 ± 1.8 与 DPO 46.8 ± 1.7（[Dubois et al., 2023, *AlpacaFarm*, arXiv:2305.14387](https://arxiv.org/abs/2305.14387) Table 2 同行两列）几乎持平，人类胜率 PPO 55.1 ± 1.7 / DPO 留空（Table 2 原表中 DPO 行的人类列未报告数字）；同一张表还包含 SFT 10k / SFT 52k、Best-of-n（n = 1024）、Expert Iteration、Binary Reward Conditioning、Quark 等多种基线，给出 RLHF 方法间的相对位置。配合结构差异看，PPO 需要 reward model、rollout、优势估计、KL 控制和多轮策略更新，DPO 直接从偏好对计算损失、训练形态更接近普通 SFT；两套损失上结构差异明显，但 AlpacaFarm 这种模拟偏好下两种方法给出接近的胜率。
 
