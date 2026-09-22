@@ -482,7 +482,7 @@ GPU 采用 SIMT（单指令多线程）执行架构，**同一线程束（Warp�
 | **FP32** | 32 位 | $3.4 \times 10^{38}$ | 传统训练，精度敏感 | 1×（FP32 CUDA Core 路径） |
 | **TF32** | 19 位 | $3.4 \times 10^{38}$ | A100+ 默认格式 | **8×**（A100 Tensor Core 156 TFLOP/s vs A100 FP32 CUDA 19.5 TFLOP/s） |
 | **FP16** | 16 位 | $6.5 \times 10^4$ | 通用训练/推理 | **16×**（A100 Tensor Core 312 TFLOP/s vs A100 FP32 CUDA 19.5 TFLOP/s） |
-| **BF16** | 16 位 | $3.8 \times 10^{38}$ | AI 训练首选 | **16×**（A100 Tensor Core 312 TFLOP/s vs A100 FP32 CUDA 19.5 TFLOP/s） |
+| **BF16** | 16 位 | $3.4 \times 10^{38}$ | AI 训练首选 | **16×**（A100 Tensor Core 312 TFLOP/s vs A100 FP32 CUDA 19.5 TFLOP/s） |
 | **INT8** | 8 位 | 2⁸ ≈ 256 | 量化推理 | **32×**（A100 Tensor Core 624 TOPS vs A100 FP32 CUDA 19.5 TFLOP/s） |
 | **INT4** | 4 位 | 2⁴ = 16 | 极致推理 | **64×**（A100 Tensor Core 1,248 TOPS vs A100 FP32 CUDA 19.5 TFLOP/s） |
 | **FP8** | 8 位 | 动态范围 | Hopper/Blackwell | **约 30×**（H100 Tensor Core FP8 dense 1,979 TFLOP/s vs H100 SXM FP32 67 TFLOP/s；H100 自身对照口径，FP32 走 CUDA Core 路径；51 TFLOP/s 是 H100 PCIe 版 FP32 峰值，SXM5 实际 = 67 TFLOP/s，见 [NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)） |
