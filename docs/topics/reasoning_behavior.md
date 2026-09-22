@@ -19,12 +19,12 @@ LLM 推理能力既是可观察的生成行为，也是消耗系统预算的训�
 本节先用三个近期公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖图论与组合（2026 年 Knuth）、理论物理的解析推导（2026 年 Brenner 等）和经典 Lie 群上的特征值计算（2026 年 Feng）三类典型应用，能力、概率与系统代价的拆解见后续 §3 预训练与解码、§4 后训练、§5 CoT、§6 Prompt 与 §7 外部工具搜索。
 
 - Donald Knuth 在 2026 年的 [PDF *Claude's Cycles*](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf) 中记录了 Claude Opus 4.6（Anthropic）求解一个图论开放问题的过程，并把 Claude 构造的 Hamilton 环称为 *Claude's cycle*。
-- Brenner（Google Research 与 Harvard SEAS）、Cohen-Addad（Google Research）和 Woodruff（Google Research 与 Carnegie Mellon 联合）在 [arXiv:2603.04735 *Solving an Open Problem in Theoretical Physics using AI-Assisted Discovery*](https://arxiv.org/abs/2603.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
-- Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：核心数学内容由内部推理代理 _Aletheia_（基于 Gemini Deep Think 构建）完整生成，论文把 Feng–Yun–Zhang 在 [FYZ25a] 中只覆盖了若干特殊情形的 eigenweights 推到 Type A（GL_n）、Type C（PSp_{2n}）与 Type D（PSO_{2n}）三个群族的一般情形（Type B 结果沿用 FYZ25a），论文正文给出这三个群族的完整证明。人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
+- Brenner、Cohen-Addad 和 Woodruff 在 [arXiv:2603.04735 *Solving an Open Problem in Theoretical Physics using AI-Assisted Discovery*](https://arxiv.org/abs/2603.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
+- Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：核心数学内容由内部推理代理 _Aletheia_（基于 Gemini Deep Think 构建）完整生成，论文把 Feng–Yun–Zhang 在 [FYZ25a] 中只覆盖了若干特殊情形的 eigenweights 推到 Type A（ $GL_n$ ）、Type C（ $PSp_{2n}$ ）与 Type D（ $PSO_{2n}$ ）三个群族的一般情形（Type B 结果沿用 FYZ25a），论文正文给出这三个群族的完整证明。人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
 
 三个案例从不同角度展示同一类机制：模型负责生成推理轨迹和数学构造，作者负责设定目标、组织验证与最终叙述。CoT、多路径采样与工具扩展主题随后展开；推理行为既可以由模型直接产生，也可以由作者代理作为中间环节。
 
-![专题图 1 简单数值比较中的过度推理示例](images/reasoning-01-api-number-comparison.png)
+![专题图 1 简单数值比较中的过度推理示例](images/reasoning-02-no-reasoning-vs-reasoning.png)
 
 *专题图 1 简单数值比较中的过度推理示例*
 
@@ -34,7 +34,7 @@ LLM 推理能力既是可观察的生成行为，也是消耗系统预算的训�
 
 预训练模型通过 next-token prediction 学习文本分布。这个目标看起来只是在预测下一个 token，但大规模文本中包含数学推导、代码执行、类比、证明、反事实和常识约束。模型为了降低交叉熵，会在参数中压缩这些结构。推理阶段能否看见这些结构，很大程度取决于解码策略怎样从输出分布中取样。
 
-![专题图 2 无推理回答与显式推理回答的对比](images/reasoning-02-no-reasoning-vs-reasoning.png)
+![专题图 2 无推理回答与显式推理回答的对比](images/reasoning-01-api-number-comparison.png)
 
 *专题图 2 无推理回答与显式推理回答的对比*
 
