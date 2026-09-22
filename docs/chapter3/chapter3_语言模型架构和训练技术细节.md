@@ -426,7 +426,7 @@ $$
 
 *图 3.2-5 Pre-norm 与 Post-norm 的收敛对比：左图为英越翻译 Dev BLEU，右上为 IWSLT 验证损失与 BLEU，右下为 BERT 预训练验证损失*
 
-采用预归一化配合其他稳定化技巧后，即使不使用**预热机制**，系统表现也能媲美甚至**优于**需要精细预热方案的**后归一化 LayerNorm**。左图展示了英语-越南语机器翻译（Salazar & Nguyen 2019）下的 Dev BLEU 收敛轨迹；右上是 Xiong 2020 在 IWSLT 机器翻译任务上的验证损失与 BLEU 曲线（同一任务的 Adam 优化器 × 预热对比）；右下是 BERT 在预训练步数上的验证损失对比，是当前图片中唯一跳出机器翻译场景的实验。
+采用预归一化配合其他稳定化技巧后，即使不使用**预热机制**，系统表现也能媲美甚至**优于**需要精细预热方案的**后归一化 LayerNorm**。左图展示了英语-越南语机器翻译（Nguyen & Salazar, *Transformers without Tears: Improving the Normalization of Self-Attention*, IWSLT 2019, [arXiv:1910.05895](https://arxiv.org/abs/1910.05895)）下的 Dev BLEU 收敛轨迹；右上是 Xiong 2020 在 IWSLT 机器翻译任务上的验证损失与 BLEU 曲线（同一任务的 Adam 优化器 × 预热对比）；右下是 BERT 在预训练步数上的验证损失对比，是当前图片中唯一跳出机器翻译场景的实验。
 
 关于预归一化的优势存在**多种解释**：有研究认为它能避免层间**梯度衰减**，保持**梯度规模恒定**；而未使用预热的后归一化会导致**梯度爆炸**。综合这些论点，预归一化本身被普遍接受为更稳定的训练架构选择——它通过把 LayerNorm 移到子层输入前来避免 LayerNorm 的可学习缩放叠加进 residual stream，从而保持 residual stream 的恒等通路。
 

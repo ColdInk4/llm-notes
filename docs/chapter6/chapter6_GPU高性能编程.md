@@ -83,7 +83,7 @@ Registers 局部性最强，shared memory 适合一个 thread block 内协作，
 > Hopper 与 Blackwell 在 memory hierarchy 上各新增一层上表未列出的资源：
 >
 > - **Tensor Memory（TMEM，Blackwell 数据中心型号 B200 / GB200）**：在 Tensor Core 旁新增的张量专用内存，位于 register 与 shared memory 之间，`tcgen05.mma` 的累加器可以直接驻留其上。TMEM 256 KB/SM、按 128 lane × 512 column 的 32-bit 单元组织（ $128 \times 512 \times 4\ \text{B} = 256\ \text{KB}$）；CUDA C++ 与 Triton 路径下编译器自动管理，写 PTX 时 alloc / dealloc 指令才直接暴露给程序员。
-> - **Thread Block Cluster（Hopper 引入，Blackwell 沿用）**：把多个 thread block 编为一个 cluster，cluster 内 block 可跨 SM 直接访问彼此的 distributed shared memory；portable cluster size 最多 8 个 SM，Blackwell B200 在显式设置 `cudaFuncAttributeNonPortableClusterSizeAllowed` 后可扩展到 16 个 SM。写 PTX 时 cluster 指令直接暴露给程序员。
+> - **Thread Block Cluster（Hopper 引入，Blackwell 沿用）**：把多个 thread block 编为一个 cluster，cluster 内 block 可跨 SM 直接访问彼此的 distributed shared memory；portable cluster size 最多 8 个 thread block，Blackwell B200 在显式设置 `cudaFuncAttributeNonPortableClusterSizeAllowed` 后可扩展到 16 个 thread block。写 PTX 时 cluster 指令直接暴露给程序员。
 
 CUDA / Triton 的基础并行模型可以写成三层：
 

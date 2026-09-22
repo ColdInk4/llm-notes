@@ -202,9 +202,9 @@ Qwen 3 的公开材料也体现了这种阶段分工：预训练覆盖大规模�
 
 **Shadow libraries 是训练数据的另一条来源。** 生态包括 LibGen（2019 约 4M books）、Z-Library、Anna's Archive、Sci-Hub（2022 约 88M papers）等。这些来源在版权合规上普遍不可用于商业训练，但部分研究型项目（CommonPile 等）以 permissive-only 路线探索合法替代。Shadow library 在数据清单中只作为负面参照登记，不进入训练来源。
 
-**Anthropic 版权诉讼和解（案件事实链）。** Bartz v. Anthropic PBC（Case No. 4:24-cv-05417-AMO, N.D. Cal.；2025 年承办法官为 William Alsup，2025 年 12 月退休后由 Araceli Martínez-Olguín 法官承继，案号 -AMO 后缀随承办法官变化而变化，案件主体不变）是 Andrea Bartz 等作者提起的集体诉讼。2025 年 6 月 23 日，法院就 fair use 作出 summary judgment：用合法取得的图书副本训练模型构成 fair use，把合法购买的纸书扫描留作模型训练库也构成 fair use，但下载并长期保存数百万本盗版书籍本身不构成 fair use（piracy 部分发回审判）。2025 年 8 月 26 日，Anthropic 同意支付 15 亿美元（约 48.2 万部作品）达成和解，是当时美国公开记录中金额最高的版权和解；2025 年 9 月 25 日法院作出 preliminary approval。
+**Anthropic 版权诉讼和解（案件事实链）。** Bartz v. Anthropic PBC（最初立案 Case No. 3:24-cv-05417-WHA, N.D. Cal.，2024 年 8 月 19 日由 Andrea Bartz 等作者提起，承办法官 William Alsup）是集体诉讼。2025 年 6 月 23 日，Alsup 法官就 fair use 作出 summary judgment：用合法取得的图书副本训练模型构成 fair use，把合法购买的纸书扫描留作模型训练库也构成 fair use，但下载并长期保存数百万本盗版书籍本身不构成 fair use（piracy 部分发回审判）。2025 年 8 月 26 日，Anthropic 同意支付 15 亿美元（约 48.2 万部作品）达成和解，是当时美国公开记录中金额最高的版权和解；2025 年 9 月 25 日法院作出 preliminary approval。
 
-**Anthropic 版权诉讼和解（2026 年进展）。** Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官。2026 年 5 月 14 日后者举行 75 分钟 fairness hearing，对律师费明细、lead-plaintiff 服务费、开支分摊与未及时 opt-out 通知提出补充材料要求；2026 年 7 月 20 日 Judge Martínez-Olguín 作出 final approval，确认 <span>$</span>1.5B、482,460 部 eligible works（filed claims 447,576、opt-outs 440,490，claims rate 约 92.77% = 447,576 / 482,460、约 <span>$</span>3,000/部）的条款公平合理，仍是美国公开记录中金额最高的版权和解；同时命令 Anthropic 在 final judgment 后 30 日内销毁所有 LibGen / PiLiMi 来源的盗版文件。
+**Anthropic 版权诉讼和解（2026 年进展）。** Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官承继，案号由 3:24-cv-05417-WHA reassign 为 3:24-cv-05417-AMO（法官姓名首字母后缀随承办法官变化，案件主体不变）。2026 年 5 月 14 日后者举行 75 分钟 fairness hearing，对律师费明细、lead-plaintiff 服务费、开支分摊与未及时 opt-out 通知提出补充材料要求；2026 年 7 月 20 日 Judge Martínez-Olguín 作出 final approval，确认 <span>$</span>1.5B、482,460 部 eligible works（filed claims 447,576，claims rate 约 92.77% = 447,576 / 482,460，约 <span>$</span>3,000/部；opt-outs 约 350 位作者、覆盖约 1,802 部作品）的条款公平合理，仍是美国公开记录中金额最高的版权和解；同时命令 Anthropic 在 final judgment 后 30 日内销毁所有 LibGen / PiLiMi 来源的盗版文件。
 
 该案的争议核心是从盗版图书库获取语料能否被 fair use 覆盖，而购买并扫描同一批图书并不能豁免此前下载盗版副本的责任。
 
@@ -323,7 +323,7 @@ DSIR 的训练判断很直接：目标数据定义希望靠近的分布，候选
 
 三类方法都需要一个共同的收益证明：过滤到底值多少训练预算。两个公开案例给出了量级。OpenWebMath（[arXiv:2310.06786](https://arxiv.org/abs/2310.06786)）用规则加分类器从 Common Crawl 里提取并保留了 LaTeX 的数学网页，得到 14.7B tokens；按 OpenWebMath 论文 Table 2 的对照，1.4B 模型在这份语料上的 MATH Algebra-Easy 单答准确率为 5.62%，而对照基线有两条：相同 14.7B tokens 的 The Pile 仅 2.81%（同规模过滤收益）；Pythia-1.4B 在 300B tokens（约 20 倍）的通用 The Pile 上也只有 3.93%。两组对照共同支撑论文的核心结论——领域过滤在 1/20 token 量下超过通用语料。
 
-代码侧的对照来自 phi-1（[arXiv:2306.11644](https://arxiv.org/abs/2306.11644)）。phi-1 主模型 1.3B 参数、phi-1-small = 350M 参数、HumanEval 45% 是 phi-1-small 的对照版本（论文 abstract 给出两个版本）。论文 §2.1 的过滤 ablation 在 350M 模型上做：在未过滤的 Stack Python 去重子集加 StackOverflow 上训练，跑到 96K 步（约 200B tokens）时 HumanEval 停在 12.19% 不再上升；换成用 GPT-4 标注教育价值、再由随机森林分类器筛出的子集，36K 步就到 17.68%。训练步数不到原来的四成，分数反而更高——这是过滤最直接的工程收益：省下来的 FLOPs 可以留给更多有效 token 或更大的模型。
+代码侧的对照来自 phi-1（[arXiv:2306.11644](https://arxiv.org/abs/2306.11644)）。论文给出两个模型规模：phi-1 主模型 1.3B 参数在 HumanEval 上 50.6%、phi-1-small = 350M 在 HumanEval 上 45%（abstract 同时列出两个版本）。论文 §2.1 的过滤 ablation 在 350M 模型上做：在未过滤的 Stack Python 去重子集加 StackOverflow 上训练，跑到 96K 步（约 200B tokens）时 HumanEval 停在 12.19% 不再上升；换成用 GPT-4 标注教育价值、再由随机森林分类器筛出的子集，36K 步就到 17.68%。训练步数不到原来的四成，分数反而更高——这是过滤最直接的工程收益：省下来的 FLOPs 可以留给更多有效 token 或更大的模型。
 
 ### 10.2.2 数据去重
 
@@ -577,7 +577,7 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 - [Kandpal et al., arXiv:2202.06539](https://arxiv.org/abs/2202.06539)
 - [Lee et al., arXiv:2107.06499](https://arxiv.org/abs/2107.06499)
 - [UniMax, arXiv:2304.09151](https://arxiv.org/abs/2304.09151)
-- [Bartz v. Anthropic PBC, Case No. 4:24-cv-05417-AMO (N.D. Cal.) 公开报道与和解页面](https://www.anthropiccopyrightsettlement.com/)
+- [Bartz v. Anthropic PBC, Case No. 3:24-cv-05417-WHA（Alsup 法官）→ Case No. 3:24-cv-05417-AMO（Martínez-Olguín 法官，2025 年 12 月 reassign 后） (N.D. Cal.) 公开报道与和解页面](https://www.anthropiccopyrightsettlement.com/)
 - [Carlini et al., arXiv:2302.10149](https://arxiv.org/abs/2302.10149)
 - [Wallace et al., arXiv:2010.12563](https://arxiv.org/abs/2010.12563)
 - [毒样本规模无关性论文, arXiv:2510.07192](https://arxiv.org/abs/2510.07192)
@@ -602,3 +602,4 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 - UniMax §5.3 — ablation 中 max-epoch $N \in \{1, 5, 10\}$ 的 TyDi QA 对照与 $N = 1$ 的默认设定
 - OpenThoughts §4.1 的 27 code / 21 math / 14 science 来源与 §4.4 的 1× / 4× / 16× 采样 ablation
 - DeepSeek-V3 abstract 与正文报告 14.8T tokens
+- Bartz v. Anthropic PBC — 2025-06-23 fair use summary judgment；2025-08-26 settlement $1.5B；2025-09-25 preliminary approval；2025-12 Alsup 退休后 reassign 为 Martínez-Olguín（Case No. 3:24-cv-05417-AMO）；2026-05-14 fairness hearing；2026-07-20 final approval；482,460 eligible works / 447,576 filed claims / opt-outs 约 350 位作者覆盖约 1,802 部作品 / claims rate 92.77% / 约 $3,000/部

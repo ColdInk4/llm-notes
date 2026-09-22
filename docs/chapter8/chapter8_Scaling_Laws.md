@@ -1148,7 +1148,7 @@ DeepSeek LLM 的具体做法是：在多个小模型上同时扫 batch × learni
 
 *图 8.6-14 DeepSeek scaling analysis case*
 
-图 8.6-14 把 DeepSeek LLM 7B / 67B 与同代 7B 级开源模型放在一起比较 benchmark 分数，标出 DeepSeek 在这两档规模上的相对位置。它公开了 7B 和 67B 模型，并给出比较细的训练设置分析。本图只标 DeepSeek 7B / 67B 的相对位置；§8.6.2 的图 8.6-15–图 8.6-19 给出 batch / LR / IsoFLOP sweep 的具体曲线。和 MiniCPM 相比，DeepSeek 的实验重心是直接测量超参数如何随规模变化。
+图 8.6-14 是 DeepSeek LLM 技术报告（[arXiv:2401.02954](https://arxiv.org/abs/2401.02954)）的标题页：副标题 *Scaling Open-Source Language Models with Longtermism* 与 *7 and 67B param models* 直接给出这篇工作公开的两个模型规模。报告重点不在 benchmark 名次，而是给出 batch / LR / IsoFLOP 的扫描结果；具体 sweep 曲线见 §8.6.2 的图 8.6-15–图 8.6-19。和 MiniCPM 相比，DeepSeek 的实验重心是直接测量超参数如何随规模变化。
 
 这条路线的代价是实验量更大，因为每个规模都需要扫一片 LR-batch space；好处是少依赖参数化迁移假设。只要低 loss 区域在多个规模上形成稳定趋势，就可以把趋势外推到目标训练。
 
@@ -1206,7 +1206,7 @@ MiniCPM 通过参数化争取超参数迁移，DeepSeek 则直接拟合超参数
 
 *图 8.6-20 Qwen batch and learning-rate scaling*
 
-Qwen 系列公开的信息没有 DeepSeek 那么完整，但图 8.6-20 说明 batch / LR scaling 已经进入常规训练流程：batch size 和 learning rate 会随训练规模一起拟合。Qwen 2.5 还会说明用 scaling experiment 寻找 optimal batch / LR；到 Qwen 3 时，报告更像沿用上一代流程，只保留简短说明。
+Qwen 系列公开的 scaling 信息没有 DeepSeek 那么完整。图 8.6-20 摘录 Qwen 2.5 技术报告 §3.2 *Scaling Law for Hyper-parameters*（Yang et al., 2024b）与 Qwen 3 技术报告的相关段落：Qwen 2.5 在 44M–14B dense 模型与 44M–1B 激活 MoE 模型、0.8B–600B tokens 区间扫描 batch size $B$ 与 learning rate $\mu$，建立随模型架构与训练数据规模变化的最优超参预测；Qwen 3 沿用同一思路并把预测扩展到三个 pre-training 阶段，只保留简短说明。两份报告都把 batch / LR scaling 纳入常规训练流程，但完整 sweep 仍以引用形式给出（Qwen 2.5/3 原文链接见章节末参考文献）。
 
 这类结果提醒我们，模型变大时，参数、tokens、batch、LR schedule 和数据处理方案通常会同步变化。任何一项脱节，都可能让最终曲线偏离预期。公开报告没有给出完整 sweep 时，只能学习它的变量选择和训练思路，不能直接复制具体超参数。
 
@@ -1323,7 +1323,7 @@ StepFun 还检查训练设置的鲁棒性。它把 MoE、不同 dataset 和不�
 
 图 8.6-33 是一个工程案例，也是 §8.6.4“Optimizer Scaling：新 optimizer 的规模风险”讨论的具体失效样本。左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线， $10^{21}$ 处的虚线把图分成 fit 与 extrapolation 两段。
 
-图中外推区的三个点展示 Cautious AdamC 的失败形态： $10^{21}$ 处标注 `0.8% worse`， $10^{22}$ 处标注 `2.5% worse`， $10^{23}$ 处标注 *Run Diverged*。caption 将这组设置概括为 *Cautious AdamC + Sqrt batch-size scaling of learning rates*，并指出需要重新设计参数化、缩放或 optimizer 才能修复外推。
+图中外推区的三个点展示 Cautious AdamC 的失败形态： $10^{21}$ 处标注 `+0.8%`， $10^{22}$ 处标注 `2.5% miss`， $10^{23}$ 处标注 *Run Diverged*。caption 将这组设置概括为 *Cautious AdamC + Sqrt batch-size scaling of learning rates*，并指出需要重新设计参数化、缩放或 optimizer 才能修复外推。
 
 Open Athena / Marin 的 Delphi 博客 [*Scaling Laws That Extrapolate 300× Past the Fit*](https://openathena.ai/blog/delphi) 给出 fix 之后的结果：把 optimizer 从 Cautious AdamC 换成 AdamH（Adam with Hyperball——按 Frobenius 范数把权重重新缩放到当前 $\lVert W\rVert_F$ 球面上，等价于把 weight decay 从超参搜索里拿掉），并把 LR scaling 规则写成 $\eta_0\sqrt{B/B_0}\,(T_0/T)^{0.3}$——保留 $\sqrt{\mathrm{batch}}$ 项，再乘上随 token horizon 衰减的 $(T_0/T)^{0.3}$ 因子。在这套 fix 下， $10^{21}$、 $10^{22}$、 $10^{23}$ 三档 held-out 预测全部落在 observed Paloma macro loss 的 $\sim 0.5\%$ 误差带内；其中 $10^{23}$、25B 参数、600B tokens 的预注册预测相对实测偏差约 $0.2\%$，对应博客标题 *Extrapolate 300× Past the Fit* 的口径（外推到拟合所用最大 compute 的约 300 倍）。attempt 1 在一批重复文本 batch 上出现 spike 时，博客先把原因定位到 $\sqrt{B}$ 规则在该规模下给出的 learning rate 偏大，再把 max grad norm 从 1.0 收紧到 0.1，attempt 2 即未复现 spike。
 
@@ -1524,6 +1524,8 @@ $$
 - [Cerebras-GPT, arXiv:2304.03208](https://arxiv.org/abs/2304.03208)
 - [MuonClip / Kimi K2, arXiv:2507.20534](https://arxiv.org/abs/2507.20534) — MuonClip 起源（§2.1）
 - [StepFun Predictable Scale Part I, arXiv:2503.04715](https://arxiv.org/abs/2503.04715)
+- [Qwen2.5 Technical Report / Yang et al. 2024, arXiv:2412.15115](https://arxiv.org/abs/2412.15115)
+- [Qwen3 Technical Report, arXiv:2505.09388](https://arxiv.org/abs/2505.09388)
 
 ## 来源与更新记录
 

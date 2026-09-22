@@ -872,7 +872,7 @@ $BK$ 是损失对最后一层输出的 element-wise 偏导项，相对 $4 B D K$
 本例 $N_{\text{param}} = D^2 + D K$。把前向与反向合并：
 
 $$
-F_{\text{step}} = F_{\text{forward}} + F_{\text{backward}} = 2 B N_{\text{param}} + \bigl(4 B N_{\text{param}} - 2 B D^2\bigr) = 6 B N_{\text{param}} - 2 B D^2 .
+F_{\text{step}} = F_{\text{forward}} + F_{\text{backward}} \approx 2 B N_{\text{param}} + \bigl(4 B N_{\text{param}} - 2 B D^2\bigr) = 6 B N_{\text{param}} - 2 B D^2 .
 $$
 
 通用多层网络（每层都既算 activation grad 又算 weight grad）回到 $6 B N_{\text{param}}$ / step 形式：每层反向都是前向的 2 倍。这一 per-token 公式与 Kaplan 2020 / Chinchilla 2022 等论文给出的 LM 训练 FLOPs 估算一致（详见章节末来源记录）；沿 step 数 $S$ 求和得整段训练的总 FLOPs $\approx 6 N_{\text{param}} \cdot N_{\text{token}}$，与 §2.1.1 的 $F_{\text{total}} \approx 6 N_{\text{param}} N_{\text{token}}$ 一致。

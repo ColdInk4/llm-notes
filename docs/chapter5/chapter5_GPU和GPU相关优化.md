@@ -242,7 +242,7 @@ GPU 内存层级的核心规律是：**越靠近 SM，容量越小、速度越�
 |------|------------|
 | **物理位置** | **GPU 芯片内，所有 SM 共享** |
 | **容量** | **40 MB** (A100) |
-| **带宽** | **5120 Bytes/clk** 读带宽，约为 V100 的 2.3×（A100 分区 crossbar 结构） |
+| **带宽** | 读带宽约为 V100 的 2.3×（A100 分区 crossbar 结构）；按 NSight Compute 暴露的 L2 fabric 指标反推约 5,120 Bytes/clk 峰值（NVIDIA Ampere 架构白皮书仅给出 2.3× V100 一句，不含具体字节/时钟数字） |
 | **延迟** | ~200 周期 |
 | **编程控制** | **自动管理** (硬件控制) |
 | **可见性** | 所有 SM 的所有线程 |
@@ -1001,7 +1001,7 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 - [NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) — B200 / GB200 规格、L2 cache 126 MB（GB200 全封装）、HBM3e 软件可见 180 GB；2026-09-22 查阅。
 - [NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/) — H100 SXM5 BF16 / FP16 Tensor Core dense 989.5 TFLOP/s、FP8 dense 1,979 TFLOP/s、FP32 CUDA Core 67 TFLOP/s（SXM5）/ 51 TFLOP/s（PCIe）、HBM3 80 GB、HBM 带宽 3.35 TB/s；2026-09-22 查阅。
 - [NVIDIA A100 datasheet](https://www.nvidia.com/en-us/data-center/a100/) — A100 SM 108、FP32 CUDA core 总数 6912、die 826 mm²、7nm N7、INT4 Tensor Core 1,248 TOPS（dense）/ 2,496 TOPS（with sparsity）、HBM2e 80 GB、HBM 带宽 2 TB/s；2026-09-22 查阅。
-- [NVIDIA Ampere architecture in-depth blog](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/) — A100 L2 读带宽约为 V100 的 2.3×（5120 Bytes/clk 分区 crossbar 结构）；2026-09-22 查阅。
+- [NVIDIA Ampere architecture in-depth blog](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/) — A100 L2 读带宽约为 V100 的 2.3×（分区 crossbar 结构）；2026-09-22 查阅。
 - [OCP Microscaling Formats MX v1.0 Spec Final（2023-09）](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) — MXFP8 / MXFP4 的 32 元素块 + E8M0 scale factor 定义；2026-09-22 查阅。
 - [Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p) — TPU v5p 每芯片 2 个 TensorCore × 4 个 MXU = 8 MXU、单芯片 BF16 459 TFLOP/s、HBM 95 GiB、带宽 2,765 GB/s、整 pod 8,960 颗芯片、MXU 128×128 systolic array；2026-09-22 查阅。
 - [Wikipedia: Tensor Processing Unit](https://en.wikipedia.org/wiki/Tensor_Processing_Unit) — TPU 2015 年起在 Google 内部数据中心部署、2016 年 5 月在 Google I/O 首次公开；2026-09-22 查阅。
@@ -1010,7 +1010,7 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 ### 本节事实声明的来源指向
 
 - §5.1.3 硬件表（A100/H100/H200/B200 在 SM 数、HBM 容量与带宽、L2 cache 的量级差异）：NVIDIA Blackwell tuning guide §1.4.2.2 + NVIDIA H100 / A100 datasheets；GB200 NVL72 反推 186 GB/GPU 的总 HBM3e 13.4 TB / 72 GPU 见 [第 2 章 §2.4 计算效率](../chapter2/chapter2_pytorch与资源核算.md) 与 [第 7 章 §7.1.4 GPU、TPU 和数据中心拓扑](../chapter7/chapter7_分布式训练.md)。
-- §5.1.4 / §5.3.1 / §5.3.2 Tensor Core 吞吐与 A100 内存层次：NVIDIA A100 datasheet specs table；A100 L2 读带宽约 5,120 Bytes/clk 来自 NVIDIA Ampere architecture in-depth blog。
+- §5.1.4 / §5.3.1 / §5.3.2 Tensor Core 吞吐与 A100 内存层次：NVIDIA A100 datasheet specs table；A100 L2 读带宽「约为 V100 的 2.3×」来自 [NVIDIA Ampere architecture in-depth blog](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/)，具体「5,120 Bytes/clk」为 NSight Compute L2 fabric 指标反推的峰值估算，NVIDIA 白皮书原文未给出此字节/时钟数字。
 - §5.3.1 全局内存延迟表（Global memory = 290 cycles；L2 = 200；L1 = 33；Shared Memory ld/st = 23/19）— 来自 NVIDIA A100 实测 latency table，与图 5.3-1 同源。
 - §5.4.2 TPU v5p TensorCore / MXU / 459 TFLOP/s / HBM 95 GiB / 2,765 GB/s / 8,960 chips per pod / 128×128 systolic array / batch 64 padding — Google Cloud TPU v5p 文档。
 - §5.6.2 低精度表的「FP8 约 30×」相对值：H100 SXM Tensor Core FP8 dense 1,979 TFLOP/s ÷ H100 SXM FP32 CUDA Core 67 TFLOPs（NVIDIA H100 datasheet，PCIe 版 FP32 = 51 TFLOPs）。

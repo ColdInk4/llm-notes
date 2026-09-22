@@ -1302,7 +1302,7 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 
 观察到的工程模式：
 
-- **TP 一般 ≤ 8**：节点内 NVLink/NVSwitch 提供足够带宽；超出 8 之后跨节点 TP 的 all-reduce 开销迅速失控。DeepSeek V3 paper §3.2 Training Framework 写到 "enabling us to train DeepSeek-V3 without using costly Tensor Parallelism (TP)"，是把 TP 压到 1 的代表性例证。
+- **TP 一般 ≤ 8**：节点内 NVLink/NVSwitch 提供足够带宽；超出 8 之后跨节点 TP 的 all-reduce 开销迅速失控。DeepSeek V3 paper §3.2 Training Framework 写到 "making it possible to train DeepSeek-V3 without using costly tensor parallelism"，是把 TP 压到 1 的代表性例证。
 - **EP 可很大但极难调**：MoE 的 all-to-all 通信与 expert imbalance 互相耦合；DeepSeek V3 的 64-way EP（跨 8 个节点）依赖 DualPipe 调度和定制的跨节点 all-to-all kernel。
 - **长上下文阶段会切到大 CP**：Llama 3 paper Table 4 显示标准上下文阶段 CP=1，128K 长上下文阶段 CP=16、DP 相应从 128 降到 8。DeepSeek-V3 走的是另一条路线，用 YaRN 分两阶段把窗口从 4K 扩到 32K 再到 128K，并把 batch size 从 1920 降到 480 来控制 activation（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §4.3）。
 - **DP 上限由 batch size 和硬件规模共同决定**：GPU 集群上的公开配置多落在 DP≤128（Llama 3 paper Table 4 的 DP=64/128/8）；TPU pod 上的 data 分片可以大得多，Gemma 2 的 27B 用 768-way、9B 用 1,024-way data 分片。

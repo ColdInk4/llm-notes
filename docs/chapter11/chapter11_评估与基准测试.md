@@ -362,11 +362,11 @@ GPT-2 的关键观察是：在大规模、多样化训练下，模型对从未�
 > 一位女士正站在室外，手里拿着一只水桶，身边还有一只狗。那只狗四处奔跑，试图躲过洗澡。她……
 >
 > A. 用肥皂冲洗水桶，然后用吹风机吹干狗的头。
-> B. 用水管防止它被弄湿。
+> B. 用水管防止它被弄上肥皂。
 > C. 把狗弄湿了，结果它又跑掉了。 ← 正确
 > D. 和狗一起钻进浴缸里。
 
-解析：现实中，狗通常讨厌洗澡，主人一泼水它就逃跑；所以“先弄湿 → 狗逃跑”是最常见、最自然的流程；A、B、D 要么违反常识（狗不可能乖乖吹头），要么操作不合理（用水管“防止”弄湿？）
+解析：现实中，狗通常讨厌洗澡，主人一泼水它就逃跑；所以“先弄湿 → 狗逃跑”是最常见、最自然的流程；A、B、D 要么违反常识（狗不可能乖乖吹头），要么操作不合理（用水管“防止”被弄上肥皂？）
 
 案例 2：交通规则
 
@@ -516,10 +516,10 @@ WildBench 与 Chatbot Arena 高度相关。论文 §4.2 Table 3 报告的 Pearso
 
 LLM-as-judge 把评估成本压低到可大规模运行的级别，但也把 judge 模型自身的偏差带进了分数。公理起点是「judge 是一个概率分布，其条件独立性只在 prompt 内成立」：当 rubric 要求 judge 同时评分两个回答时，位置 / 长度 / 风格等表面特征便会以非零权重进入条件概率，从而偏移评分。主要偏差来源有四类：
 
-- **长度偏差（length bias）**：judge 模型倾向给更长回答更高分，无论内容质量是否真的更高；这是 AlpacaEval、AlpacaEval 2.0 等基于 LLM-as-judge 的指标最被反复讨论的问题 ([Zheng et al., 2023, arXiv:2306.05685](https://arxiv.org/abs/2306.05685))。缓解办法包括按字符 / token / 段落长度归一化分数、报告 length-controlled win rate，或在 prompt 中显式要求 judge 忽略长度。
-- **位置偏差（position bias）**：当 judge 同时看到两个回答时，倾向给第一个出现的回答更高分；多轮交换位置后取平均可以分离这一效应。
-- **自我偏好（self-preference bias）**：judge 模型给同家族模型更高分；常见缓解是引入多 judge 集成或与人类标注的校准。
-- **风格与格式偏差（style / format bias）**：judge 可能被 markdown 标题、bullet 列表、emoji 等表面格式影响；控制 rubric 中显式排除这些信号。
+- **位置偏差（position bias）**：judge 模型倾向给某一固定位置的回答更高分；多轮交换位置后取平均可以分离这一效应 ([Zheng et al., 2023, arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3.3)。
+- **冗长度偏差（verbosity bias）**：judge 模型倾向给更冗长的回答更高分，无论内容质量是否真的更高；这是 AlpacaEval、AlpacaEval 2.0 等基于 LLM-as-judge 的指标最被反复讨论的问题。缓解办法包括按字符 / token / 段落长度归一化分数、报告 length-controlled win rate，或在 prompt 中显式要求 judge 忽略长度。
+- **自我增强偏差（self-enhancement bias）**：judge 模型倾向给同家族模型更高分；常见缓解是引入多 judge 集成或与人类标注的校准。
+- **有限推理能力（limited capability in grading math and reasoning questions）**：judge 模型在评分数学与逻辑推理题时能力不足；解决方法是引入更强的 judge 或人工 spot check。
 
 工程做法通常同时叠加：多 judge 投票（pairwise 偏好下用 majority vote）、length-controlled win rate、judge ensemble 与 human spot check。JudgeBench ([arXiv:2410.12784](https://arxiv.org/abs/2410.12784)) 等基准则直接评估 judge 模型本身的判别能力，而不是被评模型的能力。
 

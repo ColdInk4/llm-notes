@@ -940,7 +940,7 @@ DeepSeek-R1 论文 [arXiv:2501.12948](https://arxiv.org/abs/2501.12948) Appendix
 
 [s1: Simple test-time scaling](https://arxiv.org/abs/2501.19393)（Muennighoff 等，2025）使用 1k 个高质量、带有长思维链的数据，在 Qwen2.5-32B-Instruct 上进行 SFT，从而明显提升数学推理表现。
 
-上海交通大学刘鹏飞团队的 [LIMO: Less is More for Reasoning](https://arxiv.org/abs/2502.03387) 得到相似结论：用不到千条高质量、带长思维链的样本在 Qwen2.5-32B-Instruct 上做 SFT，就能显著提高数学推理表现。论文 v3 §3.1.1 给出的候选筛选路径是从 tens of millions 数学题出发，先用 Qwen2.5-Math-7B-Instruct 做 baseline 难度过滤，再用 DeepSeek-R1-Distill-Qwen-32B 做 32 次采样评估（只保留 1-3/32 解出的），得到 2,125 条 LIMO-Pool；再按论文 §3.1.2 的四项质量分加权取 top 800 作为训练集合，四个权重对应 Elaborated Reasoning（用 solution length 衡量，30%）、Self-Verification（20%）、Exploratory Approach（统计 perhaps / might 等 tentative expressions，25%）和 Adaptive Granularity（统计 therefore / since 等 connective phrases，25%）。Hugging Face 公开的 [`GAIR/LIMO`](https://huggingface.co/datasets/GAIR/LIMO) 数据集含 817 行 question / solution / answer 三元组，论文正文没有解释 817 与训练用 800 之间的差异。
+上海交通大学刘鹏飞团队的 [LIMO: Less is More for Reasoning](https://arxiv.org/abs/2502.03387) 得到相似结论：用不到千条高质量、带长思维链的样本在 Qwen2.5-32B-Instruct 上做 SFT，就能显著提高数学推理表现。论文 v3 §3.1.1 给出的候选筛选路径是从 tens of millions 数学题出发，先用 Qwen2.5-Math-7B-Instruct 做 baseline 难度过滤，再用 DeepSeek-R1-Distill-Qwen-32B 做 32 次采样评估（只保留 1-3/32 解出的），得到 2,125 条 LIMO-Pool；再按论文 §3.1.2 的四项质量分加权取 top 800 作为训练集合，四个权重对应 Elaborated Reasoning（用 solution length 衡量，30%）、Self-Verification（统计 check / verify 等验证相关词的频率，20%）、Exploratory Approach（统计 perhaps / might 等 tentative expressions，25%）和 Adaptive Granularity（统计 therefore / since 等 connective phrases，25%）。Hugging Face 公开的 [`GAIR/LIMO`](https://huggingface.co/datasets/GAIR/LIMO) 数据集含 817 行 question / solution / answer 三元组，论文正文没有解释 817 与训练用 800 之间的差异。
 
 ![图 13.4-13 LIMO 使用 800 个高质量样本提升数学推理](images/13-4-13-limo-small-data-math.png)
 
@@ -1175,7 +1175,7 @@ Qwen3 的后训练流程围绕两类控制展开：
 
 表格按列展开 Stage 2 Reasoning RL、Stage 3 Thinking Mode Fusion 和 Stage 4 General RL 之后的成绩，Stage 3 和 Stage 4 各分 Thinking 与 Non-Thinking 两列，绿色和红色数字是相对上一阶段的增减。
 
-通用与格式类任务一路上升：LiveBench 从 68.6 到 70.9 再到 74.9，Arena-Hard 从 86.8 经 89.4 升到 93.8；衡量模式切换是否被遵守的 ThinkFollow 在 Stage 3 的 Thinking 模式为 88.7、Non-Thinking 模式为 98.9（[Qwen3 Tech Report Table 22](https://arxiv.org/html/2505.09388)，Stage 2 无 ThinkFollow 数据）。代价出现在推理密集任务上：Thinking 模式下 AIME 2024 从 83.8 降到 81.9 再到 81.4，LiveCodeBench v5 从 68.4 经 67.2 降到 65.7。Qwen3 报告把这种回退归因于模型被摊到更广的通用任务上、专门能力被稀释。工程上这是一个明确的取舍：换来的是通用可用性和模式可控性，付出的是数学与代码分数的小幅下降。
+通用与格式类任务一路上升：LiveBench 从 68.6 到 70.9 再到 74.9，Arena-Hard 从 86.8 经 89.4 升到 93.8；衡量模式切换是否被遵守的 ThinkFollow 在 Stage 3 的 Thinking 模式为 88.7、Stage 4 的 Thinking 模式进一步升到 98.9（[Qwen3 Tech Report Table 22](https://arxiv.org/html/2505.09388)，Stage 2 无 ThinkFollow 数据）。代价出现在推理密集任务上：Thinking 模式下 AIME 2024 从 83.8 降到 81.9 再到 81.4，LiveCodeBench v5 从 68.4 经 67.2 降到 65.7。Qwen3 报告把这种回退归因于模型被摊到更广的通用任务上、专门能力被稀释。工程上这是一个明确的取舍：换来的是通用可用性和模式可控性，付出的是数学与代码分数的小幅下降。
 
 #### Qwen3-Coder-Next：agentic RL
 

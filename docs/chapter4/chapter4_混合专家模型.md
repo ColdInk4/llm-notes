@@ -1039,7 +1039,7 @@ DeepSeek-V3 论文在 MoE 之外同时披露了两项独立于 MoE 的核心架�
 
 ### 4.3.2 DeepSeek V4 的改进
 
-面对浅层 MoE 训练不稳定的问题，一些模型会把浅层保留为 dense FFN，或用静态路由启动前几层，让后续可学习路由看到更稳定的表示。DeepSeek 的公开 config 给出了两种实现：`deepseek-moe-16b-base` 用 `first_k_dense_replace: 1` 让首层保持 dense FFN；DeepSeek-V4-Pro 的 config 则给出 `num_hash_layers: 3`，把前几层交给哈希路由，同一份 config 还配有 `n_routed_experts: 384`、`n_shared_experts: 1`、`num_experts_per_tok: 6`。
+面对浅层 MoE 训练不稳定的问题，一些模型会把浅层保留为 dense FFN，或用静态路由启动前几层，让后续可学习路由看到更稳定的表示。DeepSeek 的公开 config 给出了多条落地路径：`deepseek-moe-16b-base` 与 `DeepSeek-V2` config 都用 `first_k_dense_replace: 1` 让首层保持 dense FFN；`DeepSeek-V3` config 把这个值提到 `first_k_dense_replace: 3`（前 3 层走 dense FFN）；`DeepSeek-V4-Pro` 的 config 则给出 `num_hash_layers: 3`，把前几层交给哈希路由，同一份 config 还配有 `n_routed_experts: 384`、`n_shared_experts: 1`、`num_experts_per_tok: 6`。
 
 MoE 稳定性通常需要同时处理路由更新、激活异常值和损失尖峰。DeepSeek-V3 论文 §2.1.2 把稳定性拆成三个独立机制并行生效：
 
@@ -1047,7 +1047,7 @@ MoE 稳定性通常需要同时处理路由更新、激活异常值和损失尖�
 
     从收敛性看， $\mathrm{sign}$ 函数把更新方向强制成 ±1（不是连续可微），单 expert 偏置随步数单调移动 $b_i^{(t)} = b_i^{(0)} - \gamma \sum_{\tau=1}^{t} \mathrm{sign}(f_i^{(\tau)} - \bar{f}^{(\tau)})$。当 $f_i > \bar{f}$ 时 $b_i$ 单调下降、 $f_i < \bar{f}$ 时 $b_i$ 单调上升，专家的路由分数 $s_{i,t} + b_i$ 沿「让过载 expert 不再被选、让欠载 expert 被选」的方向调整。bias 只参与 top-k 选择不影响 gating 输出，避免把均衡项折进语言模型主损失。
 
-    这条机制既削弱「富者愈富」正反馈（→ 极端塌缩），又保留路由决策的自由度。**收敛到完全均衡的解析条件目前没有公开推导**（ $f_i$ 受 batch 采样、router 演化、专家权重变化共同影响，是非平稳信号）， $\gamma = 0.001$ 是经验值，工程上 $\gamma$ 过大容易震荡、 $\gamma$ 过小收敛太慢——属于「论文给常数 + 工程调」的典型模式。
+    这条机制既削弱「富者愈富」正反馈（→ 极端塌缩），又保留路由决策的自由度。**收敛到完全均衡的解析条件目前没有公开推导**（ $f_i$ 受 batch 采样、router 演化、专家权重变化共同影响，是非平稳信号）。DeepSeek-V3 论文 §2.1.2 给出的训练调度是 $\gamma = 0.001$ 用在前 14.3T tokens、最后 500B tokens 切换到 $\gamma = 0$（让 bias 在训练末段不再变化，固定路由选择），论文本身的常数来自经验扫描，工程上 $\gamma$ 过大容易震荡、 $\gamma$ 过小收敛太慢——属于「论文给常数 + 工程调」的典型模式。
 
 - **seq-wise balance auxiliary loss**：NoAux-TC 不替代、而**配合**一条权重极小的序列级辅助损失。论文 §2.1.2 给出的形式是 $\mathcal L_{\text{Bal}} = \alpha \sum_{i} f_i P_i$： $f_i$ 是该序列内 expert $i$ 进入 Top- $K_r$ 的频次（式 18）， $P_i$ 是归一化打分 $s_{i,t}' = s_{i,t} / \sum_{j} s_{j,t}$ 在序列上的均值（式 19–20）。机制上，选择频次 $f_i$ 与分数质量 $P_i$ 同时集中到少数 expert 的序列会让乘积和升高，这项损失惩罚的正是单条序列内部的极端倾斜； $\alpha = 0.0001$（§4.2 训练超参），与 batch 级 per-expert bias 粒度互补。[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) 报告这套组合在完整预训练中做到「无不可恢复的 loss spike、无回滚」（14.8T tokens 与训练配置见 §4.2，2.788M H800 GPU-hours 见 Table 1）。
 
