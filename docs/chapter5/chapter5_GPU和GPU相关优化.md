@@ -63,7 +63,7 @@ GPU 的历史背景只需要抓住一条主线：它最初为图形渲染中的�
 
 | 指标 | A100 | H100 | H200 | B200 |
 | --- | --- | --- | --- | --- |
-| SM 数 | 108 | 132 | 132 | 单 GB100 die 物理 192 SM、启用 74 SM；B200 全封装 2 个 GB100 die，启用 SM 总数 = 148（74 × 2，部分 die 内 SM 被禁用以保良率）；每 SM 128 个 FP32 core，2 个 die 全封装 18,944 个 FP32 CUDA core（[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) + Chips and Cheese GB100 die shot + TechInsights GB100 teardown） |
+| SM 数 | 108 | 132 | 132 | B200 全封装 2 个 GB100 die，启用 SM 总数 ≈ 148（部分 die 内 SM 因良率被禁用；具体单 die 启用数 NVIDIA 未官方公布，按多源 leak 估算每 die ~74 SM）；每 SM 128 个 FP32 core，2 个 die 全封装 18,944 个 FP32 CUDA core（[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) + Chips and Cheese GB100 die shot + TechInsights GB100 teardown） |
 | 每 SM 寄存器 | 256 KB | 256 KB | 256 KB | 256 KB |
 | 每 SM L1 + shared memory | 192 KB | 256 KB | 256 KB | 256 KB |
 | L2 cache | 40 MB | 50 MB | 50 MB | 单颗 GB200 / B200 GPU（全封装，含 2 个 GB100 die）L2 = 126 MB（[NVIDIA Blackwell tuning guide §1.4.2.2](https://docs.nvidia.com/cuda/blackwell-tuning-guide/)）；折算每 GB100 die ≈ 63 MB |
