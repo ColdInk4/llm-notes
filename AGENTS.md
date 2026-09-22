@@ -2,7 +2,7 @@
 
 本文件适用于整个 `llm-notes` 仓库。所有维护者和自动化 coding agent 在修改前都应先阅读这里的说明，并以 `STYLE.md` 的写作与排版约定为准。
 
-AGENTS.md 是**流程规范**：回答前复核、修改前必读、审计循环、联网求证门槛、commit 约定。STYLE.md 是**写作规范**：Markdown 排版、提示块用法、术语口径、来源记录格式。两份文档在以下五处必须保持一致：(1) 禁用句式清单；(2) 提示块 5 种 alert 语义；(3) 章节末来源记录的 3 段结构；(4) GitHub 渲染安全规则（4 种公式渲染失败模式与自检 rg）；(5) 第一性原理三条硬约束与逻辑审计 logic_finding 字段口径。修改 `AGENTS.md` 后须 `cp AGENTS.md CLAUDE.md` 一并提交。
+AGENTS.md 是**流程规范**：回答前复核、修改前必读、审计循环、联网求证门槛、commit 约定。STYLE.md 是**写作规范**：Markdown 排版、提示块用法、术语口径、来源记录格式。两份文档在以下五处必须保持一致：(1) 禁用句式清单；(2) 提示块 5 种 alert 语义；(3) 章节末来源记录的 3 段结构；(4) GitHub 渲染安全规则（8 种公式渲染失败模式与自检 rg）；(5) 第一性原理三条硬约束与逻辑审计 logic_finding 字段口径。修改 `AGENTS.md` 后须 `cp AGENTS.md CLAUDE.md` 一并提交。
 
 ## 回答前复核
 
@@ -56,20 +56,39 @@ rg -n "这里使用.{1,30}(作为|当|来当|样例|为例)|本文采用|本文�
 
 ### 4. GitHub 渲染安全 rg（与 STYLE.md「公式与排版」+「HTML」同步）
 
-修改公式或含 `$` 的正文后，跑以下三条 rg（4 种失败模式的检测），命中即按 STYLE.md 规则修复：
+修改公式或含 `$` 的正文后，跑以下检测（8 种失败模式），命中即按 STYLE.md 规则修复：
 
 ```bash
 # 模式1：行内开 $ 紧贴非空白字符（汉字 / 全角标点 / 字母），GitHub 整个公式不渲染
 rg -n '[^\s*$\\`]\$[A-Za-z\\(]' <modified-markdown-files>
 # 模式3：} 或 | 紧贴 _ 的公式——行内会切碎；display 块内凑齐开、关一对同样切碎整块
+# （单向 flanking 无配对者的历史命中经核查可幸存，非本次引入可不动）
 rg -n '\}_[A-Za-z{]|\|_[A-Za-z]' <modified-markdown-files>
-# 模式4：字面美元金额未包 span（人工排除 $10000$ 这类已闭合公式）
+# 模式4：字面美元金额未包 span（人工排除 $10000$ 这类已闭合公式；无 PCRE2 的 rg 用 python re 等价扫）
 rg -nP '(?<![/\w>])\$\d[\d,]+(\.\d+)?\b' <modified-markdown-files>
+# 模式5：math 内裸 ^* / _*（被 CommonMark 配成强调、公式变 ^_；排除 code span 内字面通配符如 <|reserved_*|>、lecture_*.md）
+rg -n '\^\*|_\*' <modified-markdown-files>
+# 模式6：math 内下划线（正确形式为双反斜杠 \\_；正文 prose 的 vocab\_size 合法；命中逐条区分单/双反斜杠）
+rg -n '\\_' <modified-markdown-files>
+# 模式7：display 块内裸 <（行内 < 实测安全）
+python3 - <modified-markdown-files> <<'PY'
+import re, pathlib, sys
+for p in sys.argv[1:]:
+    t = pathlib.Path(p).read_text()
+    for m in re.finditer(r'\$\$(.+?)\$\$', t, re.S):
+        body = m.group(1)
+        for lm in re.finditer(r'<', body):
+            if '\\lt' in body[max(0,lm.start()-10):lm.start()+10]:
+                continue
+            print(f"{p}:{t[:m.start()+lm.start()].count(chr(10))+1}")
+PY
+# 模式8：\operatorname 不在 GitHub 客户端 MathJax 宏白名单
+rg -n '\\operatorname' <modified-markdown-files>
 ```
 
-用 curl 抓 GitHub 页面数裸 `$` 时，排除 `aria-label="Permalink:` 属性——标题内公式的 permalink 会带字面 `$`，属页面模板自动生成的不可见属性，公式本身渲染正常，不算失败。
+模式 2（斜体 `*…*` 图注内的裸 `$expr$`）rg 扫不到，目检图注。用 curl 抓 GitHub 页面数裸 `$` 时，排除 `aria-label="Permalink:` 属性——标题内公式的 permalink 会带字面 `$`，属页面模板自动生成的不可见属性，公式本身渲染正常，不算失败。
 
-命中处理：模式 1 在开 `$` 前补半角空格；斜体 `*…*` 图注内的裸 `$expr$`（模式 2，上式扫不到、目检图注）改官方 `` `` $`expr`$ `` `` 形式；模式 3 改写为单参数命令省花括号形式（`$\hat{R}_t$` → `$\hat R_t$`）；模式 4 包 `<span>$</span>`。修改图注时注意：斜体内公式必失败，粗体内公式可渲染。
+命中处理：模式 1 在开 `$` 前补半角空格；模式 2 改官方 `` `` $`expr`$ `` `` 形式；模式 3 改写为单参数命令省花括号形式（`$\hat{R}_t$` → `$\hat R_t$`）；模式 4 包 `<span>$</span>`；模式 5 星号改 `\ast`（`$h^*$` → `$h^\ast$`、 `$\|W_l\|_*$` → `$\|W_l\|_\ast$`）；模式 6 单反斜杠 `\_` 改双反斜杠 `\\_`，或改用 dollar-backtick 形式；模式 7 裸 `<` 改 `\lt`（`x_{<t}` → `x_{\lt t}`）；模式 8 改 `\mathrm{...}`。修改图注时注意：斜体内公式必失败，粗体内公式可渲染。
 
 ## 审计与维护方法论
 
@@ -353,7 +372,7 @@ logic_finding 只报 `refuted + tentative`，与 verdict 三档对齐。fix 阶�
 | 引用与求证经验（章节归属 / 人物名 / arXiv ID） | STYLE.md「术语表」「来源与日期」 | sub-agent 在命名 / 引用 / 章节号层面遵守同一标准 |
 | 图意核对 / 删图判定 | STYLE.md「图意核对」「图片」 | 4 个检查项 + 两图视觉内容一致即可删 |
 | 修改后自检 1（禁用句式 rg）与第 7 层 | STYLE.md「跨章引用格式」 | rg pattern 抓「第 N 章 §X.Y」与「chapterN」缩写 |
-| 修改后自检 4（GitHub 渲染安全 rg） | STYLE.md「公式与排版」渲染条目 +「HTML」金额 span 例外 | 4 种渲染失败模式（开 `$` 紧贴 / 斜体图注 / `}_`·`|_` 切碎 / 字面金额）的 rg 与修复规则一一对应；图注用 `` `` $`expr`$ `` ``、金额用 `<span>$</span>` |
+| 修改后自检 4（GitHub 渲染安全 rg） | STYLE.md「公式与排版」渲染条目 +「HTML」金额 span 例外 | 8 种渲染失败模式（开 `$` 紧贴 / 斜体图注 / `}_`·`|_` 切碎 / 字面金额 / math 内裸 `^*`·`_*` / math 内 `\_` 单反斜杠 / display 内裸 `<` / `\operatorname` 宏禁用）的 rg 与修复规则一一对应；图注用 `` `` $`expr`$ `` ``、金额用 `<span>$</span>`、星号用 `\ast`、下划线用 `\\_`、小于号用 `\lt`、函数名用 `\mathrm` |
 | 逻辑审计 finding schema（logic_finding） | STYLE.md「第一性原理方法论（Aristotle 框架）」三条硬约束 | `claim` / `axiom_source` / `gap` 必填字段与「公理起点明确 / 推导链完整 / 经验 vs 推导清楚区分」一一对应；`rg` 只作句式兜底，不承担逻辑审计 |
 
 AGENTS.md 与 STYLE.md 任何一侧调整规则时，另一侧必须同步引用对应章节；同一 commit 内完成。

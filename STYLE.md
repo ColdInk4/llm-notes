@@ -43,13 +43,15 @@
 - 标题（`#`–`####`）内正常写行内公式 `$expr$`，可见区渲染正常。GitHub 为标题自动生成的 permalink `aria-label` 会照抄标题纯文本、带出字面 `$`——该属性不可见、不进 Ctrl+F 可见文本、不是渲染失败；测量页面裸 `$` 时排除 `aria-label="Permalink:` 属性即可。
 - 较长的独立公式优先写成多行 display math，避免把整条公式塞进一行。
 - 行内公式中 `}` 或 `|` 紧贴 `_`（如 `$\hat{R}_t$`、 `$\hat{A}_{i,t}$`、 `$|h_l|_2$`）会被 CommonMark 解析成强调标记，切碎公式；display 块内同型写法只要凑齐开、关一对就切碎整块 `$$`。改写为单参数命令省花括号形式： `$\hat R_t$`、 `$\hat A_{i,t}$`（`_` 前变成字母，intraword 不再触发强调），LaTeX 渲染结果不变。
+- 数学环境内的裸星号 `^*`、`_*` 会被 CommonMark 配成 `*…*` 强调对，提取后的公式变成 `^_`、`_` 并报 `Missing open brace for superscript`；星号一律写成 `\ast`，例如 `$h^\ast$`、 `$\pi^\ast$`、 `$\|W_l\|_\ast$`、 `$\text{merge}^\ast$`。
+- display 块内的裸 `<`（比较号或 `x_{<t}` 这类下标）触发客户端 `Extra open brace or missing close brace`；改写为 `\lt`，例如 `x_{\lt t}`、 `0 \le i \lt 256`。行内公式里的 `<` 经真实页面实测渲染正常，可以保留。
 - 正文或表格中的字面美元金额写 `<span>$</span>100`、表头写 `<span>$</span>/GB`（GitHub 官方规则），防止金额的 `$` 与相邻公式错误配对。
 - 本仓库以 GitHub Web 的渲染结果为兼容目标（服务端 `math-renderer` 识别 + 客户端渲染）。写公式时优先使用单美元行内公式和双美元 display math；只有在 Markdown 冲突明显时，才改用 fenced `math` code block。
 - 多字母下标如果表示词语或配置名，优先写成 `\text{}` 或 `\mathrm{}`，例如 $d_{\text{model}}$ 、 $N_{\text{param}}$ 、 $D_{\mathrm{KL}}$ 。
 - 代码属性和数学变量分开写：正文里用 `h2.grad` 表示 PyTorch 属性，公式里用 $G_{h_2}$ 这类数学记号，并在文字中说明二者对应关系。
 - 避免将代码风格标识符直接塞进公式，例如“把 `w1.grad` 包进数学环境”或“在 `\text{}` 里硬塞 snake_case 名字”。正文里用反引号写代码名，公式里改用数学记号，并在文字中说明二者对应关系。
 - GitHub Web 会禁用部分 LaTeX 宏，仓库公式里不要使用 `\operatorname{...}`；函数名优先写成 `\mathrm{...}`，或移到正文说明。
-- 若必须在 `\text{}`、`\mathrm{}` 等文本宏里写字面下划线，必须写成 `\_`。
+- 若必须在 `\text{}`、`\mathrm{}` 等文本宏里写字面下划线，写成双反斜杠 `\\_`，例如 `$\sqrt{\text{input\\_dim}}$`。单反斜杠 `\_` 的反斜杠会被 markdown 转义处理吃掉，只留下裸 `_`，客户端渲染报 `'_' allowed only in math mode`；含其他 Markdown 冲突字符的表达式也可改用官方 dollar-backtick 形式 `` $`\sqrt{\text{input_dim}}`$ ``。
 - 一句话里如果同时混有代码、多个行内公式和长中文说明，优先拆成两句；必要时把关键关系单独提成 display math，减少 GitHub 预览歧义。
 - **禁止在数学环境里塞 snake_case 标识符**（`num_tokens`、`max_seq_len`、`input_ids` 等）。正文中需要时改用数学记号 + 文字定义：「按 $\sqrt{T_i}$ 归一化（$T_i$ 是样本 $i$ 的 token 数）」，而不是「按 $\sqrt{\text{num\_tokens\_per\_sample}}$ 归一化」。
 
