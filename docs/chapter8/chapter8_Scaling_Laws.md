@@ -302,7 +302,7 @@ $$
 
 *图 8.3-4 Scaling exponents by task*
 
-图 8.3-4 把机器翻译、语言模型、图像分类、围棋等任务的实测点放在同一张 log-log 图上，每条曲线是一类任务在不同样本数下的 error。读图重点是斜率分布：低维参数估计斜率最陡，复杂感知 / 语言任务斜率明显更平。差距直接对应"每多 10× 数据能降多少 loss"这个边际收益。
+图 8.3-4 把机器翻译、语音识别、语言建模三类任务的实测点放在同一张 log-log 图上，每张子图是一类任务在不同样本数下的 error。读图重点是斜率分布：机器翻译的 exponent 较陡（ε(m) = 3.87 m⁻⁰˙¹³），语音与语言建模任务的 exponent 更平（语音 attention ≈ 1.36 m⁻⁰˙³⁰、语言建模 ≈ D⁻⁰˙⁰⁹⁵）。差距直接对应"每多 10× 数据能降多少 loss"这个边际收益。
 
 这里的数据指训练材料数量，例如更多 unique tokens、更多图片或更多样本。Compute 指训练时实际花掉的计算量，通常用 FLOPs 表示。固定模型时，喂更多数据会消耗更多 compute；固定数据时，把模型做大、训练更多 epoch 或扫更多配置，也会消耗更多 compute。所以二者相关，但不是同一个资源轴。
 
@@ -416,7 +416,7 @@ $$
 
 左图扫 epoch count。loss 先降后升，说明重复几遍有用，继续重复很多遍后收益会消失，甚至可能变差。
 
-中图扫 parameter count。Muennighoff 论文共训练 400 多个模型，参数量覆盖 $10\mathrm{M}$ 到 $9\mathrm{B}$ 。论文 Figure 4 的三档 IsoFLOP 预算是 $9.3 \times 10^{20}$ 、 $2.1 \times 10^{21}$ 、 $9.3 \times 10^{21}$ ，单 epoch 下对应的最优模型大小分别是 2.8B、4.2B、8.7B。
+中图扫 parameter count。Muennighoff 等人 2023（[arXiv:2305.16264](https://arxiv.org/abs/2305.16264) Figure 4）的同主题 sweep 共训练 400 多个模型，参数量覆盖 $10\mathrm{M}$ 到 $9\mathrm{B}$，论文 Figure 4 的三档 IsoFLOP 预算是 $9.3 \times 10^{20}$ 、 $2.1 \times 10^{21}$ 、 $9.3 \times 10^{21}$ ，单 epoch 下对应的最优模型大小分别是 2.8B、4.2B、8.7B——这套数字与图 8.3-9 的 middle panel（Kim 等人的图中同源数据，Kim/Kotha/Liang/Hashimoto，Stanford）共享同一类 IsoFLOP 思路，但来自不同论文：图 8.3-9 中图参数 sweep 覆盖 150M–1.4B，主线是 "Pre-training under infinite compute"。
 
 中图给出的结论一致：固定同一批 unique data 时，参数更多不能凭空提供新信息，数据成了主要瓶颈。超过一个门槛后，再加参数反而略恶化 loss，论文把这一点归因为 regularization 不足。
 
@@ -516,7 +516,7 @@ Depth / width 和其他 Transformer hyperparameters 沿三步展开：先看层�
 
 *图 8.3-15 Number of layers scaling*
 
-图 8.3-15 先看层数。这里的 layer 指 Transformer block（attention + MLP + residual）。横轴是 compute，纵轴是 loss，每条曲线对应一个 layer 数（1 / 2 / 4 / 8 等）。读图重点是层数增加带来的 loss 收益：1 层模型基本没有竞争力；层数增加后 loss 继续下降，但收益开始递减，曲线在大 compute 区间逐渐靠近。
+图 8.3-15 先看层数。这里的 layer 指 Transformer block（attention + MLP + residual）。横轴是 parameters (non-embedding)，纵轴是 test loss，每条曲线对应一个 layer 数（1 / 2 / 3 / 6 / >6 等）。读图重点是层数增加带来的 loss 收益：1 层模型基本没有竞争力；层数增加后 loss 继续下降，但收益开始递减，曲线在大 compute 区间逐渐靠近。
 
 绝对层数会随模型变大而增加，适合迁移的通常是比例关系。固定层数从小模型搬到大模型，常常会偏离合理结构。Scaling 实验的作用，是判断哪些结构选择随规模变化，哪些结构比例更稳定。
 
@@ -948,7 +948,7 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 | Chinchilla | 约 20 |
 | LLaMA 65B | 约 22 |
 | Llama 2 70B | 约 29 |
-| Mistral 7B | 官方未披露（社区估计约 8T tokens） |
+| Mistral 7B | 约 1,100（官方披露 8T+ tokens / 7.3B params） |
 | Llama 3 70B | 约 215（约 15T 语料 / 70B） |
 
 一个简单账本是：训练只付一次，但推理会在模型生命周期里反复付费。若两个模型 pretraining loss 接近，较小模型通常更容易部署，KV cache 更小，单 token latency 和服务成本也更低。因此生产系统常愿意用更多训练 tokens 换一个更小、更便宜的 serving 模型。
@@ -1450,7 +1450,7 @@ $$
 \lVert\Delta W_l\rVert_\ast \sqrt{n_{l-1}} = \Theta(\sqrt{n_l})
 $$
 
-这就是 learning-rate scaling 的来源。把 $\lVert\Delta W_l\rVert_\ast = \eta_l \lVert g_l\rVert \lVert h_{l-1}\rVert$（Adam 把 $\lVert g_l/\sqrt{v_l}\rVert_2$ 量级记为 $\lVert g_l\rVert$ 同样适用），代入 $\lVert g_l\rVert = \Theta(\sqrt{n_l})$、 $\lVert h_{l-1}\rVert = \Theta(\sqrt{n_{l-1}})$，解 $\eta_l \sqrt{n_l n_{l-1}} = \Theta(\sqrt{n_l/n_{l-1}})$ 得到 $\eta_l = \Theta(1/n_{l-1})$。因此图 8.6-40 的简化线性层里，Adam 对 hidden matrix 的 learning-rate factor 是 $1/n_{l-1}$；Tensor Programs V（[arXiv:2203.03466](https://arxiv.org/abs/2203.03466) §4 Table 3）给出的完整规则区分 hidden weight 与 output weight：Adam 与 SGD 在 hidden matrix 上 learning-rate factor 都是 $\Theta(1)$，只在 output matrix 上才是 $1/n_{l-1}$（对应 SGD 的 Init.Std = 1/fan_in²、LR = 1/fan_in；Adam 的 Init.Std = 1/√fan_in、LR = 1/fan_in）。相邻层等宽时退化为常见的 $1/n$，与 Tensor Programs V §B.1 给出的 Transformer 实施规则一致。标准参数化在同一张表里的对应项是初始化标准差 $\Theta(1/\sqrt{n_{l-1}})$ 、learning rate $\Theta(1)$ ；两者差别集中在 per-parameter LR 缩放以及 fan-out 小于 fan-in 时的初始化项。具体规则取决于 optimizer 和参数类型；Transformer 的 embedding、attention / MLP matrices、output head、bias 与 norm 参数需要分别处理。
+这就是 learning-rate scaling 的来源。把 $\lVert\Delta W_l\rVert_\ast = \eta_l \lVert g_l\rVert \lVert h_{l-1}\rVert$（Adam 把 $\lVert g_l/\sqrt{v_l}\rVert_2$ 量级记为 $\lVert g_l\rVert$ 同样适用），代入 $\lVert g_l\rVert = \Theta(\sqrt{n_l})$、 $\lVert h_{l-1}\rVert = \Theta(\sqrt{n_{l-1}})$，解 $\eta_l \sqrt{n_l n_{l-1}} = \Theta(\sqrt{n_l/n_{l-1}})$ 得到 $\eta_l = \Theta(1/n_{l-1})$。因此图 8.6-40 的简化线性层里，Adam 对 hidden matrix 的 learning-rate factor 是 $1/n_{l-1}$；Tensor Programs V（[arXiv:2203.03466](https://arxiv.org/abs/2203.03466) §4 Table 3）给出的完整规则区分 hidden weight、output weight 和 input weights / biases 三大类：hidden weights 上 SGD 的 LR = $\Theta(1)$、Adam 的 LR = $1/\mathrm{fan\_in}$；output weights 上 SGD 的 LR = $1/\mathrm{fan\_in}$、Adam 的 LR = $1/\mathrm{fan\_in}$；input weights 与 biases 上 SGD 的 LR = $\mathrm{fan\_out}$、Adam 的 LR = $\Theta(1)$。三类参数的 Init.Var. 分别是 hidden weights $1/\mathrm{fan\_in}$（即 Init.Std = $1/\sqrt{\mathrm{fan\_in}}$）、output weights $1/\mathrm{fan\_in}^2$（即 Init.Std = $1/\mathrm{fan\_in}$）、input weights / biases $1/\mathrm{fan\_in}$。相邻层等宽时退化为常见的 hidden Adam LR = $1/n$、output LR = $1/n$（hidden 与 output 在等宽条件下形式一致，但 hidden 与 output 的 Init.Std 仍分别为 $1/\sqrt{n}$ 和 $1/n$），与 Tensor Programs V §B.1 给出的 Transformer 实施规则一致。标准参数化在同一张表里的对应项是 hidden weights 初始化标准差 $\Theta(1/\sqrt{n_{l-1}})$、learning rate $\Theta(1)$；两者差别集中在 per-parameter LR 缩放以及 fan-out 小于 fan-in 时的初始化项。具体规则取决于 optimizer 和参数类型；Transformer 的 embedding、attention / MLP matrices、output head、bias 与 norm 参数需要分别处理。
 
 ![图 8.6-40 muP mini recap](images/8-6-40-mup-mini-recap.png)
 
