@@ -329,7 +329,7 @@ DSIR 的训练判断很直接：目标数据定义希望靠近的分布，候选
 
 在大规模语言模型的数据工程中，原始语料通常需要经过系统性的去重处理。Kandpal、Wallace 与 Raffel 的 "Deduplicating Training Data Mitigates Privacy Risks in Language Models"（[arXiv:2202.06539](https://arxiv.org/abs/2202.06539)，UNC Chapel Hill 与 UC Berkeley）量化了重复次数与记忆之间的关系：一条在训练数据中出现 10 次的序列，被模型原样生成的频率大约是只出现 1 次序列的 1000 倍。重复次数和吐出概率之间是超线性关系，因此少量高频重复样本就能主导模型的记忆行为，同时带来隐私和版权风险。
 
-Lee 等人的 "Deduplicating Training Data Makes Language Models Better"（[arXiv:2107.06499](https://arxiv.org/pdf/2107.06499)）从训练效率一侧给出对应结论：在相同甚至更低的训练计算量下，用去重后的数据训练，模型困惑度更好或至少不下降。去重的收益来自两个方向：减少重复 token 带来的浪费，并降低模型对少数文本片段的过度拟合。
+Lee 等人的 "Deduplicating Training Data Makes Language Models Better"（[arXiv:2107.06499](https://arxiv.org/abs/2107.06499)）从训练效率一侧给出对应结论：在相同甚至更低的训练计算量下，用去重后的数据训练，模型困惑度更好或至少不下降。去重的收益来自两个方向：减少重复 token 带来的浪费，并降低模型对少数文本片段的过度拟合。
 
 去重算法的共同底座是哈希函数：把一个大对象（字符串、段落、文档）映射成一个短得多的整数或字符串，比较两个对象时只比较哈希值。这一步同时压缩存储与计算，代价是哈希冲突——两个不同对象拿到同一个哈希值。冲突不会系统性地引入偏差，而是把不同特征的统计量以近似随机的方式混在一起，因此在统计意义上更接近噪声；实际取值需要在哈希空间规模、存储开销与统计精度之间权衡。
 
