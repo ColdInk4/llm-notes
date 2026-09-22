@@ -589,7 +589,7 @@ Shazeer 的 GLU 变体实验（*GLU Variants Improve Transformer*, [arXiv:2002.0
 
 *图 3.2-10 Narang 等人的消融提供了门控激活收益的另一组证据，也显示效果需要结合模型和训练设置理解*
 
-非门控路径仍有代表：GPT-3 使用 GeLU，Nemotron 340B 使用 squared ReLU，Falcon 系列（含 180B）沿用 GeLU。[Falcon 技术报告](https://arxiv.org/abs/2311.16867) §4.3.3 明确写了不采用 SwiGLU，理由是门控会让中间激活翻倍，`FalconConfig` 的 `activation` 默认值也仍是 `"gelu"`。结合上一段的实验结果可以给出更稳妥的判断：SwiGLU/GeGLU 是当前很强的默认选择，但最终仍要由模型规模、训练设置、硬件 kernel 和消融实验共同决定。
+非门控路径仍有代表：GPT-3 使用 GeLU，Nemotron 340B 使用 squared ReLU，Falcon 系列（含 180B）沿用 GeLU。[Falcon 技术报告](https://arxiv.org/abs/2311.16867) §4.3.3 原文写明不采用 SwiGLU 的具体原因是「Out of concern for the memory footprint of our trainings on A100-40GB, and because of no clear uplift in zero-shot, we choose not to adopt SwiGLU」——主要权衡来自 A100-40GB 训练时的显存预算与零样本提升不明显，而非单纯出于「门控会翻倍中间激活」这一推论；`FalconConfig` 的 `activation` 默认值也仍是 `"gelu"`。结合上一段的实验结果可以给出更稳妥的判断：SwiGLU/GeGLU 是当前很强的默认选择，但最终仍要由模型规模、训练设置、硬件 kernel 和消融实验共同决定。
 
 使用 SwiGLU/GeGLU 时还要重新核算 FFN 的隐藏维度。门控 FFN 通常有两条上投影分支，如果仍然沿用原始 Transformer 中 `4d` 的扩展比例，参数量和 FLOPs 会明显增加；许多实现会把中间维度调低，让门控结构带来的表达收益和计算预算重新平衡。
 
@@ -969,7 +969,7 @@ CSA 层执行流程可以概括为：先对 KV cache 做可学习的加权压缩
 
 HCA 的目标是极低成本地维护一个覆盖十万级 token 的全局背景视野。它只做压缩，不做稀疏选择。
 
-其实 HCA 与 CSA 类似，但压缩率 m 比 CSA 要大得多，多个 token 的局部信息被融合。`DeepSeek-V4-Pro/config.json` 的 `compress_ratios` 逐层给出这两档取值（61 层对应 61 个数值）：开头两层是 `128, 128`，之后按 `4, 128` 反复交替到倒数第二层，最末一层的压缩率是 `0`（即全分辨率 full-attention 层）。因此 HCA 层压缩率 128、CSA 层压缩率 4，序列中只有首尾几层与该交替模式不完全吻合。因为压缩得足够狠，序列长度变得极短。所以 HCA 可以在这个极短的序列上进行**密集注意力**，让每个 token 都能不丢失地看到整个全局背景。由于序列短，计算成本完全可控。
+其实 HCA 与 CSA 类似，但压缩率 m 比 CSA 要大得多，多个 token 的局部信息被融合。`DeepSeek-V4-Pro/config.json` 的 `compress_ratios` 逐层给出这两档取值（`num_hidden_layers = 61` 配置下，列表本身含 62 个数值，最后一项对应 MTP/next-token 层）：开头两层是 `128, 128`，之后按 `4, 128` 反复交替 29 对共 58 个值，再追加一个 `4` 与一个 `0` 收尾（即全分辨率 full-attention 层）。因此 HCA 层压缩率 128、CSA 层压缩率 4，序列中只有首尾几层与该交替模式不完全吻合——最末 `0` 走 SWA/全分辨率路径，开头两层为 HCA bootstrap。因为压缩得足够狠，序列长度变得极短。所以 HCA 可以在这个极短的序列上进行**密集注意力**，让每个 token 都能不丢失地看到整个全局背景。由于序列短，计算成本完全可控。
 
 ### 3.2.5.8 线性时间替代：linear attention / Mamba-2 / Gated DeltaNet
 
@@ -1266,4 +1266,4 @@ $$
 - 相关论文：Transformer、RMSNorm、SwiGLU/GLU、RoPE（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864)）、[GQA](https://arxiv.org/abs/2305.13245)、[MLA / DeepSeek-V2](https://arxiv.org/abs/2405.04434)、CLA（[Brandon et al., arXiv:2405.12981](https://arxiv.org/abs/2405.12981)）、[Sparse Transformer, arXiv:1904.10509](https://arxiv.org/abs/1904.10509)、[Gated DeltaNet](https://arxiv.org/abs/2412.06464)。
 - 架构消融与超参数：[Narang et al., EMNLP 2021](https://arxiv.org/abs/2102.11972)（Table 1 的 step/s 与 final loss）、[Kaplan et al., 2020](https://arxiv.org/abs/2001.08361)（Figure 5 的 FFN ratio / aspect ratio / head dim 扫描）、[PaLM](https://arxiv.org/abs/2204.02311) Table 1 与训练设置、[ST-MoE](https://arxiv.org/abs/2202.08906)（router z-loss 与 Mesh TensorFlow z-loss 的关系）、[OLMo 2](https://arxiv.org/abs/2501.00656) Table 3 的稳定性配方、[Methods of improving LLM training stability, arXiv:2410.16682](https://arxiv.org/abs/2410.16682) Table 4 的困惑度对比、[Bhojanapalli et al., ICML 2020](https://arxiv.org/abs/2002.07028)（Low-Rank Bottleneck in Multi-head Attention Models）。
 - 官方配置：[`mistralai/Mistral-7B-v0.1`](https://huggingface.co/mistralai/Mistral-7B-v0.1)、[`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m)、[`Qwen/Qwen2-7B`](https://huggingface.co/Qwen/Qwen2-7B)、`Gemma2Config` 与 `Gemma4TextConfig`（Hugging Face Transformers main 分支）、[`deepseek-ai/DeepSeek-V2-Chat`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)、[Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/model_doc/deepseek_v4)与 [DeepSeek-V4-Pro 配置](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)。查阅日期：2026-09-15。
-- DeepSeek-V4-Flash 配置：[`deepseek-ai/DeepSeek-V4-Flash`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/config.json)（`index_topk=512`、`num_hidden_layers=43`、`hidden_size=4096`、`n_routed_experts=256`、`routed_scaling_factor=1.5`、`sliding_window=128`；与 Pro 共用 `index_n_heads=64` / `index_head_dim=128` / `num_experts_per_tok=6`；`compress_ratios` 模式为开头 `0, 0` + 中间 `(4, 128)` 反复 + 末 `0`）。查阅日期：2026-09-15。
+- DeepSeek-V4-Flash 配置：[`deepseek-ai/DeepSeek-V4-Flash`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/config.json)（`index_topk=512`、`num_hidden_layers=43`、`hidden_size=4096`、`n_routed_experts=256`、`routed_scaling_factor=1.5`、`sliding_window=128`；与 Pro 共用 `index_n_heads=64` / `index_head_dim=128` / `num_experts_per_tok=6`；`compress_ratios` 模式为开头 `0, 0` + 中间 `(4, 128)` 反复 20 对 + 末尾 `4, 0`，列表共 44 项）。查阅日期：2026-09-15。

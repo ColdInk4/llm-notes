@@ -551,7 +551,7 @@ reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward
 
 [Terminal-Bench](https://www.tbench.ai/) 把任务放在通用终端环境中，要求模型通过 shell、文件系统和命令行工具完成开放式工作流。它比单步问答更接近真实工程任务，因此能更直接暴露 agent scaffold 在规划、执行和恢复错误上的差异。
 
-数据集构造与难度口径。Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后其中 89 个任务构成 Terminal-Bench 2.0 数据集（[arXiv:2601.11868](https://arxiv.org/abs/2601.11868) 与官方 https://www.tbench.ai/，后续版本可能扩展）。论文由 Mike A. Merrill、Alexander G. Shaw、Nicholas Carlini 等署名。
+数据集构造上，Terminal-Bench 由 93 位贡献者提交 229 个任务，经筛选后 89 个任务构成 Terminal-Bench 2.0 数据集（[Merrill 等, 2026, arXiv:2601.11868](https://arxiv.org/abs/2601.11868) 与官方 <https://www.tbench.ai/>）。
 
 Terminal-Bench 与 Cybench 的难度口径不同。Cybench 用人类「首次解决时间」（FST）作为难度锚点（见 §11.6.3），Terminal-Bench 则通过环境多样性和人工解法时长分布来体现任务量级，因此同一道题在不同 benchmark 上不能直接横比。
 
@@ -869,4 +869,4 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - 来源：本章以公开评估资料、论文与模型技术报告为主；现代榜单、模型分数和 benchmark 声明按官方榜单、论文或模型卡逐条复核。
 - 课程映射：Lecture 12 提供 difficulty、realism、validity、rules of the game、contamination、agent benchmark 和安全评估主线；evaluation 主线对应本笔记第 11 章。
 - 来源说明：现代榜单、模型分数和 benchmark 声明随官方来源更新；本节事实声明的数字（WildBench Table 3、MLE-bench Table 2 / §1、GPQA §1 §3 §4、HLE 2500 题 + 14% multimodal、Terminal-Bench 93/229/89、Cybench 40 + 24h54m、SWE-bench 2294、MMLU-Pro 12032、τ-bench 38%、GPQA Diamond 榜单超过 94%、SWE-bench Verified 榜单最高 76.8%）均来自对应 arXiv 一手页面、HF / 官方仓库或官方榜单。
-- 查阅日期：2026-05-28（首次成体系核证）；2026-09-05（Section 11.4.1 MMLU Table 1、Section 11.4.2 MMLU-Pro、Section 11.4.3 GPQA 分档准确率、Section 11.5.4 WildBench 小节编号与相关系数、Section 11.10.2 agentic benchmark 复核，参考文献补全）；2026-09-16（§11.3 perplexity 公理起点、§11.4 MMLU / MMLU-Pro / GPQA / HLE 第一性原理强化与段落拆段、§11.5 Chatbot Arena BT 公理 + LLM-as-judge 偏差公理 + WildBench Pearson 数字修正、§11.6 agent scaffold 四组件公理 + Terminal-Bench 拆段、§11.7 ARC-AGI 第一性原理、§11.8 propensity vs capability 公理、§11.10 contamination 四路线公理 + Docent 拆段、§11.11 method vs system 公理、本章总结三条规则公理化）；2026-09-22（§11.6 基准饱和段的 GPQA Diamond 榜单（gpqa.ai）与 SWE-bench Verified 榜单最高分（swebench.com）复核）。
+- 查阅日期：2026-05-28（首次成体系核证）；2026-09-05（Section 11.4.1 MMLU Table 1、Section 11.4.2 MMLU-Pro、Section 11.4.3 GPQA 分档准确率、Section 11.5.4 WildBench 小节编号与相关系数、Section 11.10.2 agentic benchmark 复核，参考文献补全）；2026-09-16（§11.3 perplexity 公理起点、§11.4 MMLU / MMLU-Pro / GPQA / HLE 第一性原理强化与段落拆段、§11.5 Chatbot Arena BT 公理 + LLM-as-judge 偏差公理 + WildBench Pearson 数字修正、§11.6 agent scaffold 四组件公理 + Terminal-Bench 拆段、§11.7 ARC-AGI 第一性原理、§11.8 propensity vs capability 公理、§11.10 contamination 四路线公理 + Docent 拆段、§11.11 method vs system 公理、本章总结三条规则公理化）；2026-09-22（§11.6 基准饱和段的 GPQA Diamond 榜单（gpqa.ai）与 SWE-bench Verified 榜单最高分（swebench.com）复核，§11.6.2 Terminal-Bench 数据集构造段「后续版本可能扩展」trailing-comment 撤回 + 论文署名元句改写为 `[Merrill 等, 2026, arXiv:2601.11868](...)` 完整链接形式，arXiv:2601.11868 一手页面复核确认标题、作者、提交日期、89 任务数与摘要描述）。
