@@ -492,7 +492,7 @@ GRPO 可以先从 PPO 的工程部件读起：rollout、概率比和 KL 约束�
 
 $$
 \begin{aligned}
-\mathcal{J}_{\text{GRPO}}(\theta)
+\mathcal J_{\text{GRPO}}(\theta)
 = \mathbb{E} \bigg[
 & q \sim P(Q),\ \{o_i\}_{i=1}^G \sim \pi_{\theta_{\text{old}}}(O|q)
 \bigg] \frac{1}{G} \sum_{i=1}^{G} \bigg(
