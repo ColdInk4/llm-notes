@@ -57,7 +57,7 @@ next-token prediction 就是自监督目标。给定文本序列 $x_1,\dots,x_T$
 
 ### 12.1.3 强化学习（Reinforcement Learning）
 
-强化学习优化的对象是策略 $\pi_\theta(a \mid s)$（公理起点：policy gradient theorem，$\nabla_\theta J(\pi_\theta) = \mathbb{E}_{\tau \sim \pi_\theta}\left[\sum_t \nabla_\theta \log \pi_\theta(a_t \mid s_t) \cdot A^{\pi_\theta}(s_t, a_t)\right]$，其中 $A^{\pi_\theta}$ 是优势函数）。策略在状态 $s$ 下选择动作 $a$ ，环境返回奖励，训练目标是提高长期回报 $\mathbb{E}_{\tau \sim \pi_\theta}\left[\sum_t \gamma^t r_t\right]$。语言模型中的动作可以看作 token 或完整回答，状态是 prompt 加已经生成的上下文；PPO、GRPO、DPO 都是 policy gradient theorem 的工程化变体（PPO 在 surrogate 上加 clipping，GRPO 用 group z-score 替代 value model，DPO 用闭式解把 reward 重参数化为 $\pi_\theta/\pi_{\mathrm{ref}}$ 的 log-ratio）。
+强化学习优化的对象是策略 $\pi_\theta(a \mid s)$（公理起点：policy gradient theorem， $\nabla_\theta J(\pi_\theta) = \mathbb E_{\tau \sim \pi_\theta}\left[\sum_t \nabla_\theta \log \pi_\theta(a_t \mid s_t) \cdot A^{\pi_\theta}(s_t, a_t)\right]$，其中 $A^{\pi_\theta}$ 是优势函数）。策略在状态 $s$ 下选择动作 $a$ ，环境返回奖励，训练目标是提高长期回报 $\mathbb E_{\tau \sim \pi_\theta}\left[\sum_t \gamma^t r_t\right]$。语言模型中的动作可以看作 token 或完整回答，状态是 prompt 加已经生成的上下文；PPO、GRPO、DPO 都是 policy gradient theorem 的工程化变体（PPO 在 surrogate 上加 clipping，GRPO 用 group z-score 替代 value model，DPO 用闭式解把 reward 重参数化为 $\pi_\theta/\pi_{\mathrm{ref}}$ 的 log-ratio）。
 
 后训练里的 RLHF 使用偏好或 reward model 给完整回答打分，再通过 PPO 等算法更新策略。由于奖励通常只在回答结束后出现，算法需要把序列级奖励转成 token 级更新信号，并限制策略离参考模型过远。RLHF 的细节（如 DPO、SimPO、length-normalized DPO 等偏好优化变体及其 overoptimization 副作用）放在本章，PPO → GRPO 的 RLVR 延伸见[第 13 章 §13.3 GRPO 与 Dr. GRPO](../chapter13/chapter13_可验证奖励的强化学习.md)；两章通过"人类反馈 → 可验证反馈"的边界连接。
 
@@ -76,7 +76,7 @@ $$
 等价地，训练最小化每个位置的交叉熵：
 
 $$
-\mathcal{L}_{\mathrm{PT}}
+\mathcal L_{\mathrm{PT}}
 = -\sum_{t=1}^{T} \log p_\theta(x_t \mid x_{<t})
 $$
 
@@ -126,7 +126,7 @@ SFT 的目标是用示范数据控制模型输出形式。预训练模型已经�
 
 *图 12.3-2 SFT 数据中的 response style 差异*
 
-图 12.3-2 说明模型回答长度差异可以非常大。差异先来自数据：[Wang et al., 2023, *How Far Can Camels Go? Exploring the State of Instruction Tuning on Open Resources*, arXiv:2306.04751](https://arxiv.org/abs/2306.04751) Table 1 统计了 12 个开放 instruction 数据集的平均 completion 长度 $\bar{L}_{\mathrm{completion}}$ ，ShareGPT 是 357.8、Open Assistant 1 是 212.5，而 Flan V2 只有 31.2、Self-Instruct 只有 29.3，跨数据集相差一个数量级。SFT 用哪一份数据，模型的默认回答长度就落在那一档。
+图 12.3-2 说明模型回答长度差异可以非常大。差异先来自数据：[Wang et al., 2023, *How Far Can Camels Go? Exploring the State of Instruction Tuning on Open Resources*, arXiv:2306.04751](https://arxiv.org/abs/2306.04751) Table 1 统计了 12 个开放 instruction 数据集的平均 completion 长度 $\bar L_{\mathrm{completion}}$ ，ShareGPT 是 357.8、Open Assistant 1 是 212.5，而 Flan V2 只有 31.2、Self-Instruct 只有 29.3，跨数据集相差一个数量级。SFT 用哪一份数据，模型的默认回答长度就落在那一档。
 
 SFT 数据不只传递任务答案，也传递格式、段落密度、礼貌程度和分点习惯。构建 SFT 集时需要把 style 当作训练变量管理，否则模型会学到一种看似详尽、实际信息密度不足的回答模式。这是工程经验观察，不是公理推导——style 与质量的关系依赖具体任务的评价方式（teacher-judge / 人类评估 / 任务成功率），不能从"形式完整"推导出"信息密度"。
 
@@ -261,17 +261,16 @@ PPO 的核心比率是：
 $$
 r_t(\theta)
 = \exp \left(
-\log \pi_\theta(a_t \mid s_t)
-- \log \pi_{\mathrm{old}}(a_t \mid s_t)
+\log \pi_\theta(a_t \mid s_t) - \log \pi_{\mathrm{old}}(a_t \mid s_t)
 \right)
 $$
 
-其中 $s_t$ 是当前上下文，$a_t$ 是生成的 token。这一步对应 policy gradient theorem 的 on-policy 修正（重要性采样比 $r_t$）—— 它把旧策略 $\pi_{\mathrm{old}}$ 采的轨迹用新策略 $\pi_\theta$ 重新加权，从而复用同一批 rollout 做多轮更新。若优势 $A_t$ 为正，提高该 token 的概率；若 $A_t$ 为负，降低该 token 的概率。
+其中 $s_t$ 是当前上下文， $a_t$ 是生成的 token。这一步对应 policy gradient theorem 的 on-policy 修正（重要性采样比 $r_t$）—— 它把旧策略 $\pi_{\mathrm{old}}$ 采的轨迹用新策略 $\pi_\theta$ 重新加权，从而复用同一批 rollout 做多轮更新。若优势 $A_t$ 为正，提高该 token 的概率；若 $A_t$ 为负，降低该 token 的概率。
 
 在此基础上，PPO 把 TRPO 的 surrogate objective 改写为 clipped 形式：
 
 $$
-\mathcal{L}^{\mathrm{clip}}_t(\theta)
+\mathcal L_t^{\mathrm{clip}}(\theta)
 = -\min \left(
 r_t(\theta) A_t,
 \mathrm{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) A_t
@@ -284,8 +283,7 @@ clipping 把单步更新限制在 $1 \pm \epsilon$ 内，避免策略在一次�
 
 $$
 R(x,y)
-= r_\phi(x,y)
-- \beta D_{\mathrm{KL}}
+= r_\phi(x,y) - \beta D_{\mathrm{KL}}
 \left(
 \pi_\theta(\cdot \mid x)
 \Vert
@@ -357,7 +355,7 @@ DPO 的目标是把 pairwise preference data 直接写成监督式损失。给�
 | --- | --- | --- | --- | --- |
 | 数据形式 | 在线 rollout + 标量奖励 + 偏好对 | 离线偏好对 $(x, y_w, y_l)$ | 离线偏好对 $(x, y_w, y_l)$ | 离线偏好对 $(x, y_w, y_l)$ |
 | 是否训练 reward model | 是 | 否 | 否 | 否 |
-| 是否需要参考模型 | 是（KL 惩罚用） | 是（$\pi_{\mathrm{ref}}$） | 否 | 是（$\pi_{\mathrm{ref}}$） |
+| 是否需要参考模型 | 是（KL 惩罚用） | 是（ $\pi_{\mathrm{ref}}$） | 否 | 是（ $\pi_{\mathrm{ref}}$） |
 | 是否在线 rollout | 是 | 否 | 否 | 否 |
 | 长度归一化 | 取决于奖励设计 | 否 | 是 | 是 |
 | 主要风险 | reward hacking、训练不稳定 | 偏好对质量、长度偏差 | 失去参考模型约束 | 长度归一化引入新偏置 |
@@ -387,7 +385,7 @@ DPO 的目标是把 pairwise preference data 直接写成监督式损失。给�
 DPO（[Rafailov et al., 2023, "Direct Preference Optimization: Your Language Model is Secretly a Reward Model", arXiv:2305.18290](https://arxiv.org/abs/2305.18290)）从 KL-constrained RLHF objective
 
 $$
-\max_\pi \; \mathbb{E}_{x \sim \mathcal{D}, y \sim \pi}[r(x,y)] - \beta \, D_{\mathrm{KL}}(\pi \| \pi_{\mathrm{ref}})
+\max_\pi \; \mathbb E_{x \sim \mathcal{D}, y \sim \pi}[r(x,y)] - \beta \, D_{\mathrm{KL}}(\pi \| \pi_{\mathrm{ref}})
 $$
 
 的闭式最优策略出发。该目标关于 $\pi$ 的变分最优解是
@@ -401,8 +399,7 @@ $$
 $$
 r(x,y)
 = \beta
-\log \frac{\pi_\theta(y \mid x)}{\pi_{\mathrm{ref}}(y \mid x)}
-+ \beta \log Z(x)
+\log \frac{\pi_\theta(y \mid x)}{\pi_{\mathrm{ref}}(y \mid x)} + \beta \log Z(x)
 $$
 
 代入 Bradley-Terry 偏好模型
@@ -414,21 +411,20 @@ r(x,y_w) - r(x,y_l)
 \right)
 $$
 
-后，$\beta \log Z(x)$ 在分子分母同时出现并消去，partition function 完全不见，得到只用 $\pi_\theta$ 与 $\pi_{\mathrm{ref}}$ 的偏好概率。单个偏好对的损失是其负对数：
+后， $\beta \log Z(x)$ 在分子分母同时出现并消去，partition function 完全不见，得到只用 $\pi_\theta$ 与 $\pi_{\mathrm{ref}}$ 的偏好概率。单个偏好对的损失是其负对数：
 
 $$
-\mathcal{L}_{\mathrm{DPO}}
+\mathcal L_{\mathrm{DPO}}
 = -\log \sigma \left(
 \beta
 \left[
-\log \frac{\pi_\theta(y_w \mid x)}{\pi_{\mathrm{ref}}(y_w \mid x)}
--
+\log \frac{\pi_\theta(y_w \mid x)}{\pi_{\mathrm{ref}}(y_w \mid x)} -
 \log \frac{\pi_\theta(y_l \mid x)}{\pi_{\mathrm{ref}}(y_l \mid x)}
 \right]
 \right)
 $$
 
-这是把上面推出的偏好概率 $P(y_w \succ y_l \mid x)$ 取负对数作为监督式损失最小化。这里 $y_w$ 是 preferred response，$y_l$ 是 less-preferred response，$\beta$ 控制偏好更新强度。$\pi_{\mathrm{ref}}$ 保留 SFT 模型的概率基线，使训练比较“当前模型相对参考模型更偏向哪一边”。
+这是把上面推出的偏好概率 $P(y_w \succ y_l \mid x)$ 取负对数作为监督式损失最小化。这里 $y_w$ 是 preferred response， $y_l$ 是 less-preferred response， $\beta$ 控制偏好更新强度。 $\pi_{\mathrm{ref}}$ 保留 SFT 模型的概率基线，使训练比较“当前模型相对参考模型更偏向哪一边”。
 
 DPO 的训练流程很短：准备 prompt 和偏好对，计算当前模型与参考模型在两段回答上的 log-probability，代入损失，反向传播更新策略模型。它不需要在线 rollout，也不需要单独训练 reward model 和 value model。
 
@@ -443,12 +439,10 @@ DPO 的训练流程很短：准备 prompt 和偏好对，计算当前模型与�
 SimPO 的单样本形式可以写作：
 
 $$
-\mathcal{L}_{\mathrm{SimPO}}
+\mathcal L_{\mathrm{SimPO}}
 = -\log \sigma \left(
-\frac{\beta}{|y_w|}\log \pi_\theta(y_w \mid x)
--
-\frac{\beta}{|y_l|}\log \pi_\theta(y_l \mid x)
--
+\frac{\beta}{|y_w|}\log \pi_\theta(y_w \mid x) -
+\frac{\beta}{|y_l|}\log \pi_\theta(y_l \mid x) -
 \gamma
 \right)
 $$
@@ -456,13 +450,12 @@ $$
 length-normalized DPO 保留参考模型，但把序列 log-probability 除以 token 数，降低长回答在未归一化概率上的系统优势：
 
 $$
-\mathcal{L}_{\mathrm{LN-DPO}}
+\mathcal L_{\mathrm{LN-DPO}}
 = -\log \sigma \left(
 \beta
 \left[
 \frac{1}{|y_w|}
-\log \frac{\pi_\theta(y_w \mid x)}{\pi_{\mathrm{ref}}(y_w \mid x)}
--
+\log \frac{\pi_\theta(y_w \mid x)}{\pi_{\mathrm{ref}}(y_w \mid x)} -
 \frac{1}{|y_l|}
 \log \frac{\pi_\theta(y_l \mid x)}{\pi_{\mathrm{ref}}(y_l \mid x)}
 \right]

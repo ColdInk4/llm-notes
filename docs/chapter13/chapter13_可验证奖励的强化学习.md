@@ -132,7 +132,7 @@ $$
 目标是：**最大化期望回报**（expected return）：
 
 $$
-J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ R(\tau) \right]
+J(\theta) = \mathbb E_{\tau \sim \pi_\theta} \left[ R(\tau) \right]
 $$
 
 其中 $\tau = (s_1, a_1, s_2, a_2, ..., s_T)$ 是一条轨迹（trajectory）， $R(\tau)$ 是总奖励。
@@ -142,7 +142,7 @@ $$
 **策略梯度（Policy Gradient）**从采样轨迹出发，利用似然比技巧把回报写进梯度：
 
 $$
-\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ R(\tau) \nabla_\theta \log \pi_\theta(\tau) \right]
+\nabla_\theta J(\theta) = \mathbb E_{\tau \sim \pi_\theta} \left[ R(\tau) \nabla_\theta \log \pi_\theta(\tau) \right]
 $$
 
 而 $\pi_\theta(\tau) = p(s_1) \prod_{t=1}^T \pi_\theta(a_t|s_t) p(s_{t+1}|s_t, a_t)$ ，所以 $\nabla_\theta \log \pi_\theta(\tau) = \sum_{t=1}^T \nabla_\theta \log \pi_\theta(a_t|s_t)$
@@ -150,7 +150,7 @@ $$
 于是得到**REINFORCE**算法（最基础的策略梯度）：
 
 $$
-\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=1}^T R_t \, \nabla_\theta \log \pi_\theta(a_t|s_t) \right]
+\nabla_\theta J(\theta) = \mathbb E_{\tau \sim \pi_\theta} \left[ \sum_{t=1}^T R_t \, \nabla_\theta \log \pi_\theta(a_t|s_t) \right]
 $$
 
 其中 $R_t = \sum_{k=t}^T \gamma^{k-t} r_k$ 是从时间 $t$ 开始的折扣回报。
@@ -166,8 +166,8 @@ $$
 **TRPO（Trust Region Policy Optimization）**把稳定性写成约束：每次更新只允许新策略 $\pi_{\theta_{\text{new}}}$ 和旧策略 $\pi_{\theta_{\text{old}}}$ 相差一点。具体做法是解一个带 KL 约束的优化问题：
 
 $$
-\max_\theta \quad \mathbb{E}_{s,a \sim \pi_{\theta_{\text{old}}}} \left[ \frac{\pi_\theta(a|s)}{\pi_{\theta_{\text{old}}}(a|s)} A^{\pi_{\text{old}}}(s,a) \right] \\
-\text{subject to} \quad \mathbb{E}_s \left[ D_{\text{KL}} \left( \pi_{\theta_{\text{old}}}(\cdot|s) \,\|\, \pi_\theta(\cdot|s) \right) \right] \leq \delta
+\max_\theta \quad \mathbb E_{s,a \sim \pi_{\theta_{\text{old}}}} \left[ \frac{\pi_\theta(a|s)}{\pi_{\theta_{\text{old}}}(a|s)} A^{\pi_{\text{old}}}(s,a) \right] \\
+\text{subject to} \quad \mathbb E_s \left[ D_{\text{KL}} \left( \pi_{\theta_{\text{old}}}(\cdot|s) \,\|\, \pi_\theta(\cdot|s) \right) \right] \leq \delta
 $$
 
 这个目标使用重要性采样和优势函数 $A$ 做近似策略改进，同时限制 KL 散度不超过 $\delta$ 。它稳定，但需要共轭梯度或二阶优化，难以扩展到 LLM 规模。
@@ -503,8 +503,7 @@ $$
 1-\epsilon,
 1+\epsilon
 \right) A_i
-\bigg)
-- \beta D_{\mathrm{KL}} \left( \pi_\theta \| \pi_{\text{ref}} \right)
+\bigg) - \beta D_{\mathrm{KL}} \left( \pi_\theta \| \pi_{\text{ref}} \right)
 \bigg)
 \end{aligned}
 $$
@@ -530,7 +529,7 @@ GRPO 与 PPO 的目标函数结构非常相似，都包含概率比和裁剪。�
 #### KL 散度的计算
 
 $$
-\hat{D}_{\mathrm{KL}} \left( \pi_\theta \| \pi_{\text{ref}} \right) = \frac{\pi_{\text{ref}}(o_i|q)}{\pi_\theta(o_i|q)} - \log \frac{\pi_{\text{ref}}(o_i|q)}{\pi_\theta(o_i|q)} - 1
+\hat D_{\mathrm{KL}} \left( \pi_\theta \| \pi_{\text{ref}} \right) = \frac{\pi_{\text{ref}}(o_i|q)}{\pi_\theta(o_i|q)} - \log \frac{\pi_{\text{ref}}(o_i|q)}{\pi_\theta(o_i|q)} - 1
 $$
 
 这是 Schulman 提出的 k3 无偏单样本估计器，在 $o_i \sim \pi_\theta$ 上取期望后等于 $D_{\mathrm{KL}} \left( \pi_\theta \| \pi_{\text{ref}} \right)$ 本身。DeepSeekMath 论文中同样把它写进 GRPO 目标，并在实现里直接拿它当 KL 惩罚项使用，不必再对词表求 $\sum_a \pi_\theta \log(\pi_\theta/\pi_{\text{ref}})$。
@@ -1030,7 +1029,7 @@ Long-CoT SFT 从精炼后的 RL prompt set 中选题，再用 prompt engineering
 Kimi RL 的目标是在参考答案上最大化期望奖励，同时约束模型不要偏离原始行为太远：
 
 $$
-\max_{\theta} \mathbb{E}_{(x,y^*) \sim \mathcal{D}} \left[ \mathbb{E}_{(y,z) \sim \pi_\theta} \left[ r(x, y, y^*) \right] - \tau \text{KL}(\pi_\theta(x) || \pi_{\theta_i}(x)) \right]
+\max_{\theta} \mathbb E_{(x,y^*) \sim \mathcal{D}} \left[ \mathbb E_{(y,z) \sim \pi_\theta} \left[ r(x, y, y^*) \right] - \tau \text{KL}(\pi_\theta(x) || \pi_{\theta_i}(x)) \right]
 $$
 
 Kimi 的目标借鉴了 DPO 的无奖励偏好优化思想，用当前策略与参考策略的差异构造“伪奖励”，再用平方损失去逼近它。
@@ -1046,7 +1045,7 @@ $$
 因为直接优化原始目标可能困难，这里用了一个**平方误差损失**来近似优化。它的目标是让当前策略 $\pi_\theta$ 的输出，尽可能匹配“理想策略” $\pi^*$ 所对应的奖励表达式。采样来自**参考策略 $\pi_{\theta_i}$**，这样可以稳定训练，避免自举（bootstrapping）带来的偏差。最终损失 $L(\theta)$ 是对所有样本和采样结果取期望后的平方误差。
 
 $$
-L(\theta) = \mathbb{E}_{(x,y^*) \sim \mathcal{D}} \left[ \mathbb{E}_{(y,z) \sim \pi_{\theta_i}} \left[ \left( r(x, y, y^*) - \tau \log Z - \tau \log \frac{\pi_\theta(y, z|x)}{\pi_{\theta_i}(y, z|x)} \right)^2 \right] \right]
+L(\theta) = \mathbb E_{(x,y^*) \sim \mathcal{D}} \left[ \mathbb E_{(y,z) \sim \pi_{\theta_i}} \left[ \left( r(x, y, y^*) - \tau \log Z - \tau \log \frac{\pi_\theta(y, z|x)}{\pi_{\theta_i}(y, z|x)} \right)^2 \right] \right]
 $$
 
 最终用于更新模型参数 θ 的带正则化的基线策略梯度：

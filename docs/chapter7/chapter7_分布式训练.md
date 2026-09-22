@@ -858,7 +858,7 @@ $$
 
 参数和梯度跨设备复制是朴素数据并行的默认做法，但 optimizer states 不需要在每个 rank 上完整复制。按 ZeRO 论文的 7.5B / $N_d = 64$ 案例，只分片 optimizer states 时，每卡内存占用可从 **120 GB 降至 31.4 GB**；同时分片 optimizer states 和 gradients 后可降至 **16.6 GB**；optimizer states、gradients、parameters 三者全部分片后，可降至 **1.88 GB**。这些数字说明 ZeRO 的三个阶段是在逐步减少“每个 rank 都复制一份”的状态。
 
-> 这组数字来自 ZeRO 论文 Figure 1 的案例设定：模型规模 $\Psi = 7.5$B、DP degree $N_d = 64$、优化器状态倍率 $K = 12$，对应 fp16 混合精度 Adam（fp16 参数 2Ψ + fp16 梯度 2Ψ + fp32 master weights 与 Adam 一二阶矩 12Ψ = 16Ψ baseline）。Figure 1 给出四档数字：**120 GB → 31.4 GB → 16.6 GB → 1.88 GB**，分别对应 baseline DP / ZeRO-1 (optimizer states 分片) / ZeRO-2 (+ gradients 分片) / ZeRO-3 (+ parameters 分片)；论文 Table 1 按 DP degree 列出同一组数字（$N_d = 64$ 行为 31.4 / 16.6 / 1.88，$N_d = 1$ 行为 120）。详见 [Rajbhandari et al., ZeRO, arXiv:1910.02054](https://arxiv.org/abs/1910.02054)。
+> 这组数字来自 ZeRO 论文 Figure 1 的案例设定：模型规模 $\Psi = 7.5\mathrm{B}$、DP degree $N_d = 64$、优化器状态倍率 $K = 12$，对应 fp16 混合精度 Adam（fp16 参数 2Ψ + fp16 梯度 2Ψ + fp32 master weights 与 Adam 一二阶矩 12Ψ = 16Ψ baseline）。Figure 1 给出四档数字：**120 GB → 31.4 GB → 16.6 GB → 1.88 GB**，分别对应 baseline DP / ZeRO-1 (optimizer states 分片) / ZeRO-2 (+ gradients 分片) / ZeRO-3 (+ parameters 分片)；论文 Table 1 按 DP degree 列出同一组数字（ $N_d = 64$ 行为 31.4 / 16.6 / 1.88， $N_d = 1$ 行为 120）。详见 [Rajbhandari et al., ZeRO, arXiv:1910.02054](https://arxiv.org/abs/1910.02054)。
 
 ![图 7.6-3 ZeRO 工作阶段 1](images/7-6-3-zero-stage1.png)
 
@@ -947,7 +947,7 @@ FSDP / ZeRO-3 的关键问题是：参数不常驻完整副本后，如何在需
 
 图里的 `AG2` 出现两次，对应 unit 2 在前向和反向的两次独立生命周期。图中的黄色块就是对应的 `Free i`：释放的是这次临时 all-gather 出来的完整参数副本，原始 shard 仍然保留。
 
-从系统实现上看，下一层的 all-gather 可以在上一层计算时提前发起，于是 `AGi`、`FWDi`、`Free i` 会和 `AG(i+1)` 交错进行，形成一种很短的流水线。这样做的目的就是把通信尽量藏到计算后面。ZeRO 论文 §7.2.2 推导出 ZeRO-3（$P_{os+g+p}$）的总通信量是 $3\Psi$（$\Psi$ 是参数规模），为 baseline DP 的 1.5 倍；论文 §1 在列举 ZeRO-DP 三个阶段时把这一代价称作 "a modest 50% increase in communication volume"，换来的是与 $N_d$ 成正比的显存缩减。
+从系统实现上看，下一层的 all-gather 可以在上一层计算时提前发起，于是 `AGi`、`FWDi`、`Free i` 会和 `AG(i+1)` 交错进行，形成一种很短的流水线。这样做的目的就是把通信尽量藏到计算后面。ZeRO 论文 §7.2.2 推导出 ZeRO-3（ $P_{os+g+p}$ ）的总通信量是 $3\Psi$（ $\Psi$ 是参数规模），为 baseline DP 的 1.5 倍；论文 §1 在列举 ZeRO-DP 三个阶段时把这一代价称作 "a modest 50% increase in communication volume"，换来的是与 $N_d$ 成正比的显存缩减。
 
 反向传播阶段仍然要付通信成本，因为每个 FSDP unit 需要 all-gather 参数、计算 backward、再 reduce-scatter 梯度。和 ZeRO-1/2 近似 2 倍参数量通信相比，ZeRO-3 / FSDP 多了一次参数 all-gather，因此常用的教学账本会把它记成约 **3 倍参数量通信**。实际 wall time 取决于预取、重叠程度、网络带宽、层计算量和 bucket 策略；通信隐藏得越好，额外等待越小。
 

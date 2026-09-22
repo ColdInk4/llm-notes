@@ -151,7 +151,7 @@ $$
 \end{aligned}
 $$
 
-其中 $\text{counts}(a, b)$ 是当前序列中相邻 pair $(a, b)$ 的出现次数；$\arg\max$ 在并列时按实现约定（Python `max` 默认按 dict 插入顺序）取最早遇到的高频 pair。 $V$ 是目标词表大小，最终新增 token id 从 $256$ 起按合并顺序递增。
+其中 $\text{counts}(a, b)$ 是当前序列中相邻 pair $(a, b)$ 的出现次数； $\arg\max$ 在并列时按实现约定（Python `max` 默认按 dict 插入顺序）取最早遇到的高频 pair。 $V$ 是目标词表大小，最终新增 token id 从 $256$ 起按合并顺序递增。
 
 | 轮次 | 当前高频 pair | 新 token | 合并后的含义 |
 | --- | --- | --- | --- |

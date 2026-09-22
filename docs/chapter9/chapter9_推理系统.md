@@ -128,9 +128,9 @@ generation 时 $x_i$ 的概率分布只能在前一步采样出 $x_{i-1}$ 之后
 
 中间张量的形状记号采用 `B` (batch size)、`S` (已有上下文 token 数)、`T` (本次要处理或生成的 token 数)、`D` (model dim)、`F = 4D` (MLP up-projection dim)、`H` (head dim)、`N` (query head 数)。`B`、`S`、`T` 在张量里是 batch 维度，`D` / `F` / `H` 在张量里是 contracting / model 维度。
 
-注意力头记号采用 $N = K_{\mathrm{kv}} G$：$K_{\mathrm{kv}}$ 是 KV head 数，$G$ 是每个 KV head 对应的 query heads 数。下文把 key 张量仍记作 $K$，把 KV head 数固定写作 $K_{\mathrm{kv}}$，避免混淆。
+注意力头记号采用 $N = K_{\mathrm{kv}} G$： $K_{\mathrm{kv}}$ 是 KV head 数， $G$ 是每个 KV head 对应的 query heads 数。下文把 key 张量仍记作 $K$，把 KV head 数固定写作 $K_{\mathrm{kv}}$，避免混淆。
 
-训练时通常可以把很多位置一起处理；推理 generation 时，$T = 1$，这正是后面 `arithmetic intensity` 下降的根源。
+训练时通常可以把很多位置一起处理；推理 generation 时， $T = 1$，这正是后面 `arithmetic intensity` 下降的根源。
 
 ![图 9.1-3 Naive inference](images/9-1-3-naive-inference.webp)
 
@@ -209,7 +209,7 @@ $$
 
 ### 9.2.2 Attention 层：batch 不能同样摊薄 KV cache
 
-attention generation 更难。attention 的核心是两个矩阵乘：$Q (B \times T \times D) \cdot K (B \times S \times D)$ 计算 attention logits（$2 B S T D$ FLOPs），随后 $\mathrm{softmax}(\cdot) \cdot V (B \times S \times D)$ 计算加权和（$2 B S T D$ FLOPs）。HBM 读写方面，Q、K、V 三者各 $2 B \cdot (\text{batch+seq}) \cdot D$ 字节，加上输出 Y 的 $2 B T D$ 字节。代入 $D \gg B T$ 的假设简化得：
+attention generation 更难。attention 的核心是两个矩阵乘： $Q (B \times T \times D) \cdot K (B \times S \times D)$ 计算 attention logits（ $2 B S T D$ FLOPs），随后 $\mathrm{softmax}(\cdot) \cdot V (B \times S \times D)$ 计算加权和（ $2 B S T D$ FLOPs）。HBM 读写方面，Q、K、V 三者各 $2 B \cdot (\text{batch+seq}) \cdot D$ 字节，加上输出 Y 的 $2 B T D$ 字节。代入 $D \gg B T$ 的假设简化得：
 
 $$
 \mathrm{FLOPs} = 4 B S T D,\quad \mathrm{Bytes} = 4 B S D + 4 B T D
@@ -307,8 +307,8 @@ GQA、MLA、CLA 和 local / sparse attention 会改变 attention 的结构。已
 多头注意力里，query heads、key heads 和 value heads 通常数量相同。`MQA` 和 `GQA` 的思路是：query heads 仍然多，但多个 query heads 共享较少的 KV heads。
 
 - `MHA`：KV head 数 $K_{\mathrm{kv}}$ 等于 query head 数 $N$。
-- `MQA`：所有 query heads 共享一组 key/value，$K_{\mathrm{kv}} = 1$。
-- `GQA`：介于两者之间，$1 < K_{\mathrm{kv}} < N$。
+- `MQA`：所有 query heads 共享一组 key/value， $K_{\mathrm{kv}} = 1$。
+- `GQA`：介于两者之间， $1 < K_{\mathrm{kv}} < N$。
 
 KV cache 大小大致与 $K_{\mathrm{kv}} \times H$ 成正比，所以从 MHA 改成 GQA 可以按 $N / K_{\mathrm{kv}}$ 的比例减少 KV cache。
 
@@ -382,7 +382,7 @@ cache 存储量取决于实现方式。rolling buffer（循环缓冲区）会把
 
 *图 9.3-9 Native Sparse Attention*
 
-图 9.3-9 展示 Native Sparse Attention (NSA) 的结构。三条并行分支都从同一组 query 和 hidden state 出发：compression 分支把连续 token 块通过可学习 MLP（$\phi$）聚合成 block-level 表示，并叠加 block 内位置编码；selection 分支基于压缩后的 key 与 query 计算 block 级 importance scores，在 GQA group 内对分数求和后选 top-n 重要 block；sliding window 分支保留最近 $w$ 个 token 的局部 KV。
+图 9.3-9 展示 Native Sparse Attention (NSA) 的结构。三条并行分支都从同一组 query 和 hidden state 出发：compression 分支把连续 token 块通过可学习 MLP（ $\phi$）聚合成 block-level 表示，并叠加 block 内位置编码；selection 分支基于压缩后的 key 与 query 计算 block 级 importance scores，在 GQA group 内对分数求和后选 top-n 重要 block；sliding window 分支保留最近 $w$ 个 token 的局部 KV。
 
 三条分支各自维护一份独立的 KV，分别与 query 做 attention 之后，由一个作用于输入特征的 MLP + sigmoid 输出的门控分数做加权求和（论文 Equation 5），而不是把三路 key/value 拼接后再过一次共享 attention。这一选择把三路信息保留到 attention 之后的线性组合里，避免拼接带来的维度膨胀，也让 gate 权重可端到端联合优化。
 
@@ -715,4 +715,4 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 - 章节引用的 trace / video 资源：见 `sources/lectures/` 与 `sources/captions/lecture_*.md` 对应章节。
 - 链接复核：2026-09-04（[LLaDA2.0: Scaling Up Diffusion Language Models to 100B, arXiv:2512.15745](https://arxiv.org/abs/2512.15745)，Tiwei Bie 等 31 位作者按姓氏字母序署名，机构覆盖 Ant Group / Renmin University of China / Zhejiang University / Westlake University / Hong Kong University of Science and Technology 五所，v1 提交 2025-12-10 / v2 修订 2025-12-24；MiniMax-01 [arXiv:2501.08313](https://arxiv.org/abs/2501.08313) 引用回连到第 3 章与第 8 章；稀疏 attention 一节引用 [Native Sparse Attention (arXiv:2502.11089)](https://arxiv.org/abs/2502.11089) 与 [Sparse Transformer (arXiv:1904.10509)](https://arxiv.org/abs/1904.10509)；其余链接本次复核仍可访问）。
 - 推理系统与指标来源：[JAX Scaling Book: Inference](https://jax-ml.github.io/scaling-book/inference)（Transformer inference 综述，2025-02-04 出版）；[vLLM / PagedAttention](https://arxiv.org/abs/2309.06180)；[Orca (OSDI 2022, Gyeong-In Yu 等)](https://www.usenix.org/conference/osdi22/presentation/yu)，continuous batching 的 iteration-level scheduling 与 selective batching 出处；SGLang / RadixAttention；[TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/)（NVIDIA 官方文档，2026-09-04 查阅）；[Prompt Compression Survey (NAACL 2025)](https://aclanthology.org/2025.naacl-long.368/)；[Speculative decoding (arXiv:2211.17192)](https://arxiv.org/abs/2211.17192) 与 [Speculative sampling (arXiv:2302.01318)](https://arxiv.org/abs/2302.01318)。
-- 结构与压缩来源：[GQA](https://arxiv.org/abs/2305.13245)（uptraining：KV 投影 mean pooling + 5% 原始预训练 compute）、[DeepSeek-V2 / MLA](https://arxiv.org/abs/2405.04434)（$d_c=512$、RoPE 额外 $d_h^R=64$，合计每 token 每层 576 维）、[CLA](https://arxiv.org/abs/2405.12981)、[Mistral 7B](https://arxiv.org/abs/2310.06825)（rolling buffer cache，$W=4096$）、[Longformer (arXiv:2004.05150)](https://arxiv.org/abs/2004.05150)、[Sparse Transformer](https://arxiv.org/abs/1904.10509)、[Native Sparse Attention (arXiv:2502.11089)](https://arxiv.org/abs/2502.11089)、[GPTQ](https://arxiv.org/abs/2210.17323)、[AWQ](https://arxiv.org/abs/2306.00978)、[pruning 与 distillation (arXiv:2407.14679)](https://arxiv.org/abs/2407.14679)、[Medusa (arXiv:2401.10774)](https://arxiv.org/abs/2401.10774)、[EAGLE (arXiv:2401.15077)](https://arxiv.org/abs/2401.15077)、prompt compression、DeepSeek-OCR、MiniMax-01 (arXiv:2501.08313，7 个 lightning attention 层后接 1 个 softmax attention 层，共 80 层)、S4 (arXiv:2111.00396)、Diffusion-LM (arXiv:2205.14217)、[LLaDA2.0 (arXiv:2512.15745)](https://arxiv.org/abs/2512.15745)、[Faster Cascades via Speculative Decoding (arXiv:2405.19261)](https://arxiv.org/abs/2405.19261)。
+- 结构与压缩来源：[GQA](https://arxiv.org/abs/2305.13245)（uptraining：KV 投影 mean pooling + 5% 原始预训练 compute）、[DeepSeek-V2 / MLA](https://arxiv.org/abs/2405.04434)（ $d_c=512$、RoPE 额外 $d_h^R=64$，合计每 token 每层 576 维）、[CLA](https://arxiv.org/abs/2405.12981)、[Mistral 7B](https://arxiv.org/abs/2310.06825)（rolling buffer cache， $W=4096$）、[Longformer (arXiv:2004.05150)](https://arxiv.org/abs/2004.05150)、[Sparse Transformer](https://arxiv.org/abs/1904.10509)、[Native Sparse Attention (arXiv:2502.11089)](https://arxiv.org/abs/2502.11089)、[GPTQ](https://arxiv.org/abs/2210.17323)、[AWQ](https://arxiv.org/abs/2306.00978)、[pruning 与 distillation (arXiv:2407.14679)](https://arxiv.org/abs/2407.14679)、[Medusa (arXiv:2401.10774)](https://arxiv.org/abs/2401.10774)、[EAGLE (arXiv:2401.15077)](https://arxiv.org/abs/2401.15077)、prompt compression、DeepSeek-OCR、MiniMax-01 (arXiv:2501.08313，7 个 lightning attention 层后接 1 个 softmax attention 层，共 80 层)、S4 (arXiv:2111.00396)、Diffusion-LM (arXiv:2205.14217)、[LLaDA2.0 (arXiv:2512.15745)](https://arxiv.org/abs/2512.15745)、[Faster Cascades via Speculative Decoding (arXiv:2405.19261)](https://arxiv.org/abs/2405.19261)。

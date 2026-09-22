@@ -19,7 +19,7 @@
 从目标函数看，数据工程直接决定训练分布：
 
 $$
-\mathcal{L}(\theta;D)=\mathbb{E}_{x\sim D}\left[-\log p_\theta(x)\right],\qquad D=\operatorname{mix}\!\left(\operatorname{dedup}(\operatorname{filter}(\operatorname{convert}(R)))\right).
+\mathcal{L}(\theta;D)=\mathbb E_{x\sim D}\left[-\log p_\theta(x)\right],\qquad D=\operatorname{mix}\!\left(\operatorname{dedup}(\operatorname{filter}(\operatorname{convert}(R)))\right).
 $$
 
 原始池 $R$ 经过格式转换、过滤、去重和混合后形成训练分布 $D$；因此每个数据工程决策都会改变模型实际优化的样本概率，而不仅是改变文件大小。
@@ -424,7 +424,7 @@ $$
 一个简单账本是：如果来源 $s$ 的 token 数是 $N_s$ ，训练总 token 数是 $N_{\text{train}}$ ，采样权重是 $p_s$ （满足 $\sum_s p_s = 1$ ），则该来源被重复训练的次数约为：
 
 $$
-\text{epochs}_s = \frac{p_s N_{\text{train}}}{N_s}
+\text{epochs}(s) = \frac{p_s N_{\text{train}}}{N_s}
 $$
 
 先用这个式子算一笔账。假设丰富来源有 10T tokens、高质量来源只有 10B tokens，训练总量是 1T tokens，而采样权重被朴素地设成各 0.5。丰富来源分到 $0.5 \times 10^{12}$ tokens，只读了它的 5%；高质量来源同样分到 $0.5 \times 10^{12}$ tokens，却要在 $10^{10}$ tokens 上重复 50 次。50 个 epoch 足以让模型在这个小来源上转向记忆，泛化收益随之消失。

@@ -16,10 +16,10 @@
 
 | 节 | 解决什么训练决策 | 主要工具 | 关键概念 |
 | --- | --- | --- | --- |
-| §8.1 Scaling Workflow | 大训练前需要做哪些前置选择 | 小模型 sweep + IsoFLOP + 中等规模复核 | compute budget、$C \approx 6ND$ |
+| §8.1 Scaling Workflow | 大训练前需要做哪些前置选择 | 小模型 sweep + IsoFLOP + 中等规模复核 | compute budget、 $C \approx 6ND$ |
 | §8.2 缩放定律的历史与背景 | scaling 思路从何而来，怎样的曲线形式才可信 | learning curve、power law、irreducible error | VC 维、Bell Labs、Banko & Brill、Hestness |
 | §8.3 LLM 的 Scaling Behavior | data / model / compute / batch / LR / muP 各自的 scaling 形状 | 单变量 baseline + log-log 拟合 | data scaling、model scaling、critical batch size、muP |
-| §8.4 Joint Scaling | 固定 FLOPs 时，$N$ 与 $D$ 怎样分配；为什么 Kaplan 与 Chinchilla 会分叉 | joint fit + IsoFLOP sweep + lower envelope | tokens per parameter、train-optimal |
+| §8.4 Joint Scaling | 固定 FLOPs 时， $N$ 与 $D$ 怎样分配；为什么 Kaplan 与 Chinchilla 会分叉 | joint fit + IsoFLOP sweep + lower envelope | tokens per parameter、train-optimal |
 | §8.5 扩散模型与其他 IsoFLOP 例子 | IsoFLOP 流程能否推广到 AR 之外 | 与 §8.4 同一套 sweep 流程 | diffusion LM、MoE 三轴网格 |
 | §8.6 Scaling in Practice | 公开报告怎样把前面的工具落到大训练上 | MiniCPM / DeepSeek / Qwen / Kimi K2 / Llama 3 / Hunyuan / StepFun / Cerebras-GPT / Muon | muP、WSD、lower envelope、sparsity、active parameters |
 | §8.7 本章总结与下章衔接 | 训练侧算力最优与 serving 侧成本最优如何衔接 | 与第 9 章推理系统对接 | train-optimal vs inference-optimal、KV cache |
@@ -314,7 +314,7 @@ $$
 
 如果温度函数足够平滑，离已知样本点越近，估计误差通常越小；于是误差的数量级可以跟着格子边长走。把 $1/\sqrt n$ 写成幂的形式，就是 $n^{-1/2}$ 。
 
-推广到 $d$ 维时，$n$ 个样本要铺满 $d$ 个方向，每个方向大约只能分成 $n^{1/d}$ 份，格子边长约为 $n^{-1/d}$ 。因此直觉形式是：
+推广到 $d$ 维时， $n$ 个样本要铺满 $d$ 个方向，每个方向大约只能分成 $n^{1/d}$ 份，格子边长约为 $n^{-1/d}$ 。因此直觉形式是：
 
 $$
 \mathrm{Error}(n) \approx n^{-1/d}
@@ -334,7 +334,7 @@ $$
 \mathrm{Error}(D) \approx A D^{-\alpha_D}
 $$
 
-在 log-log 图上，这条线的斜率是 $-\alpha_D$ 。$\alpha_D$ 越大，数据增加后误差降得越快；$\alpha_D$ 越小，数据增加后的收益越慢。
+在 log-log 图上，这条线的斜率是 $-\alpha_D$ 。 $\alpha_D$ 越大，数据增加后误差降得越快； $\alpha_D$ 越小，数据增加后的收益越慢。
 
 最后看点的位置。纵轴是 $4/\alpha_D$ ，所以点越高，代表 $\alpha_D$ 越小，学习越慢。图中的点大致从左下走向右上，意思是：有效维度越高，data scaling 往往越慢。两条虚线是理论关系的参考线；点没有完全落在线上，说明这只是数量级趋势，不是精确预测公式。
 
@@ -615,7 +615,7 @@ $$
 \frac{S}{S_{\min}} - 1 = \left(\frac{E}{E_{\min}} - 1\right)^{-1}
 $$
 
-这条双曲线只需要估计两个极限量。$S_{\min}$ 是 batch 极大时能接近的最少 steps，可以理解成 update 次数下限。$E_{\min}$ 是小 batch、高 sample efficiency 时能接近的最少 examples，可以理解成样本数下限。
+这条双曲线只需要估计两个极限量。 $S_{\min}$ 是 batch 极大时能接近的最少 steps，可以理解成 update 次数下限。 $E_{\min}$ 是小 batch、高 sample efficiency 时能接近的最少 examples，可以理解成样本数下限。
 
 Critical batch size 来自这两个极限量的比值：
 
@@ -623,7 +623,7 @@ $$
 B_{\mathrm{crit}} = \frac{E_{\min}}{S_{\min}}
 $$
 
-这个 $B_{\mathrm{crit}}$ 通常是拟合出来的量，不一定等于某个真实 run 使用过的 batch。在这条拟合曲线上，$B_{\mathrm{crit}}$ 对应的点大约同时付出 $2S_{\min}$ 的 steps 和 $2E_{\min}$ 的 examples。它牺牲一部分单项最优，换来并行速度和样本效率之间的实用折中。
+这个 $B_{\mathrm{crit}}$ 通常是拟合出来的量，不一定等于某个真实 run 使用过的 batch。在这条拟合曲线上， $B_{\mathrm{crit}}$ 对应的点大约同时付出 $2S_{\min}$ 的 steps 和 $2E_{\min}$ 的 examples。它牺牲一部分单项最优，换来并行速度和样本效率之间的实用折中。
 
 图 8.3-20 给出的是拟合定义，图 8.3-21 把同一件事放回训练曲线。
 
@@ -733,9 +733,9 @@ Pretraining loss / perplexity 适合作为 scaling 主指标：数值连续、ev
 
 ### 8.4.1 Joint Fit：先学 N 和 D 怎么影响 loss
 
-本节回答 §8.3 单变量 scaling 留下的开放问题：真实训练里参数量 $N$ 和训练 tokens $D$ 必须放进同一个函数里。读完应能：写出把 loss 拆成 $N$ 方向和 $D$ 方向两项的可加公式；区分 $L_0$、$A$、$B$、$\alpha$、$\beta$ 在公式里各自的角色；以及在小实验网格上验证拟合出的 $L(N,D)$ 曲面能否外推到没参与拟合的点。
+本节回答 §8.3 单变量 scaling 留下的开放问题：真实训练里参数量 $N$ 和训练 tokens $D$ 必须放进同一个函数里。读完应能：写出把 loss 拆成 $N$ 方向和 $D$ 方向两项的可加公式；区分 $L_0$、 $A$、 $B$、 $\alpha$、 $\beta$ 在公式里各自的角色；以及在小实验网格上验证拟合出的 $L(N,D)$ 曲面能否外推到没参与拟合的点。
 
-前面分别看了 data scaling 和 model scaling。真实训练时，这两个变量不能分开选。沿用 8.1 的粗略 compute 账本 $C \approx 6ND$ ：总训练计算量 $C$ 固定时，参数量 $N$ 增大，训练 tokens $D$ 就要减少；$N$ 小一点，$D$ 就可以更多。
+前面分别看了 data scaling 和 model scaling。真实训练时，这两个变量不能分开选。沿用 8.1 的粗略 compute 账本 $C \approx 6ND$ ：总训练计算量 $C$ 固定时，参数量 $N$ 增大，训练 tokens $D$ 就要减少； $N$ 小一点， $D$ 就可以更多。
 
 联合缩放把 model size $N$ 、data size $D$ 和 loss 放进同一个函数。它回答的问题是：在同一笔训练计算量下，哪一组 $N$ 和 $D$ 的组合能得到最低 loss？
 
@@ -750,9 +750,9 @@ $$
 - $A N^{-\alpha}$ ：模型太小带来的 loss。参数量 $N$ 增大时，这一项下降。
 - $B D^{-\beta}$ ：数据太少带来的 loss。训练 tokens $D$ 增大时，这一项下降。
 
-把公式落回训练选择：固定 compute 下，$N$ 和 $D$ 会互相挤占。模型太小，虽然能训练很多 tokens，但容量不够；模型太大，每个 token 太贵，能训练的 tokens 又太少。Joint scaling 要找的是中间区域：模型容量够用，训练 tokens 也够用。
+把公式落回训练选择：固定 compute 下， $N$ 和 $D$ 会互相挤占。模型太小，虽然能训练很多 tokens，但容量不够；模型太大，每个 token 太贵，能训练的 tokens 又太少。Joint scaling 要找的是中间区域：模型容量够用，训练 tokens 也够用。
 
-这条公式在这里只负责拆分两种 loss 来源。$L_0$ 是任务和数据分布留下的底线，$A$ 和 $B$ 是拟合常数，$\alpha$ 和 $\beta$ 表示参数量、数据量继续增加时各自的收益速度。后面比较 Kaplan 和 Chinchilla 时，再讨论具体函数形式、IsoFLOP 包络线、参数口径和 optimizer 设置怎样改变外推结果。
+这条公式在这里只负责拆分两种 loss 来源。 $L_0$ 是任务和数据分布留下的底线， $A$ 和 $B$ 是拟合常数， $\alpha$ 和 $\beta$ 表示参数量、数据量继续增加时各自的收益速度。后面比较 Kaplan 和 Chinchilla 时，再讨论具体函数形式、IsoFLOP 包络线、参数口径和 optimizer 设置怎样改变外推结果。
 
 #### 从联合损失推导 compute-optimal 配比
 
@@ -796,7 +796,7 @@ $$
 
 ### 8.4.2 Compute Scaling：从训练曲线到 Chinchilla
 
-本节回答 §8.4.1 留下的具体问题：给定训练 FLOPs $C$，$N$ 与 $D$ 怎样配。读完应能：解释 compute scaling 曲线；用 Chinchilla Method 1 / 2 / 3 三种 sweep 互相校验同一组 $N_{\mathrm{opt}}$、$D_{\mathrm{opt}}$；区分 Kaplan 与 Chinchilla 在 $N_{\mathrm{opt}}(C)$、$D_{\mathrm{opt}}(C)$ 指数上的差异；以及在小实验拟合前先对齐参数口径、warmup、batch 和 learning rate。
+本节回答 §8.4.1 留下的具体问题：给定训练 FLOPs $C$， $N$ 与 $D$ 怎样配。读完应能：解释 compute scaling 曲线；用 Chinchilla Method 1 / 2 / 3 三种 sweep 互相校验同一组 $N_{\mathrm{opt}}$、 $D_{\mathrm{opt}}$；区分 Kaplan 与 Chinchilla 在 $N_{\mathrm{opt}}(C)$、 $D_{\mathrm{opt}}(C)$ 指数上的差异；以及在小实验拟合前先对齐参数口径、warmup、batch 和 learning rate。
 
 Joint fit 先把 loss 拆成模型大小 $N$ 和训练 tokens $D$ 两个方向。大训练还要面对第三个变量：总训练计算量 $C$ 。这里的 compute 指训练总 FLOPs，也就是一次训练累计花掉多少次浮点运算；硬件吞吐率 FLOP/s 表示每秒能算多少次。总 FLOPs 除以有效 FLOP/s，才得到训练时间。
 
@@ -1321,11 +1321,11 @@ StepFun 还检查训练设置的鲁棒性。它把 MoE、不同 dataset 和不�
 
 *图 8.6-33 Cautious AdamC scaling blow-up under extrapolation*
 
-图 8.6-33 是一个工程案例，也是 §8.6.4“Optimizer Scaling：新 optimizer 的规模风险”讨论的具体失效样本。左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，$10^{21}$ 处的虚线把图分成 fit 与 extrapolation 两段。
+图 8.6-33 是一个工程案例，也是 §8.6.4“Optimizer Scaling：新 optimizer 的规模风险”讨论的具体失效样本。左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima；右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线， $10^{21}$ 处的虚线把图分成 fit 与 extrapolation 两段。
 
-图中外推区的三个点展示 Cautious AdamC 的失败形态：$10^{22}$ 处两个不同 seed 给出 `0.8% worse` 与 `2.5% worse` 两档偏离，$10^{23}$ 处标注 *Run Diverged*。caption 将这组设置概括为 *Cautious AdamC + Sqrt batch-size scaling of learning rates*，并指出需要重新设计参数化、缩放或 optimizer 才能修复外推。
+图中外推区的三个点展示 Cautious AdamC 的失败形态： $10^{22}$ 处两个不同 seed 给出 `0.8% worse` 与 `2.5% worse` 两档偏离， $10^{23}$ 处标注 *Run Diverged*。caption 将这组设置概括为 *Cautious AdamC + Sqrt batch-size scaling of learning rates*，并指出需要重新设计参数化、缩放或 optimizer 才能修复外推。
 
-Open Athena / Marin 的 Delphi 博客 [*Scaling Laws That Extrapolate 300 Past the Fit*](https://openathena.ai/blog/delphi) 给出 fix 之后的结果：把 optimizer 从 Cautious AdamC 换成 AdamH（Adam with Hyperball——按 Frobenius 范数把权重重新缩放到当前 $\|W\|_F$ 球面上，等价于把 weight decay 从超参搜索里拿掉），并把 LR scaling 从 $\sqrt{\mathrm{batch}}$ 改成 token-horizon $(T_0/T)^{0.3}$ 形式。在这套 fix 下，$10^{21}$、$10^{22}$、$10^{23}$ 三档 held-out 预测全部落在 observed Paloma macro loss 的 $\sim 0.5\%$ 误差带内；其中 $10^{23}$、25B 参数、600B tokens 的预注册预测相对实测偏差约 $0.2\%$，是博客标题里 *Extrapolate 300 Past the Fit* 的具体口径（外推到拟合所用最大 compute 的约 300 倍）。同一博客还提到 attempt 1 在一批重复文本 batch 上出现 spike，按 grad_norm 阈值跳过 bad steps 后缓解，是 fix 链路上的一环而非独立机制。
+Open Athena / Marin 的 Delphi 博客 [*Scaling Laws That Extrapolate 300 Past the Fit*](https://openathena.ai/blog/delphi) 给出 fix 之后的结果：把 optimizer 从 Cautious AdamC 换成 AdamH（Adam with Hyperball——按 Frobenius 范数把权重重新缩放到当前 $\|W\|_F$ 球面上，等价于把 weight decay 从超参搜索里拿掉），并把 LR scaling 从 $\sqrt{\mathrm{batch}}$ 改成 token-horizon $(T_0/T)^{0.3}$ 形式。在这套 fix 下， $10^{21}$、 $10^{22}$、 $10^{23}$ 三档 held-out 预测全部落在 observed Paloma macro loss 的 $\sim 0.5\%$ 误差带内；其中 $10^{23}$、25B 参数、600B tokens 的预注册预测相对实测偏差约 $0.2\%$，是博客标题里 *Extrapolate 300 Past the Fit* 的具体口径（外推到拟合所用最大 compute 的约 300 倍）。同一博客还提到 attempt 1 在一批重复文本 batch 上出现 spike，按 grad_norm 阈值跳过 bad steps 后缓解，是 fix 链路上的一环而非独立机制。
 
 Volkova et al. [Towards Robust Scaling Laws for Optimizers, arXiv:2602.07712](https://arxiv.org/abs/2602.07712) 处理同一类问题的另一面：论文指出 per-optimizer 直接拟合 Chinchilla-style scaling law 是 ill-conditioned 的、拟合参数高度相关，因此改用“共享 power-law exponents + optimizer-specific rescaling factors”，并在 AdamW、Muon、Scion、Shampoo、SOAP 五种 optimizer、两种架构上验证。
 
@@ -1397,7 +1397,7 @@ Muon 在大模型上的稳定性补丁是 MuonClip，由 Kimi K2 引入：在 at
 
 $\Theta(1)$ 表示数值随 width 增长仍处于常数量级，既不发散也不趋近于零。A1 控制前向信号，A2 控制一步更新对模型函数的影响。
 
-先用线性层说明 A1。令 $h_{l-1}\in\mathbb R^{n_{l-1}}$、$h_l\in\mathbb R^{n_l}$，权重矩阵 $W_l\in\mathbb R^{n_l\times n_{l-1}}$：
+先用线性层说明 A1。令 $h_{l-1}\in\mathbb R^{n_{l-1}}$、 $h_l\in\mathbb R^{n_l}$，权重矩阵 $W_l\in\mathbb R^{n_l\times n_{l-1}}$：
 
 $$
 h_l = W_l h_{l-1}
@@ -1421,7 +1421,7 @@ $$
 \|W_l\|_* \approx \sigma_l(\sqrt{n_{l-1}} + \sqrt{n_l})
 $$
 
-若 $h_{l-1}$ 的每个坐标是 $\Theta(1)$，则 $\|h_{l-1}\|_2=\Theta(\sqrt{n_{l-1}})$。A1 要求输出范数为 $\Theta(\sqrt{n_l})$，因此需要让 $\|W_l\|_*=\Theta(\sqrt{n_l/n_{l-1}})$。对应图 8.6-40 中的初始化标准差：
+若 $h_{l-1}$ 的每个坐标是 $\Theta(1)$，则 $\lVert h_{l-1}\rVert_2=\Theta(\sqrt{n_{l-1}})$。A1 要求输出范数为 $\Theta(\sqrt{n_l})$，因此需要让 $\lVert W_l\rVert_*=\Theta(\sqrt{n_l/n_{l-1}})$。对应图 8.6-40 中的初始化标准差：
 
 $$
 \sigma_l=\Theta\!\left(
@@ -1450,7 +1450,7 @@ $$
 \|\Delta W_l\|_* \sqrt{n_{l-1}} = \Theta(\sqrt{n_l})
 $$
 
-这就是 learning-rate scaling 的来源。把 $\|\Delta W_l\|_* = \eta_l \|g_l\| \|h_{l-1}\|$（Adam 把 $\|g_l/\sqrt{v_l}\|_2$ 量级记为 $\|g_l\|$ 同样适用），代入 $\|g_l\| = \Theta(\sqrt{n_l})$、$\|h_{l-1}\| = \Theta(\sqrt{n_{l-1}})$，解 $\eta_l \sqrt{n_l n_{l-1}} = \Theta(\sqrt{n_l/n_{l-1}})$ 得到 $\eta_l = \Theta(1/n_{l-1})$。因此图 8.6-40 的简化线性层里，Adam 对 hidden matrix 的 learning-rate factor 是 $1/n_{l-1}$；Tensor Programs V（[arXiv:2203.03466](https://arxiv.org/abs/2203.03466) §4 Table 3）给出的完整规则区分 hidden weight 与 output weight：Adam 对 hidden matrix 与 output matrix 均为 $1/n_{l-1}$，而 SGD 的对应项不同——hidden matrix 是 $\Theta(1)$，只有 output matrix 是 $1/n_{l-1}$。相邻层等宽时退化为常见的 $1/n$，与 Tensor Programs V §B.1 给出的 Transformer 实施规则一致。标准参数化在同一张表里的对应项是初始化标准差 $\Theta(1/\sqrt{n_{l-1}})$ 、learning rate $\Theta(1)$ ；两者差别集中在 per-parameter LR 缩放以及 fan-out 小于 fan-in 时的初始化项。具体规则取决于 optimizer 和参数类型；Transformer 的 embedding、attention / MLP matrices、output head、bias 与 norm 参数需要分别处理。
+这就是 learning-rate scaling 的来源。把 $\lVert\Delta W_l\rVert_* = \eta_l \|g_l\| \|h_{l-1}\|$（Adam 把 $\lVert g_l/\sqrt{v_l}\rVert_2$ 量级记为 $\|g_l\|$ 同样适用），代入 $\|g_l\| = \Theta(\sqrt{n_l})$、 $\|h_{l-1}\| = \Theta(\sqrt{n_{l-1}})$，解 $\eta_l \sqrt{n_l n_{l-1}} = \Theta(\sqrt{n_l/n_{l-1}})$ 得到 $\eta_l = \Theta(1/n_{l-1})$。因此图 8.6-40 的简化线性层里，Adam 对 hidden matrix 的 learning-rate factor 是 $1/n_{l-1}$；Tensor Programs V（[arXiv:2203.03466](https://arxiv.org/abs/2203.03466) §4 Table 3）给出的完整规则区分 hidden weight 与 output weight：Adam 对 hidden matrix 与 output matrix 均为 $1/n_{l-1}$，而 SGD 的对应项不同——hidden matrix 是 $\Theta(1)$，只有 output matrix 是 $1/n_{l-1}$。相邻层等宽时退化为常见的 $1/n$，与 Tensor Programs V §B.1 给出的 Transformer 实施规则一致。标准参数化在同一张表里的对应项是初始化标准差 $\Theta(1/\sqrt{n_{l-1}})$ 、learning rate $\Theta(1)$ ；两者差别集中在 per-parameter LR 缩放以及 fan-out 小于 fan-in 时的初始化项。具体规则取决于 optimizer 和参数类型；Transformer 的 embedding、attention / MLP matrices、output head、bias 与 norm 参数需要分别处理。
 
 ![图 8.6-40 muP mini recap](images/8-6-40-mup-mini-recap.png)
 

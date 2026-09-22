@@ -34,7 +34,7 @@ $$
 G_{W_2}[j,k] = \sum_i h_1[i,j] \cdot G_{h_2}[i,k] \quad \Longrightarrow \quad G_{W_2} = h_1^{\mathrm{T}} G_{h_2} .
 $$
 
-形状验证：$h_1^{\mathrm{T}}$ 为 $(D, B)$，$G_{h_2}$ 为 $(B, K)$，相乘得 $(D, K)$，与 `w2.grad` 一致。FLOPs $= 2 B D K$。
+形状验证： $h_1^{\mathrm{T}}$ 为 $(D, B)$， $G_{h_2}$ 为 $(B, K)$，相乘得 $(D, K)$，与 `w2.grad` 一致。FLOPs $= 2 B D K$。
 
 ## §A.3 `h1.grad`
 
@@ -50,7 +50,7 @@ $$
 G_{h_1}[i,j] = \sum_k G_{h_2}[i,k] \cdot W_2[j,k] \quad \Longrightarrow \quad G_{h_1} = G_{h_2} W_2^{\mathrm{T}} .
 $$
 
-形状验证：$G_{h_2}$ 为 $(B, K)$，$W_2^{\mathrm{T}}$ 为 $(K, D)$，相乘得 $(B, D)$，与 `h1.grad` 一致。FLOPs $= 2 B D K$，与 `h1 @ w2` 前向相同。
+形状验证： $G_{h_2}$ 为 $(B, K)$， $W_2^{\mathrm{T}}$ 为 $(K, D)$，相乘得 $(B, D)$，与 `h1.grad` 一致。FLOPs $= 2 B D K$，与 `h1 @ w2` 前向相同。
 
 ## §A.4 `w1.grad`
 
@@ -60,7 +60,7 @@ $$
 G_{W_1} = x^{\mathrm{T}} G_{h_1} .
 $$
 
-形状验证：$x^{\mathrm{T}}$ 为 $(D, B)$，$G_{h_1}$ 为 $(B, D)$，相乘得 $(D, D)$，与 `w1.grad` 一致。FLOPs $= 2 B D D$。
+形状验证： $x^{\mathrm{T}}$ 为 $(D, B)$， $G_{h_1}$ 为 $(B, D)$，相乘得 $(D, D)$，与 `w1.grad` 一致。FLOPs $= 2 B D D$。
 
 ## §A.5 统一形式
 

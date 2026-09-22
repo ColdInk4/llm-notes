@@ -260,7 +260,7 @@ Qwen3-VL 的公理起点是 Qwen2-VL 留下的两个瓶颈：(1) MRoPE 在 embed
 
 - **模型规格**：dense 2B / 4B / 8B / 32B 与 MoE 30B-A3B / 235B-A22B 两组；视觉侧与 LM 同时放大，验证 §14.3 NOTE「视觉 / 语言侧规模差」这一判断随模型代数在逐步收窄。
 
-- **Loss normalization**：采用 **square-root-normalized per-token loss**——按 $\sqrt{T_i}$ 归一化（$T_i$ 是样本 $i$ 的 token 数），避免视频样本因 token 数远大于图文样本而主导梯度。这一项属于工程上对长视频样本梯度权重的折中：纯按 token 归一化会让长视频被低估，纯按样本归一化又会反过来让它主导；sqrt 中和了这两个极端。
+- **Loss normalization**：采用 **square-root-normalized per-token loss**——按 $\sqrt{T_i}$ 归一化（ $T_i$ 是样本 $i$ 的 token 数），避免视频样本因 token 数远大于图文样本而主导梯度。这一项属于工程上对长视频样本梯度权重的折中：纯按 token 归一化会让长视频被低估，纯按样本归一化又会反过来让它主导；sqrt 中和了这两个极端。
 
 - **DeepStack 视觉融合**：在多个 Transformer 层注入视觉特征，而不只在 adapter 输出层；具体做法是把视觉 token 切成 N 组，按从底到顶的顺序对应注入 LLM 的 N 个 transformer 层，让视觉信号在不同深度与文本 token 反复混合（[DeepStack, arXiv:2406.04334](https://arxiv.org/abs/2406.04334)）。相对「只在第一层注入」的设计，DeepStack 提升了高分辨率 OCR、文档问答与细粒度对齐的得分，代价是额外的前向路径与显存峰值。
 

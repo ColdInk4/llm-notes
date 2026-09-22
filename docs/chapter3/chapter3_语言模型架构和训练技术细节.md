@@ -1189,7 +1189,7 @@ $$
 **总损失函数**：
 
 $$
-\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{cross-entropy}} + \lambda \cdot \log^2 Z
+\mathcal L_{\text{total}} = \mathcal L_{\text{cross-entropy}} + \lambda \cdot \log^2 Z
 $$
 
 它的目的是让 softmax 归一化器保持在良好的区间内。当 $Z$ 接近 1（即 $\log Z$ 接近 0）时，可以认为 softmax 处于较稳定状态。PaLM 之后，Baichuan 2、DCLM、OLMo 2、OLMo 3 等模型也在输出 softmax 上加了 z-loss，其中 OLMo 2 的架构表把 z-loss 权重列为 $10^{-5}$。z-loss 控制输出层 softmax 的归一化项，QK norm 和 soft-capping 则控制 attention softmax 的输入或范围。

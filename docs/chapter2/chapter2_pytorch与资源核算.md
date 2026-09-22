@@ -734,7 +734,7 @@ actual_flop_per_sec = actual_num_flops / actual_time  # 实际每秒能完成多
 promised_flop_per_sec = get_promised_flop_per_sec(x.dtype)  # 获取硬件的理论峰值性能
 ```
 
-`get_promised_flop_per_sec(dtype)` 根据当前设备和 dtype 返回理论峰值，用于把 FLOPs 账本转换成训练时间和 MFU 估算。具体硬件规格应以对应 GPU 的官方产品页为准。
+`get_promised_flop_per_sec(dtype)` 根据当前设备和 dtype 返回理论峰值，用于把 FLOPs 账本转换成训练时间和 MFU 估算。
 
 这个 helper 体现的是一个实用工程习惯：同样的 FLOPs 公式可以复用，但换到不同代际 GPU 时，峰值算力、带宽和低精度路径都要重新代入。
 
@@ -870,12 +870,12 @@ $$
 F_{\text{backward}} = BK + 2 B D K + 2 B D K + 2 B D D = BK + 4 B D K + 2 B D D .
 $$
 
-$BK$ 是损失对最后一层输出的 element-wise 偏导项，相对 $4 B D K$ 是 $O(1/D)$ 量级小量（$D = 32768$ 时约 $7.6 \times 10^{-6}$），粗账直接写成 $F_{\text{backward}} \approx 4 B D K + 2 B D D$ 即可。
+$BK$ 是损失对最后一层输出的 element-wise 偏导项，相对 $4 B D K$ 是 $O(1/D)$ 量级小量（ $D = 32768$ 时约 $7.6 \times 10^{-6}$），粗账直接写成 $F_{\text{backward}} \approx 4 B D K + 2 B D D$ 即可。
 
 本例 $N_{\text{param}} = D^2 + D K$。把前向与反向合并：
 
 $$
-F_{\text{step}} = F_{\text{forward}} + F_{\text{backward}} = \underbrace{2 B N_{\text{param}}}_{\text{forward}} + \underbrace{4 B N_{\text{param}}}_{\text{backward}} = 6 B N_{\text{param}} .
+F_{\text{step}} = F_{\text{forward}} + F_{\text{backward}} = 2 B N_{\text{param}} + 4 B N_{\text{param}} = 6 B N_{\text{param}} .
 $$
 
 其中反向是前向的 2 倍，写成每 token $6 N_{\text{param}}$ FLOPs。这一 per-token 公式与 Kaplan 2020 / Chinchilla 2022 等论文给出的 LM 训练 FLOPs 估算一致（详见章节末来源记录）；沿 step 数 $S$ 求和得整段训练的总 FLOPs $\approx 6 N_{\text{param}} \cdot N_{\text{token}}$，与 §2.1.1 的 $F_{\text{total}} \approx 6 N_{\text{param}} N_{\text{token}}$ 一致。
@@ -904,7 +904,7 @@ nn.Parameter 是 torch.Tensor 的子类，因此它“表现得像一个张量�
 x = nn.Parameter(torch.randn(input_dim)) # 输入向量
 output = x @ w # 输出向量
 ```
-当输入与权重都用 `torch.randn`（即 `x_j ~ N(0,1)`、`W_{ij} ~ N(0,1)`）独立采样时，$y_i = \sum_j W_{ij} x_j$ 的方差满足 $\mathrm{Var}(y_i) = \sum_j \mathrm{Var}(W_{ij})\mathrm{Var}(x_j) = n$（[Goodfellow et al. *Deep Learning* §8.4 Parameter Initialization Strategies](https://www.deeplearningbook.org/contents/optimization.html)），所以 `output` 的标准差为 $\sqrt{n} = \sqrt{\text{input\_dim}}$。例如 `input_dim = 16384` 时 `output` 标准差约为 128，远大于 `x` 的标准差 1，会逐层放大导致梯度爆炸（gradient explosion），使训练过程变得极不稳定，甚至无法收敛。
+当输入与权重都用 `torch.randn`（即 `x_j ~ N(0,1)`、`W_{ij} ~ N(0,1)`）独立采样时， $y_i = \sum_j W_{ij} x_j$ 的方差满足 $\mathrm{Var}(y_i) = \sum_j \mathrm{Var}(W_{ij})\mathrm{Var}(x_j) = n$（[Goodfellow et al. *Deep Learning* §8.4 Parameter Initialization Strategies](https://www.deeplearningbook.org/contents/optimization.html)），所以 `output` 的标准差为 $\sqrt{n} = \sqrt{\text{input\_dim}}$。例如 `input_dim = 16384` 时 `output` 标准差约为 128，远大于 `x` 的标准差 1，会逐层放大导致梯度爆炸（gradient explosion），使训练过程变得极不稳定，甚至无法收敛。
 
 为了克服这个问题，需要一种对输入维度 `input_dim` 不敏感的初始化方法。CS336 代码讲义采用按 fan-in 缩放：权重除以输入维度的平方根 $\sqrt{d_{\text{in}}}$ ，把 $\mathrm{Var}(y_i)$ 拉回 $O(1)$ 。这里的 $d_{\text{in}}$ 对应代码里的 `input_dim`。
 
@@ -1229,8 +1229,8 @@ total_memory = 4 * (num_parameters + num_activations + num_gradients + num_optim
 
 若层数记为 $L$（代码里对应 `num_layers`），则：
 
-- 参数数量：$(D \times D \times L) + D$
-- Activation 数量：$B \times D \times L$（每个 micro-batch、每个样本、每层都需要保存 activation）
+- 参数数量： $(D \times D \times L) + D$
+- Activation 数量： $B \times D \times L$（每个 micro-batch、每个样本、每层都需要保存 activation）
 - 梯度数量：num_parameters
 - 优化器状态数量：num_parameters
 
@@ -1438,7 +1438,7 @@ class CruncherCheckpointed(nn.Module):
 
 ## 本章总结与下章衔接
 
-本章围绕四张资源账本展开：tensor 的 shape / dtype / device 与 stride、$6 \times N_{\text{data}} \times N_{\text{param}}$ 量级的 FLOPs、activation + optimizer state + gradient + parameter 的显存组合、以及 roofline 上的 arithmetic intensity / MFU。PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通：换硬件（A100 / H100 / B200）或换精度（fp32 / bf16 / fp16 / fp8）时只需替换峰值数字，账本形状不变。[第 9 章 §9.2 Arithmetic Intensity：为什么 generation 常常 memory-bound](../chapter9/chapter9_推理系统.md) 把同一套算术强度与带宽账本搬到推理侧，用来解释 decode 阶段为什么受 KV cache 读取带宽支配。
+本章围绕四张资源账本展开：tensor 的 shape / dtype / device 与 stride、 $6 \times N_{\text{data}} \times N_{\text{param}}$ 量级的 FLOPs、activation + optimizer state + gradient + parameter 的显存组合、以及 roofline 上的 arithmetic intensity / MFU。PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通：换硬件（A100 / H100 / B200）或换精度（fp32 / bf16 / fp16 / fp8）时只需替换峰值数字，账本形状不变。[第 9 章 §9.2 Arithmetic Intensity：为什么 generation 常常 memory-bound](../chapter9/chapter9_推理系统.md) 把同一套算术强度与带宽账本搬到推理侧，用来解释 decode 阶段为什么受 KV cache 读取带宽支配。
 
 下章进入 [第 3 章 语言模型架构和训练的技术细节](../chapter3/chapter3_语言模型架构和训练技术细节.md)：把 token 和算力账本当作输入侧准备之后，第 3 章讨论现代 dense decoder 的默认骨架（Pre-norm / RMSNorm / no bias / SwiGLU / RoPE / GQA / MLA / CLA）、attention 替代和训练稳定性。
 
@@ -1457,9 +1457,9 @@ class CruncherCheckpointed(nn.Module):
 - [LLaMA, arXiv:2302.13971](https://arxiv.org/abs/2302.13971) Table 1：预训练数据各子集磁盘大小，查阅日期 2026-09-03。
 - [PyTorch AMP 文档](https://pytorch.org/docs/stable/amp.html)、[PyTorch `nn.init` 文档](https://docs.pytorch.org/docs/stable/nn.init.html)、NVIDIA Transformer Engine / FP8-LM 相关资料。
 - [PyTorch `torch/optim/optimizer.py`](https://github.com/pytorch/pytorch/blob/main/torch/optim/optimizer.py)：`def zero_grad(self, set_to_none: bool = True)`，查阅日期 2026-09-04。
-- [Kaplan et al. 2020, *Scaling Laws for Neural Language Models*, arXiv:2001.08361](https://arxiv.org/abs/2001.08361)：§2.1 "Parameter and Compute Scaling of Transformers" 一段写 "Accounting for the backwards pass (approximately twice the compute as the forwards pass), we then define the estimated non-embedding compute as $C \approx 6N$ floating point operators per training token"，并把总训练 compute 写成 $C_{\min} \equiv 6 N B_{\text{crit}} S$（$N$ 非 embedding 参数量、$B$ batch size、$S$ step 数，$BS$ 即总 token 数 $N_{\text{token}}$）；§2.4.3 的 $6 \times N_{\text{param}} \times N_{\text{token}}$ 公式以此为最早出处，查阅日期 2026-09-14。
-- [Hoffmann et al. 2022 (Chinchilla), *Training Compute-Optimal Large Language Models*, arXiv:2203.15556](https://arxiv.org/abs/2203.15556)：§3 "Loss and compute scaling" 段直接写 "minimizing the parametric loss $\hat{L}$ under the constraint $\mathrm{FLOPs}(N,D) \approx 6ND$ ([Kaplan et al., 2020](https://arxiv.org/abs/2001.08361))"，与 Kaplan 2020 的 $6NBS$ 口径一致（$D = BS = N_{\text{token}}$），查阅日期 2026-09-14。
-- [Austin et al., *How to Scale Your Model*, "All the Transformer Math You Need to Know"](https://jax-ml.github.io/scaling-book/transformers)：Jacob Austin, Sholto Douglas, Roy Frostig, Anselm Levskaya, Charlie Chen, Sharad Vikram, Federico Lebron, Peter Choy, Vinay Ramasesh, Albert Webson, Reiner Pope（Reiner Pope 现已离开 Google DeepMind 加入 MatX），Google DeepMind，2025-02-04 发布；页内 "Forward and reverse FLOPs" 一节把每层训练 FLOPs 写成前向 $2NPM$ + 反向 $4NPM = 6NPM$（$N$ batch 维度、$P$ 输入维度、$M$ 输出维度），其中反向拆为 $dL/dB$ 的 $2NPM$ 与 $dL/dA$ 的 $2NPM$，§2.4.3 按层链式法则展开采用的记号即来自该页，查阅日期 2026-09-14。
+- [Kaplan et al. 2020, *Scaling Laws for Neural Language Models*, arXiv:2001.08361](https://arxiv.org/abs/2001.08361)：§2.1 "Parameter and Compute Scaling of Transformers" 一段写 "Accounting for the backwards pass (approximately twice the compute as the forwards pass), we then define the estimated non-embedding compute as $C \approx 6N$ floating point operators per training token"，并把总训练 compute 写成 $C_{\min} \equiv 6 N B_{\text{crit}} S$（ $N$ 非 embedding 参数量、 $B$ batch size、 $S$ step 数， $BS$ 即总 token 数 $N_{\text{token}}$）；§2.4.3 的 $6 \times N_{\text{param}} \times N_{\text{token}}$ 公式以此为最早出处，查阅日期 2026-09-14。
+- [Hoffmann et al. 2022 (Chinchilla), *Training Compute-Optimal Large Language Models*, arXiv:2203.15556](https://arxiv.org/abs/2203.15556)：§3 "Loss and compute scaling" 段直接写 "minimizing the parametric loss $\hat{L}$ under the constraint $\mathrm{FLOPs}(N,D) \approx 6ND$ ([Kaplan et al., 2020](https://arxiv.org/abs/2001.08361))"，与 Kaplan 2020 的 $6NBS$ 口径一致（ $D = BS = N_{\text{token}}$），查阅日期 2026-09-14。
+- [Austin et al., *How to Scale Your Model*, "All the Transformer Math You Need to Know"](https://jax-ml.github.io/scaling-book/transformers)：Jacob Austin, Sholto Douglas, Roy Frostig, Anselm Levskaya, Charlie Chen, Sharad Vikram, Federico Lebron, Peter Choy, Vinay Ramasesh, Albert Webson, Reiner Pope（Reiner Pope 现已离开 Google DeepMind 加入 MatX），Google DeepMind，2025-02-04 发布；页内 "Forward and reverse FLOPs" 一节把每层训练 FLOPs 写成前向 $2NPM$ + 反向 $4NPM = 6NPM$（ $N$ batch 维度、 $P$ 输入维度、 $M$ 输出维度），其中反向拆为 $dL/dB$ 的 $2NPM$ 与 $dL/dA$ 的 $2NPM$，§2.4.3 按层链式法则展开采用的记号即来自该页，查阅日期 2026-09-14。
 
 ## 参考文献
 

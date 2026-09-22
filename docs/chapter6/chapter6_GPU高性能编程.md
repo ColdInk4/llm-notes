@@ -21,7 +21,7 @@ GPU 高性能编程先从一条可复用的排查链开始：
 
 $$T_{\text{kernel}} = \max\!\left( T_{\text{memory}},\; T_{\text{compute}} \right) + T_{\text{launch}} + T_{\text{sync}}$$
 
-其中 $T_{\text{memory}}$ 是 HBM / shared memory / register 三级存储的访存上限，$T_{\text{compute}}$ 是 Tensor Core 与 CUDA core 的算术上限，$T_{\text{launch}}$ 是 host 端 launch 开销（与算子复杂度无关），$T_{\text{sync}}$ 是 block / grid 之间的同步开销。benchmark 固定输入形状与 warm-up 后测端到端时间，profiler 将时间拆回具体 kernel，Triton / PTX 实验再检验线程映射、向量化和内存复用是否改变瓶颈；因此每个优化结论都绑定到测量变量和适用 workload。
+其中 $T_{\text{memory}}$ 是 HBM / shared memory / register 三级存储的访存上限， $T_{\text{compute}}$ 是 Tensor Core 与 CUDA core 的算术上限， $T_{\text{launch}}$ 是 host 端 launch 开销（与算子复杂度无关）， $T_{\text{sync}}$ 是 block / grid 之间的同步开销。benchmark 固定输入形状与 warm-up 后测端到端时间，profiler 将时间拆回具体 kernel，Triton / PTX 实验再检验线程映射、向量化和内存复用是否改变瓶颈；因此每个优化结论都绑定到测量变量和适用 workload。
 
 > [!IMPORTANT]
 > 上述公式是 roofline 的标准结构：kernel 实际性能不会超过 $\max(T_{\text{memory}}, T_{\text{compute}})$ 这条上界，下界由 $T_{\text{launch}} + T_{\text{sync}}$ 给出。判断一个 kernel 是 memory-bound 还是 compute-bound，等价于比较 $T_{\text{memory}}$ 与 $T_{\text{compute}}$ 谁占优——这正是 §6.1 末尾「算术强度」段的物理意义。
@@ -82,7 +82,7 @@ Registers 局部性最强，shared memory 适合一个 thread block 内协作，
 > [!NOTE]
 > Hopper 与 Blackwell 在 memory hierarchy 上各加了一层上表没有列出的资源，对默认编程模型（CUDA C++、Triton、TorchInductor）不可见：
 >
-> - **Tensor Memory（TMEM，Blackwell 数据中心型号 B200 / GB200）**：在 Tensor Core 旁新增的张量专用内存，位于 register 与 shared memory 之间，`tcgen05.mma` 的累加器可以直接驻留其上。TMEM 256 KB/SM、按 128 lane × 512 column 的 32-bit 单元组织（$128 \times 512 \times 4\ \text{B} = 256\ \text{KB}$）；CUDA C++ 与 Triton 路径下编译器自动管理，写 PTX 时 alloc / dealloc 指令才直接暴露给程序员。
+> - **Tensor Memory（TMEM，Blackwell 数据中心型号 B200 / GB200）**：在 Tensor Core 旁新增的张量专用内存，位于 register 与 shared memory 之间，`tcgen05.mma` 的累加器可以直接驻留其上。TMEM 256 KB/SM、按 128 lane × 512 column 的 32-bit 单元组织（ $128 \times 512 \times 4\ \text{B} = 256\ \text{KB}$）；CUDA C++ 与 Triton 路径下编译器自动管理，写 PTX 时 alloc / dealloc 指令才直接暴露给程序员。
 > - **Thread Block Cluster（Hopper 引入，Blackwell 沿用）**：把多个 thread block 编为一个 cluster，cluster 内 block 可跨 SM 直接访问彼此的 distributed shared memory；Hopper 的 portable cluster size 最多 8 个 SM，Blackwell 在显式设置 `cudaFuncAttributeNonPortableClusterSizeAllowed` 后可扩展到 16 个 SM。CUDA C++ 与 Triton 路径下编译器与库自动使用，写 PTX 时 cluster 指令直接暴露给程序员。
 >
 > 本章后续讨论的算子写法不依赖这两层资源；它们对 Hopper / Blackwell 的最优性能至关重要，但属于 kernel-level 优化的延伸话题，超出本章主线。
@@ -135,9 +135,9 @@ Bank conflict 常出现在 tile 被写入 shared memory 后又按另一种方向
 
 $$I = \frac{\text{FLOPs}}{\text{bytes}}$$
 
-它是 roofline 模型的核心变量。当 $I > I_{\text{ridge}} = \text{peak FLOP/s} / \text{peak bandwidth}$ 时，kernel 是 compute-bound，$T_{\text{compute}}$ 主导 wall-clock；当 $I < I_{\text{ridge}}$ 时是 memory-bound，$T_{\text{memory}}$ 主导。
+它是 roofline 模型的核心变量。当 $I > I_{\text{ridge}} = \text{peak FLOP/s} / \text{peak bandwidth}$ 时，kernel 是 compute-bound， $T_{\text{compute}}$ 主导 wall-clock；当 $I < I_{\text{ridge}}$ 时是 memory-bound， $T_{\text{memory}}$ 主导。
 
-按这一判据：逐元素 GeLU、ReLU、加法通常 $I$ 极低（每元素 1 FLOP 左右、4 B 读写），容易被 HBM 往返和 kernel launch 限制；matmul 通过 tile 复用可以把 $I$ 提高到与 tile size 相关——tile 越大，每个 HBM 读入的字节服务更多乘加，$I$ 越高，向 compute-bound 边界靠拢。这是为什么 §6.5 的 matmul tiling 直接决定了算子落到 roofline 的哪个象限。
+按这一判据：逐元素 GeLU、ReLU、加法通常 $I$ 极低（每元素 1 FLOP 左右、4 B 读写），容易被 HBM 往返和 kernel launch 限制；matmul 通过 tile 复用可以把 $I$ 提高到与 tile size 相关——tile 越大，每个 HBM 读入的字节服务更多乘加， $I$ 越高，向 compute-bound 边界靠拢。这是为什么 §6.5 的 matmul tiling 直接决定了算子落到 roofline 的哪个象限。
 
 ## 6.2 Benchmark 和 profiler 的工作流
 
@@ -200,9 +200,9 @@ for dim in [256, 512, 1024, 2048, 4096, 8192]:
 
 $$T(N) = T_{\text{launch}} + T_{\text{dispatch}} + c \cdot N^3$$
 
-$T_{\text{launch}}$ 是 CPU 端 kernel launch 开销（与算子复杂度无关，约几 μs 量级），$T_{\text{dispatch}}$ 是 cuBLAS heuristic / kernel 选择与第一次调度的固定开销，$c$ 是与算子实现、SM 数、Tensor Core 利用率相关的常数。当 $N^3$ 小时（如 $N = 256$），$T_{\text{launch}} + T_{\text{dispatch}}$ 占主导，$T(N) \approx T_{\text{launch}}$；当 $N^3$ 充分大（如 $N = 8192$），$c \cdot N^3$ 占主导，曲线逼近三次方。
+$T_{\text{launch}}$ 是 CPU 端 kernel launch 开销（与算子复杂度无关，约几 μs 量级）， $T_{\text{dispatch}}$ 是 cuBLAS heuristic / kernel 选择与第一次调度的固定开销， $c$ 是与算子实现、SM 数、Tensor Core 利用率相关的常数。当 $N^3$ 小时（如 $N = 256$）， $T_{\text{launch}} + T_{\text{dispatch}}$ 占主导， $T(N) \approx T_{\text{launch}}$；当 $N^3$ 充分大（如 $N = 8192$）， $c \cdot N^3$ 占主导，曲线逼近三次方。
 
-尺寸变大后，$T_{\text{launch}}$ 占比迅速衰减，$T(N)$ 的斜率逐步与 $c \cdot N^3$ 的导数对齐。表 6.3 的 $0.59\text{ms} \to 17.6\text{ms}$ 跨越约 30 倍，与 $N$ 从 $256$ 增到 $8192$（尺寸 ×32）对应的 $(8192/256)^3 = 32^3 = 32768$ 倍理论放大相比，实际只放大约 30 倍——这意味着大尺寸下 cuBLAS 的 kernel 利用率受限于 HBM 带宽与 SM 数，已接近 $T_{\text{memory}}$ 的 roofline 上界（详见 §6.1 末段）。Benchmark 给出真实机器上的拐点，把 $N^3$ 的复杂度公式落到具体硬件常量上。
+尺寸变大后， $T_{\text{launch}}$ 占比迅速衰减， $T(N)$ 的斜率逐步与 $c \cdot N^3$ 的导数对齐。表 6.3 的 $0.59\text{ms} \to 17.6\text{ms}$ 跨越约 30 倍，与 $N$ 从 $256$ 增到 $8192$（尺寸 ×32）对应的 $(8192/256)^3 = 32^3 = 32768$ 倍理论放大相比，实际只放大约 30 倍——这意味着大尺寸下 cuBLAS 的 kernel 利用率受限于 HBM 带宽与 SM 数，已接近 $T_{\text{memory}}$ 的 roofline 上界（详见 §6.1 末段）。Benchmark 给出真实机器上的拐点，把 $N^3$ 的复杂度公式落到具体硬件常量上。
 
 ### 6.2.2 Profiler 看到实际 kernel
 
@@ -456,7 +456,7 @@ GeLU 的 block 之间完全独立；softmax 的一行必须在一个 program 内
 
 图 6.5-1 右侧橙色块是当前输出 tile；为计算它，kernel 沿 $K$ 维读取左侧 $A$ 的行 tile 和中间 $B$ 的列 tile。紫色块表示外层 tile 扫描，绿色块表示内层元素乘加。tile 越大，每次 HBM 读入后能服务更多乘加，算术强度越高；tile 太大会增加 shared memory 和 register 压力，降低可驻留 block 数。
 
-Triton 版 matmul + ReLU 的 wrapper 先确定 $M$、$K$、$N$，再启动二维 grid。每个 program 对应 $C$ 的一个 $(\mathrm{BLOCK\_M}, \mathrm{BLOCK\_N})$ tile。
+Triton 版 matmul + ReLU 的 wrapper 先确定 $M$、 $K$、 $N$，再启动二维 grid。每个 program 对应 $C$ 的一个 $(\mathrm{BLOCK\_M}, \mathrm{BLOCK\_N})$ tile。
 
 ```python
 def triton_matmul_relu(a: torch.Tensor, b: torch.Tensor):
@@ -543,7 +543,7 @@ PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微�
 - 来源：本章以 CUTLASS 3.x 源码、Triton 文档、PTX ISA 与 NVIDIA H100/B200 datasheet 为主；`triton_gelu-ptx.txt` 等 PTX 一手输出物仅作可访问示例引用。
 - 硬件规格：[Blackwell Tuning Guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html) §1.4.1.1–1.4.2.3（register file 64K 32-bit registers/SM、max 255 registers/thread；portable cluster size 8 与 B200 的非 portable cluster size 16；shared memory CC 10.0 = 228 KB/SM carveout，max 227 KB/CTA），查阅日期 2026-09-05，状态：官方。
 - Tensor Memory：[CUDA PTX ISA — Tensor Memory](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#tensor-memory) 与 [Colfax Research Blackwell TMEM GEMM 教程](https://research.colfax-intl.com/cutlass-tutorial-writing-gemm-kernels-using-tensor-memory-for-nvidia-blackwell)（256 KB/SM、512 columns × 128 lanes × 32-bit = 65,536 × 4 B；`tcgen05.alloc` 与 `tcgen05.dealloc` 必须由同一个 warp 发起；读带宽 ~16 TB/s、写带宽 ~8 TB/s/SM），查阅日期 2026-09-05，状态：官方 + 社区实现说明。
-- Wave / tile quantization：[NVIDIA Matrix Multiplication Background User's Guide](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html)（$256 \times 128$ tile、A100 108 SM 的一波 tile 数），查阅日期 2026-09-05，状态：官方。
+- Wave / tile quantization：[NVIDIA Matrix Multiplication Background User's Guide](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html)（ $256 \times 128$ tile、A100 108 SM 的一波 tile 数），查阅日期 2026-09-05，状态：官方。
 - Fused softmax 访存账本：[Triton fused softmax 教程](https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html)（朴素实现总访存 $8MN + 4M$、理想 $2MN$、理论加速约 4 倍），查阅日期 2026-09-05，状态：官方文档。
 - 表 6.2 的 register bandwidth 为按 SM 数、时钟与寄存器端口宽度换算的量级估计，其余三级带宽取自各代 datasheet 公布值。
 - 参考：[`triton_gelu-ptx.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/triton_gelu-ptx.txt)；Triton 文档；PyTorch `torch.compile` 文档。
