@@ -52,7 +52,7 @@
 - 避免将代码风格标识符直接塞进公式，例如“把 `w1.grad` 包进数学环境”或“在 `\text{}` 里硬塞 snake_case 名字”。正文里用反引号写代码名，公式里改用数学记号，并在文字中说明二者对应关系。
 - GitHub Web 会禁用部分 LaTeX 宏，仓库公式里不要使用 `\operatorname{...}`；函数名优先写成 `\mathrm{...}`，或移到正文说明。
 - 若必须在 `\text{}`、`\mathrm{}` 等文本宏里写字面下划线，写成双反斜杠 `\\_`，例如 `$\sqrt{\text{input\\_dim}}$`。单反斜杠 `\_` 的反斜杠会被 markdown 转义处理吃掉，只留下裸 `_`，客户端渲染报 `'_' allowed only in math mode`；含其他 Markdown 冲突字符的表达式也可改用官方 dollar-backtick 形式 `` $`\sqrt{\text{input_dim}}`$ ``。
-- `\\_` 里的 `_` 前面是反斜杠（标点），构成 CommonMark left-flanking、可开启强调；同一段落若另有 `x_{...}` 型下标（right-flanking `_`），两个 `_` 跨公式配对、`<em>` 插入同时切碎两条公式。这一场景优先改写为无下划线的连字符形式（`fan-in`、`fan-out`），其次整体改用 dollar-backtick；`\\_` 只在同段没有 `_{` 下标时使用。
+- 标点紧跟 `_` 的写法里 `_` 构成 CommonMark left-flanking、可开启强调，已知两种形态：`\\_` 反斜杠前缀（如 `$\text{input\\_dim}$`）与 prime 下标撇号前缀（如 `$g'_{i,t}$`）。同一段落若另有 `x_{...}` 型下标（right-flanking `_`），两个 `_` 跨公式配对、`<em>` 插入同时切碎两条公式，GitHub 客户端对被切碎的公式报渲染错误。修法按形态选择：`\\_` 场景优先改写为无下划线的连字符形式（`fan-in`、`fan-out`），其次整体改用 dollar-backtick；prime 下标场景把 prime 后移为 `$g_{i,t}'$`，`_` 变为 close-only，段内无开者时所有下标公式字面保留，LaTeX 渲染结果不变。两种写法都在同段没有 `_{` 下标时才可保留原形。
 - 一句话里如果同时混有代码、多个行内公式和长中文说明，优先拆成两句；必要时把关键关系单独提成 display math，减少 GitHub 预览歧义。
 - **禁止在数学环境里塞 snake_case 标识符**（`num_tokens`、`max_seq_len`、`input_ids` 等）。正文中需要时改用数学记号 + 文字定义：「按 $\sqrt{T_i}$ 归一化（$T_i$ 是样本 $i$ 的 token 数）」，而不是「按 $\sqrt{\text{num\_tokens\_per\_sample}}$ 归一化」。
 
