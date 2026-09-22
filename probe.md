@@ -1,35 +1,49 @@
-# Math render probe
+# Math render probe 2 — E minimal repro
 
-## A caret-star display (ch1 pattern)
+## P1 bare subscript-lt display
 $$
-\begin{aligned}
-&(a^*, b^*) = \arg\max_{(a,b)} c(a,b) \\
-&v = a^\ast + b^\ast
-\end{aligned}
+x_{<t}
 $$
 
-## B text underscore single backslash (ch2 current)
-$\sqrt{\text{input\_dim}}$
+## P2 sum + lt
+$$
+\sum_{t=1}^{T} x_{<t}
+$$
 
-## C text underscore double backslash
-$\sqrt{\text{input\\_dim}}$
+## P3 log mid exact core
+$$
+\log p_\theta(x_t \mid x_{<t})
+$$
 
-## D official code-math form
-$`\sqrt{\text{input\_dim}}`$
+## P4 backslash-lt variant
+$$
+x_{\lt t}
+$$
 
-## E ch12 exact
+## P5 sum + backslash-lt
+$$
+\sum_{t=1}^{T} x_{\lt t}
+$$
+
+## P6 E exact
 $$
 \sum_{t=1}^{T} \log p_\theta(x_t \mid x_{<t})
 $$
 
-## F inline star
-ideal $\pi^*$ and $y^*$ pair
+## P7 inline ch11-exact
+perplexity $L=-\frac{1}{T}\sum_{t=1}^{T}\log p_\theta(x_t\mid x_{<t})$ here
 
-## G less-than forms
-$a < b$ and $i < 256$ and $x_{<t}$
+## P8 underscore text double backslash display
+$$
+\sqrt{\text{input\_dim}}
+$$
 
-## H operatorname
-$D = \operatorname{mix}(R)$
+## P9 operatorname -> mathrm
+$$
+D = \mathrm{mix}(R)
+$$
 
-## I inline caret-star two in one sentence
-pair $(a^*, b^*)$ wins and $y^*$ optimal
+## P10 nuclear norm star
+$$
+\lVert W_l\rVert_\ast = \Theta(\sqrt{n_l/n_{l-1}})
+$$
