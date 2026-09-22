@@ -22,7 +22,7 @@ AGENTS.md 是**流程规范**：回答前复核、修改前必读、审计循环
 
 ## 修改前必读
 
-- 每次修改任何文件前，**必须**先完成一次相关网络搜索（WebSearch + WebFetch），并阅读 `STYLE.md`，确认 Markdown、公式、图片、提示块、来源日期和文件命名约定。
+- 每次修改任何文件前，**必须**先完成一次相关网络搜索（WebSearch + WebFetch），并 `Read STYLE.md` 全文（覆盖 Markdown、公式、图片、提示块、来源日期、文件命名，以及修辞 / 格式 / 元叙述层约束），再 `Read AGENTS.md`「与 STYLE.md 的同步锚点」节刷新锚点。
 - 再阅读 `README.md`，理解仓库定位、阅读入口、章节组织方式和维护说明。
 - 修改具体章节前，先阅读目标文件及其相邻小节；如果章节末有来源记录，也要一起检查。
 - 修改 CS336 相关内容前，阅读 `sources/cs336-2026.md` 中对应 lecture、slides、video 和论文映射。
@@ -46,21 +46,13 @@ rg -n "读法|看这类图时|工程读法|这张图告诉我们|当作起点|�
 rg -n "这里使用.{1,30}(作为|当|来当|样例|为例)|本文采用|本文以.*为例|后续章节会|后文将|后文会|后面单独讨论|下一节会|下一节展开|下一节转到|不等于所有|不是说|并非主张|并不意味着|但愿不要|读者不要把本文|读者应以|本节以" <modified-markdown-files>
 ```
 
-抓作者选择、免责声明、写作计划承诺漏到正文。命中即下沉到章节末来源记录或改写为正向事实陈述（如「§5.8 单列 B200 / Blackwell 的差异」）。注意 `下一节展开` / `下一节转到` 也属写作计划承诺，不只 `后文会` / `后续章节会`。
+抓作者选择、免责声明、写作计划承诺漏到正文。命中即下沉到章节末来源记录或改写为正向事实陈述（如「§5.8 单列 B200 / Blackwell 的差异」）。注意 `下一节展开` / `下一节转到` 也属写作计划承诺，不只 `后文会` / `后续章节会`。audit finding 涉及作者声音穿帮时用 `author_voice_break` 字段报告（与 STYLE.md「修辞层规则」同步）。
 
 ### 3. 提示块类型合理性（与 STYLE.md「提示块」同步）
 
 如果改动涉及 alert 类型，对照 STYLE.md 的 5 种 alert 语义边界（NOTE / TIP / IMPORTANT / WARNING / CAUTION）核对用法是否合理——NOTE 不应承载作者声明或免责声明；IMPORTANT / WARNING / CAUTION 三档严格递进。
 
-讲义正文**不要**出现下列元叙述（与 STYLE.md「修辞层规则」对齐）：
-
-- "建议引用时直接查证 X"
-- "以 Y 为准 / 未经 X 验证"
-- "待 Y 披露后核对"
-- "本节以 X 为准 / 属讲师口误"
-- "这里使用 / 本文采用 / 后续章节会 / 后文将 / 不等于所有"
-
-这类语句把审稿过程带到读者面前，破坏讲义"按权威源直接陈述"的风格。**正确做法**：要么按权威源给出事实（数字 + 出处），要么省略该数据点；来源记录统一写章节末"来源与更新记录"或来源映射区，正文不写 disclaimer。
+元叙述与 disclaimer（审计元句、作者声音、写作计划承诺）的反例清单由自检 1「禁用句式 rg」与自检 2「作者声音 rg」覆盖，此处不重复列举。命中即改写：要么按权威源给出事实（数字 + 出处写章节末「来源与更新记录」或来源映射区），要么省略该数据点，正文不写 disclaimer。
 
 ### 4. GitHub 渲染安全 rg（与 STYLE.md「公式与排版」+「HTML」同步）
 
@@ -157,12 +149,12 @@ sub-agent 的审计主体是「通读全文 + 读本地 PNG + WebFetch 一手页
 | 1 / 6 | WebSearch ×5 + WebFetch ×5 | `search_query_1/2/3` 三字段不同关键词 |
 | 2 / 5 | Read 章节全文 + lecture_NN.py | 符号首次出现即定义 |
 | 3 | Read 本地 PNG | 核心图必读，不看 alt text |
-| 4 | rg 三类自检 | 禁用句式 / 作者声音 / 提示块 |
+| 4 | 修改后自检四类 rg | 禁用句式 / 作者声音 / 提示块 / 渲染安全 |
 | 5 / 7 | Read 相邻小节 + 跨章引用目标章节 | 跨章引用格式「第 N 章 §X.Y 章节标题」 |
 | 6 | 引用的别章 § 编号 + 章节号 | 与目标章原文核对 |
 | 1-7 | 当场 Edit + 回读上下 5 行 | sibling 自洽检查 |
 
-`introduced_by_commit` 字段是 fix verification 阶段的硬约束，跨章节 audit 必须用简化 schema（参见「工具使用经验」条目）。
+`introduced_by_commit` 字段是 fix verification 阶段的硬约束。
 
 ### 三阶段循环（盲查 / 求证 / 复核）
 
@@ -170,7 +162,7 @@ sub-agent 的审计主体是「通读全文 + 读本地 PNG + WebFetch 一手页
 - **求证阶段**——仅针对 `needs_web_check=true` 或 `tentative` 的 finding 联网核证；可按主题聚类用 8-10 个 agent 并行 WebFetch / WebSearch。无法被一手源支撑的 finding 必须降级或丢弃。
 - **复核阶段（fresh audit）**——从零重新读当前文件 + 对应课件 + 引用 PNG + 跨章节对照做 fresh audit，让每个章节独立得出 verdict；同样必须联网求证外部事实。这一轮最易发现前两轮漏掉的"原始事实"类错误（如 GPU 规格、KV cache 大小、样本数、vocab_size、训练 token 数）。**复核阶段不传盲查 finding 列表**，避免 anchoring bias。
 
-**审计 verdict 三档规范（推荐默认 schema）**：
+**审计 verdict 三档规范（默认 schema）**：
 
 - `confirmed` — 笔记对得上权威源，**没有问题**，**不报**
 - `refuted` — 笔记与权威源**直接冲突，是错的**，要修
@@ -226,8 +218,6 @@ logic_finding 只报 `refuted + tentative`，与 verdict 三档对齐。fix 阶�
 
 循环持续直到 `critical/high refuted 真错` 收敛到 0 条，且下一轮 fresh audit 独立 verdict 不再抓到新增 critical/high refuted。当两条标准同时满足、内容"逻辑自洽、出错符合各项要求"时停止。
 
-任何 sub-agent "建议加 X 链接 / 标注 Y 来源"，自己 commit 前用 WebFetch 实际核一次；sub-agent 写出来的参考文献可用率约 70%-80%。
-
 ## 引用与求证经验（高频幻觉模式）
 
 讲义正文出现 arXiv 编号、模型/硬件数字、benchmark 分数、版本号或日期时，**必须先 WebFetch 实际页面验证**，再写入。以下模式从多轮审计中沉淀，每条都对应真实发生过的错误：
@@ -248,10 +238,9 @@ logic_finding 只报 `refuted + tentative`，与 verdict 三档对齐。fix 阶�
   **修正方式**：保持所有数字 + 显式说明口径差异，不要强行二选一。
 - **per-SM vs per-GPU / dense vs with-sparsity 是 GPU 规格常见口径混淆**：A100 FP64 19.5 TFLOP/s 实际是 with-sparsity（dense 是 9.7）。**引用 GPU datasheet 时必须区分 dense / sparsity / per-SM / per-GPU 四个维度**，并在表头明确标注。
 - **教材级章节归属幻觉（sub-agent 凭印象扩写论文细节）**：RFT 写成 "Reinforcing Fine-Tuning" 而 DeepSeekMath §5.2.1 原文是 "Rejection Sampling Fine-tuning"；Dr. GRPO baseline 改成 leave-one-out（实际论文 §3.2 只删 std 与 1/|o_i| 两个分母）；R1 §2.3.1 冷启动写"温度 1.0 + DeepSeek-V3 精炼 + LLM 批量扩展"（实际论文 §2.3.1 列出的是 long CoT few-shot / 直接生成详细答案 / R1-Zero 输出整理 / 人工后处理 四种）。**对近期（≤ 2024）论文涉及实验细节的引述，必须读 PDF § 正文，不能凭 abstract 或课件 PPT 一句话扩写**。
-- **图意核对 sub-task 模板**（与 STYLE.md「图意核对」同步）：写作核心图时必须实际打开本地 PNG 核对图意，不能只看 alt text / 文件名 / 路径。checklist：(1) 子图标题 / 坐标轴 / 图例是否被正文正确转述；(2) 正文数字与图上标注是否一致；(3) 图说的「机制解释」是否能在图中找到对应视觉证据；(4) alt text / 图注 / 正文交叉引用是否使用同一个图号。
-- **删图判定**：两图承载同一份视觉信息（即使 SHA256 不同，如课件截图 vs 论文原图）即视为重复；保留论文原图、删课件截图（lecture 装饰元素属元叙述）；删图后必须按 STYLE 连号规则重排同节其他图号，并跑 `rg 图 N-x` 全仓库验证没有悬空引用。
+- **图意核对与删图判定**：核心图必须实际 `Read` 本地 PNG，按 STYLE.md「图意核对」4 项检查执行；删图判定、连号重排与 `rg 图 N-x` 悬空引用验证按 STYLE.md「图片」节执行（权威文本在 STYLE.md，此处不重复清单）。
 - **tokenization 实证数据必须实际跑 tokenizer**：写 `tiktoken` / `sentencepiece` / `transformers` 类的"X 字符串切成 N 个 token id"示例时，**必须实际运行一遍 tokenizer**，把真实 id 序列与每个 id 对应的字符串写进正文 / 图说。印象记忆几乎一定会写错：ch1 §1.1 图 1.1-2 描述「年份 1885 作为 4 位数字整体成为 id 13096」错误，tiktoken 实际切分是 `[93447 Stan, 9201 ford, 673 ` was`, 24303 ` founded`, 306 ` in`, 220 ` `, 13096 `188`, 20 `5`, 13 `.`]`，1885 是 3+1 位两段而非 4 位整体。**所有 tokenizer / BPE / 词表实证段必须以 `python3 -c "import tiktoken; ..."` 或 Jupyter notebook 实际输出为准**。
-- **fix verification round 抓到的 11 类反复错误**：每次 audit + fix 之后跑一轮 `fix verification` **全章扫描**（不是仅审本 commit 引入的行），下面 11 类反复出现：
+- **fix verification round 抓到的 12 类反复错误**：每次 audit + fix 之后跑一轮 `fix verification` **全章扫描**（不是仅审本 commit 引入的行），下面 12 类反复出现（4a / 4b 同属第 4 类）：
 
 | # | 类别 | 典型反例 | 检测方法 |
 |---|---|---|---|
@@ -266,10 +255,10 @@ logic_finding 只报 `refuted + tentative`，与 verdict 三档对齐。fix 阶�
 | 8 | **跨章引用缩写违规** | ch4 L112/537/547 写 `EP / ETP / EDP`，跨章引用应使用完整 H3 标题「第 N 章 §X.Y 章节标题」 | grep「ch[0-9]+」、「第 N 章 §」+ 缩写模式 |
 | 9 | **sub-agent 报告机制漏洞** | ch1 L288 教训：audit-fix agent 报告「改前/改后」时，notes 里的「旧值」可能是已经改过的最终值而不是 git HEAD 改前值 | prompt 强制 agent 在 notes 字段附「`git show <commit-hash>:<file>:<line>` 改前值」+「`git show HEAD:<file>:<line>` 改后值」 |
 | 10 | **结构性内容改动必读课程材料** | ch13 教训：agent 改了 80 行 PPO 详细推导（policy gradient → REINFORCE → TRPO → PPO-clip），但 transcript 显示 **0 次 Read lecture 抽文 / lecture_13.py**——agent 凭印象压缩，notes 写「Read ch12 §12.4 验证 PPO 推导已讲过」也是凭印象编的 | prompt 强制 agent 改结构性内容前必须 `Read` 课程材料，并把 read 路径写进 notes 字段「`lecture read: [路径列表]`」 |
-| 11 | **论证必走第一性原理（Aristotle 框架）** | 第一性原理 = 方法论（不是分类）。Aristotle 把 archai 定义为「**the first basis from which a thing is known**」（Metaphysics V.1，Bekker 1013a14–15）——认识的最初出发点，不可再向下推导的起点。三条审计要求：(1) **公理起点明确**——每段论证标注从哪个公理 / 公式 / 定理 / 物理约束推导过来；(2) **推导链完整**——从公理到结论中间步骤不跳，不写「显然」「可以看到」；(3) **经验 vs 推导清楚区分**——vibes / 行业惯例 / 类比的段落明确标注「这是经验 / 类比，不是公理推导」，不伪装成推导。本仓库典型公理起点（来自 CS336 lecture_09 / 13 / 16）：scaling law `loss(N,D)=E+A/N^α+B/D^β` 推导 Chinchilla 比例 / 临界 batch size / train-vs-inference-optimal；roofline 算力 / 带宽物理约束推导 arithmetic intensity 与瓶颈切换；policy gradient theorem + baseline invariance 推导 PPO / REINFORCE / GRPO 的 baseline 选取；compute / memory / bandwidth 账本（`6ND` FLOPs / `12 N_param` 字节 / pipeline bubble）推导训练时间与资源；attention / FFN / Norm 数学定义推导各自功能；top-k gating / load balancing loss 推导 MoE 训练目标。**当前无清晰推导路径**的论域（明确标注为 vibes / 经验 / 类比，不假装是推导）：数据 filter / dedup / mixing 阈值（lecture_13 L802 明说「data processing is... a lot just based on kind of vibes」）；GRPO 加的 length normalizer + std normalization（lecture_16 L164-167 明说「if you try to derive GRPO from first principles following the policy gradient and baseline theorems you'll end up with something different」）；现代组件具体值选择（SwiGLU / RoPE / RMSNorm 是 scaling 拟合后的「幸存者」）。**与结构审计 5 问并列、互不重复**：第一性原理关心「论证是否从公理推导」，结构审计关心「位置是否成立」——先确认推导来源，再走结构审计确认每个单元必要性 | 写章节或做章节级调整前必须列出本章节每个论证的「推导来源」，notes 字段附「first-principle derivation: [路径]」与「vibes / 待推导: [路径]」；audit finding 按「逻辑审计 finding schema」报 claim / axiom_source / gap 三字段（见「三阶段循环」节） |
+| 11 | **论证必走第一性原理（Aristotle 框架）** | 每段论证必须满足三条硬约束（公理起点明确 / 推导链完整 / 经验 vs 推导清楚区分），权威文本、典型公理起点与 vibes 论域清单见 STYLE.md「第一性原理方法论（Aristotle 框架）」，此处不重复全文；第一性原理关心「论证是否从公理推导」，结构审计 5 问关心「位置是否成立」，两者并列互不替代 | 写章节或做章节级调整前按 STYLE.md 三条硬约束列出「推导来源」，notes 附「first-principle derivation: [路径]」与「vibes / 待推导: [路径]」；audit finding 按「逻辑审计 finding schema」报 claim / axiom_source / gap 三字段（见「三阶段循环」节） |
 | 12 | **fix verification 误判「字段未公开」而整段删除** | Phase 11.3 ch4 agent 把「DeepSeek V4-Pro 演进」整段删除：表行「总参数 / 激活参数」两列写「未公开」→ agent 推断「不完整就别列」，连带把 §4.3 节首描述、§4.3.2「DeepSeek V4 的改进」整节、§4.6 表头与 V4-Pro 行、章节末来源记录的 V4-Pro config 全部删除；但 ch3 §3.2.5.7.3 与 ch14 都在引用 `DeepSeek-V4-Pro/config.json` 的 `index_topk: 1024` / `compress_ratios` / `swiglu_limit: 10.0`——删除破坏跨章一致性 | sub-agent 删前必须 `rg "<key>"` 全仓库扫引用方 + `git log -S "<key>" -- <file>` 看历史上是否有完整版本可恢复 + WebFetch 一手 config.json / 论文确认「未公开」字段是否真的不可得；不要把「数据稀疏」与「数据错误」混为一谈；同样警惕把 swiglu_limit / num_hash_layers / scoring_func 等「字段非主流」当成「应替换为更主流来源」 |
 
-**每条都按方案 A 就地 Edit 修复**（不归到独立 round），并跑禁用句式 + 元叙述两类 rg 自检零命中才算完成。
+**每条都按方案 A 就地 Edit 修复**（不归到独立 round），并跑「修改后自检」四类 rg 零命中才算完成。
 
 ### 结构审计 5 问（与「第一性原理」并列、互不重复）
 
@@ -294,7 +283,7 @@ logic_finding 只报 `refuted + tentative`，与 verdict 三档对齐。fix 阶�
 ## 工具使用经验
 
 - **sub-agent 偏好 WebFetch 而忽略 WebSearch** 是持续性问题——但有解法。早期 prompt 要求"WebSearch ≥ 5~8 次"实际只跑 ~2 次 / agent；改 schema 把 WebSearch 拆为 finding 必填的 `search_query_1` / `search_query_2` / `search_query_3` 三字段后，平均跃升到 ~12 次 / agent（约 6×），并一次性抓到 11 处 fix 留下的次生错误（arXiv ID 归属、论文小节归属、法官名、数字精度等）。**结论**：单纯在 prompt 写"WebSearch ≥ N 次"无效，必须把 WebSearch 列到结构化输出必填字段才能强制执行。三个 search_query 还要求**不同关键词**（不能 3 次都搜同一个词）。
-- **fix 本身可能错**：每轮 audit 抓到真错并修复后，**fix 本身也可能错**。曾出现：修复 Santurkar 引用时写对 arXiv ID 但同 commit 引入 ch10:154 Bartz v. Anthropic "Judge Araceli Martínez-Olguín"（实际 Judge Susan Illston, N.D. Cal.）；改 OpenHermes 错分时写 ch12:281 "UltraFeedback arXiv:2310.01386"（实际 2310.01377）、"Tulu 3 arXiv:2411.19484"（实际 2411.15124）；写 ch14:51 SigLIP "5 天 73.4% 是 from-scratch 微调"（实际论文 Table 1 caption 明确 from-scratch + 5 天行也是随机初始化）。发现模式：**单轮 audit + 单轮 fix 不够**——必须跑"**次生复核 round（fix verification）**"专门审上次 commit 引入的行，专项找 typo / 错行号 / 错归属 / 错编号 / 旧幻觉残留。每轮 audit 后额外跑一次 fix verification，agent schema 强制带 `introduced_by_commit` 字段追溯次生错误来源。
+- **fix 本身可能错**：次生错误模式与权威流程见「fix verification round（次生复核）」节及下方「次生修复三类模式」；每轮 audit 后必须再跑 fix verification，schema 强制带 `introduced_by_commit` 字段。
 - **Schema 复杂度 → agent 失败率**：曾出现 ch5 agent 因 StructuredOutput retry cap 5 次超限而失败（跨章节 audit 也多次出现同一模式）。**结论**：finding 字段不要塞太多嵌套对象，能合并就合并；web_evidence 简化为 `search_query + fetch_url + fetch_snippet + verdict` 四字段就够，不要加 `source_kind` / 多个 evidence 对象。但 `search_query_1/2/3` 三字段是必须的例外——这是强制 WebSearch 的有效手段。
 - **SO retry 超限 → 立即简化 schema 重跑**：跨章节 audit 与其他多文件 / 多来源 finding 类任务的 schema 含 `files: [...]` / `line: {file: N}` / `web_evidence` / 多文件嵌套对象时，agent 容易 SO retry 5 次失败，但 Edit 已经落地、finding 列表未返回。**结论**：这类任务 schema 必须简化到 ≤ 4 个顶层字段。简化版本用三字段：`findings_count` / `edits_applied` / `notes`，足够驱动 commit 与进度报告。Edit 不需要被 schema 验证，仅最后 SO 必须返回。**重跑触发条件**：journal 报 `StructuredOutput retry cap (5) exceeded` 或 `subagent completed without calling StructuredOutput`。
 - **次生修复三类模式**（每轮 audit 后必须再跑 fix verification round）：
@@ -307,11 +296,10 @@ logic_finding 只报 `refuted + tentative`，与 verdict 三档对齐。fix 阶�
 - **arXiv 论文 WebFetch 优先 `/html/{id}`，不要 `/abs/` 或 `/pdf/`**。sandbox 对 `arxiv.org` 域名的 `abs` 路径返回 "Unable to verify if domain arxiv.org is safe to fetch"；对 `/pdf/{id}` 返回 binary "FlateDecode streams"（压缩对象流）而非可读文本；只有 `/html/{id}` 能返回标题、作者、abstract、§ 章节标题与原文句子。所有求证一手 arXiv 内容（标题、作者、提交日期、§ 编号归属、原文引用句）都先 `WebFetch https://arxiv.org/html/{id}`；html 解析失败或需要 Figure/Table 数值时再退回 `/pdf/{id}` 配合本地 `pdftotext` 抽文。WebSearch 在 sandbox 拒 arXiv 域时仍能返回关键句摘录，但只能用来定位 URL / 确认存在性 / 拿关键词，不能替代 `WebFetch /html/{id}` 作为一手引用。
 - **Workflow 工具不接受自定义顶层参数（如 `scope: 'single-task'`）**。Workflow 工具的合法顶层字段只有 `script` / `name` / `description` / `title` / `args` / `scriptPath` / `resumeFromRunId`；任何额外字段（如 `scope`、`task_type` 等不在 schema 内的字段）会触发 `InputValidationError: Workflow failed due to the following issue: An unexpected parameter ... was provided` 整条调用被拒，需要去掉多余字段后重发。**记忆**：调用 Workflow 前如果想加并行度控制（如「single-task」「fan-out」「sequential」等）应当写到 `meta.phases` 与脚本内的 `phase()` / `parallel()` / `pipeline()` 编排，而不是加 Workflow 工具顶层参数。
 - **fix agent 不要并行跑同一文件**（ch3 全量调整会话教训，2026-09-15）。原本设计 5 个并行 fix agent 按主题切片（§3.1 / §3.2.5 / §3.2.1-3.2.4 / §3.2.5.8.1 / 图号重排），其中 4 个 fix agent 都涉及 `docs/chapter3/chapter3_语言模型架构和训练技术细节.md`，F1 还涉及 ch4/ch14——多个 agent 同时 Edit 同一文件会导致：(a) Edit 操作的行号在另一个 agent 改完后漂移、anchor 失效；(b) sibling rows 自洽检查不可靠（一个 agent 看到的 sibling rows 已被另一个 agent 修改）；(c) rg 自检的命中行号在不同 agent 之间错乱；(d) commit 拆分困难（一类改动只能对应一个 commit）。**正确做法**：fix 阶段按文件隔离（每个 agent 只负责一个文件的所有 fix）或完全串行跑（`phase('Fix A') → agent → rg 兜底 → phase('Fix B') → agent → ...`）。**Workflow 编排时**，`phase()` 串行 + 中间跑 rg 兜底比 `parallel([fixA, fixB, fixC])` 更稳。**Audit 阶段并行可以**（每个 sub-agent 只读不改，无写冲突），**fix 阶段必须串行或按文件严格隔离**。
-- **sub-agent audit/fix 之前必须先 Read STYLE.md**（ch3 全量调整会话教训，2026-09-15）。本次会话先做 5 个并行 audit agent 抓到 19 findings，之后才对照 STYLE.md 系统性核验，又额外抓到 1 处跨章引用错位（`ch3:1239 第 9 章 §9.5 Dynamic Serving` 与 ch9 实际 `§9.5.1/§9.5.2/§9.5.3` 不一致）与来源记录缺「不确定项」段等问题，本可一次报全。**正确做法**：每个 audit/fix sub-agent prompt 必须显式要求「开始前先 `Read /home/jiepengjin/Study/llm-notes/STYLE.md` 全文，按其同步锚点（禁用句式 rg / 作者声音 rg / 5 种 alert 语义 / 3 段来源结构（不含不确定项）/ 第 N 章 §X.Y 章节标题 格式 / 图号 `{章号}.{二级节号}-{节内序号}` / 第一性原理 Aristotle 框架 / 图意核对 4 项 / `tentative` 不进笔记任何位置）逐项扫章节」；AGENTS.md 与 STYLE.md 同步锚点表本身已在 AGENTS.md「与 STYLE.md 的同步锚点」节列出，但 prompt 必须显式 `Read STYLE.md` 而不只是「按 AGENTS.md 规范」——AGENTS.md 是流程规范，STYLE.md 才是写作规范本体，二者需同时读。
+- **audit/fix sub-agent 与主 agent Edit 前必须先 Read STYLE.md 全文 + AGENTS.md「与 STYLE.md 的同步锚点」节**（ch3 全量调整会话教训，2026-09-15）。prompt 必须显式要求 `Read /home/jiepengjin/Study/llm-notes/STYLE.md` 并按锚点表逐项刷新（禁用句式 rg / 作者声音 rg / 5 种 alert 语义 / 3 段来源结构 / 「第 N 章 §X.Y 章节标题」/ 图号规则 / 第一性原理框架 / 图意核对 4 项 / tentative 与待核验类元叙述不进笔记）；只写「按 AGENTS.md 规范」不够——AGENTS.md 是流程规范，STYLE.md 才是写作规范本体，二者需同时读。无论 Edit 大小 / 范围，此步是必要条件，不可跳过。
 - **sandbox 拦截一手 URL 时不要自己 hallucinate，交给用户**（ch3 fresh audit 会话教训，2026-09-15）。本会话中 A3 audit agent 把 sandbox 拦截的 `huggingface.co / arxiv.org /html/` 当作「无法核证」，随后自己推测「MiniMax-01 真实 arXiv ID 是 2501.05402」并把笔记里正确的 `arXiv:2501.08313` 报为 hallucinated——实际 `arXiv:2501.05402` 是物理论文「Edge modes in modulated metamaterials」，MiniMax-01 真实 arXiv ID 就是 `2501.08313`（标题「MiniMax-01: Scaling Foundation Models with Lightning Attention」，作者 Li, Aonian 等，2025-01-14，MiniMax 团队）。**正确做法**：当 `WebFetch arxiv.org / huggingface.co / github.com` 等一手 URL 被 sandbox 返回 `Unable to verify if domain ... is safe to fetch` 或 curl 超时时，sub-agent 与主 agent 都应：(a) **不要自己推测 / hallucinate** 一手内容；(b) 直接告诉用户「需要复核 URL X，请帮我复制页面内容（或标题/作者/相关数字）」；(c) 让用户在 IDE 浏览器或 curl 外部环境拿到一手页面后粘贴进来，再继续核证。fallback 顺序：用户手动提供 > 仓库已有 `sources/_extracted_pdfs/lecture_NN.txt` 抽文 > 本地 HuggingFace cache > 留 tentative 并显式标 `web_evidence_fetched: false` 而非 hallucinate。**反例**：A3 报「A3 critical: 把模型名改正为 X / arXiv ID 改正为 Y」，但实际 Y 是另一篇完全无关的论文。
-- **主 agent 自己 Edit 后也必须强制跑禁用句式 rg 自检**（ch3 全量调整会话教训，2026-09-15）。本轮 `d9558aa` commit 主 agent 自己 Edit §3.3 经验区间标注后没有跑禁用句式 + 作者声音 + 提示块三类 rg 自检就直接 commit，结果引入「不是公理而是」骨架——命中 STYLE.md「修辞层规则」明令禁用的「不是 X 而是 Y」否定转折骨架（AGENTS.md 禁用句式 rg 也在列），被用户在 IDE 选中 L1024 后才发现；`d2b57c8` 才补 commit 删骨架。**正确做法**：主 agent 任何 Edit 后必须强制跑三类 rg 自检 + 回读上下 5 行做 sibling 自洽检查再 commit，与 sub-agent fix agent 完全相同的纪律——AGENTS.md「修改后自检」节明确要求三类 rg 命中即改写，但主 agent 容易跳过这一步。特别注意：写「经验 vs 推导」标注时下意识出现「不是 X 而是 Y」骨架的概率更高（否定公理 + 正向落地的转折写法在 Aristotle 框架语境下特别顺）；Edit 后第一件事就是 `rg -n "不是.*而是|是.*而不是|不是.*而非|不是简单的.*而是" <file>` 兜底。
-- **Edit 章节前无论如何都要先 Read STYLE.md 全文**（ch3 全量调整 + 用户 2026-09-15 强调）。AGENTS.md「修改前必读」节只针对外部事实要求 Read STYLE.md，没覆盖修辞 / 格式 / 元叙述层——主 agent 自己 Edit 时容易在「经验 vs 推导」标注等场景下意识写「不是 X 而是 Y」「当成定律」「本文采用」等禁用骨架（如 d9558aa 引入「不是公理而是」）。**正确做法（无例外）**：每次 Edit 章节前都先 `Read /home/jiepengjin/Study/llm-notes/STYLE.md` 全文 + `Read AGENTS.md`「与 STYLE.md 的同步锚点」节，刷新同步锚点（禁用句式 rg / 作者声音 rg / 5 种 alert 语义 / 3 段来源结构（不含不确定项）/ 第 N 章 §X.Y 章节标题 / 图号 `{章号}.{二级节号}-{节内序号}` / 第一性原理 Aristotle 框架 / 图意核对 / tentative / 待核验 / 不确定项 / 需复核不留在笔记任何位置）；Edit 后强制跑三类 rg（禁用句式 + 作者声音 + 提示块）外加「待核验 / 不确定 / 需复核」元叙述扫描兜底。**约束级别**：无论 Edit 大小 / 范围（哪怕一个 typo 修复 / 一个图注重写 / 一次「当成定律」修辞改写），Edit 前先 Read STYLE.md 是必要条件，不可跳过——这条适用于 sub-agent 与主 agent 一致。**反例**：d2b57c8 之前主 agent Edit §3.3.1 L1024 删「不是...而是」骨架时没跑 rg 自检就 commit，又在 L1024 同一行旁出现类似骨架——RG 兜底必须跑。
-- **笔记任何位置不留「待核验 / 不确定 / 需复核 / tentative」类元叙述**（ch3 fresh audit 会话 2026-09-15 教训）。本会话曾按 STYLE.md「章节末『来源与更新记录』约定」4 段结构默认加了「不确定项」子段（包含 6 条 tentative finding），用户明确反对：「笔记里不应出现待核验和不确定这类东西——我们现在的工作就是核验啊」。**正确做法**：核验工作外移到 chat / sub-agent transcript；sandbox 拦截一手 URL 时由主 agent 把链接发给用户、用户在 IDE 浏览器或 curl 外部环境打开复制内容回来核验；未核到的字段不写入笔记，已写入的撤回。章节末「来源与更新记录」段改为 3 段结构（官方 / 课程 / 事实声明指向），不再保留「不确定项」子段。`rg "待.*核|待核|不确定|需核|需复核|缺口|以.*为准|本节以|未能核"` 兜底命中后清零。
+- **主 agent 自己 Edit 后也必须强制跑四类 rg 自检**（ch3 全量调整会话教训，2026-09-15）。`d9558aa` 主 agent Edit 后没跑自检直接 commit，引入「不是公理而是」骨架，被用户在 IDE 选中才发现；`d2b57c8` 才补删。**正确做法**：主 agent 任何 Edit 后强制跑「修改后自检」四类 rg（禁用句式 + 作者声音 + 提示块 + 渲染安全）+ 回读上下 5 行做 sibling 自洽检查再 commit，与 sub-agent fix agent 同纪律。写「经验 vs 推导」标注时下意识出现「不是 X 而是 Y」骨架的概率更高；Edit 后第一件事就是 `rg -n "不是.*而是|是.*而不是|不是.*而非|不是简单的.*而是" <file>` 兜底。
+- **笔记任何位置不留「待核验 / 不确定 / 需复核 / tentative」类元叙述**（ch3 fresh audit 教训，2026-09-15）。核验工作外移到 chat / sub-agent transcript；sandbox 拦截一手 URL 时由主 agent 交用户在 IDE 浏览器或 curl 取回内容再核验；未核到的字段不写入笔记，已写入的撤回。章节末「来源与更新记录」只有 3 段结构（官方 / 课程 / 事实声明指向），无「不确定项」子段（曾用 4 段结构 + tentative 子段，已废除）。commit 前 `rg "待.*核|待核|不确定|需核|需复核|缺口|以.*为准|本节以|未能核"` 命中清零。
 
 ## 资料位置
 
@@ -352,7 +340,7 @@ logic_finding 只报 `refuted + tentative`，与 verdict 三档对齐。fix 阶�
 | AGENTS.md 节 | 对应 STYLE.md 节 | 同步关系 |
 |---|---|---|
 | 修改后自检 1（禁用句式 rg） | STYLE.md「验证流程不进正文」+「全局原则」+「修辞层规则」 | rg 关键字清单与 STYLE.md 反例一一对应 |
-| 修改后自检 2（作者声音穿帮 rg） | STYLE.md「修辞层规则」 | rg 关键字清单来自 STYLE.md 反例（含「这里使用」「下一节展开」等） |
+| 修改后自检 2（作者声音穿帮 rg） | STYLE.md「修辞层规则」 | rg 关键字清单来自 STYLE.md 反例（含「这里使用」「下一节展开」等）；audit finding 用 `author_voice_break` 字段报告 |
 | 修改后自检 3（提示块合理性） | STYLE.md「提示块」 | 5 种 alert 语义边界与 STYLE.md 对齐（IMPORTANT/WARNING/CAUTION 三档严格递进，NOTE 不承载作者声明） |
 | 审计 7 层第 1 / 6 层（事实 / 数字） | STYLE.md「公式与排版」+「公式账本」 | 公式符号、跨章节数字一致性 |
 | 审计 7 层第 2 层（公式账本） | STYLE.md「公式账本」 | 符号首次出现即定义、公式与代码对齐、公式后承接句、长算式拆分、不允许 snake_case 进数学环境 |
@@ -363,7 +351,7 @@ logic_finding 只报 `refuted + tentative`，与 verdict 三档对齐。fix 阶�
 | 审计 7 层第 7 层（引用 / 跨章） | STYLE.md「跨章引用格式」+「图片」alt text 一致 | 跨章引用「第 N 章 §X.Y 章节标题」、caption / 图注 / 正文交叉引用一致 |
 | 跨章节一致性 audit | STYLE.md「学习式讲义」「术语表」 | 主题组（GPU 硬件 / Transformer / MoE / 数据 / 评测 / 推理 / 强化学习）的术语对照 |
 | 引用与求证经验（章节归属 / 人物名 / arXiv ID） | STYLE.md「术语表」「来源与日期」 | sub-agent 在命名 / 引用 / 章节号层面遵守同一标准 |
-| 图意核对 sub-task 模板 / 删图判定 | STYLE.md「图意核对」「图片」 | 4 个检查项 + 两图视觉内容一致即可删 |
+| 图意核对 / 删图判定 | STYLE.md「图意核对」「图片」 | 4 个检查项 + 两图视觉内容一致即可删 |
 | 修改后自检 1（禁用句式 rg）与第 7 层 | STYLE.md「跨章引用格式」 | rg pattern 抓「第 N 章 §X.Y」与「chapterN」缩写 |
 | 修改后自检 4（GitHub 渲染安全 rg） | STYLE.md「公式与排版」渲染条目 +「HTML」金额 span 例外 | 4 种渲染失败模式（开 `$` 紧贴 / 斜体图注 / `}_`·`|_` 切碎 / 字面金额）的 rg 与修复规则一一对应；图注用 `` `` $`expr`$ `` ``、金额用 `<span>$</span>` |
 | 逻辑审计 finding schema（logic_finding） | STYLE.md「第一性原理方法论（Aristotle 框架）」三条硬约束 | `claim` / `axiom_source` / `gap` 必填字段与「公理起点明确 / 推导链完整 / 经验 vs 推导清楚区分」一一对应；`rg` 只作句式兜底，不承担逻辑审计 |
