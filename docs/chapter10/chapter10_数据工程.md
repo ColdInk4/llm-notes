@@ -104,16 +104,16 @@ The Pile 把 Common Crawl、arXiv、GitHub、StackExchange、邮件列表等 22 
 | 数据集 | 规模 | 备注 |
 | --- | --- | --- |
 | Common Crawl 单次 crawl | 官方口径约每月发布一次、每次通常超过 20 亿网页，归档总量超过 10 PiB；2026 年 4 月的 CC-MAIN-2026-17 实际为 2.19B 网页 / 379.2 TiB（未压缩） | 原始 HTML，未清洗 |
-| C4 | 原始 C4 约 750 GB；HF `allenai/c4` 的 `en` 清洗版约 305 GB | April 2019 Common Crawl 子集，规则过滤 + 三句跨度去重后保留 |
+| C4 | 原始 C4 约 750 GB；HF [`allenai/c4`](https://huggingface.co/datasets/allenai/c4) 的 `en` 清洗版约 305 GB | April 2019 Common Crawl 子集，规则过滤 + 三句跨度去重后保留 |
 | The Pile | 825 GiB；GPT-NeoX tokenizer 计 334B tokens，全局去重后 207B tokens | 22 来源混合 |
-| LLaMA 1 训练语料 | 约 1.0T / 1.4T tokens（7B / 13B 训练 1.0T，33B / 65B 训练 1.4T；arXiv:2302.13971 表 2） | CCNet 处理的 CommonCrawl（67%）+ C4（15%）+ GitHub + Wikipedia + Books（Gutenberg 与 Books3）+ arXiv + Stack Exchange；质量分类器的正例取自 Wikipedia 页面引用指向的网页 |
+| LLaMA 1 训练语料 | 约 1.0T / 1.4T tokens（7B / 13B 训练 1.0T，33B / 65B 训练 1.4T；[arXiv:2302.13971](https://arxiv.org/abs/2302.13971) 表 2） | CCNet 处理的 CommonCrawl（67%）+ C4（15%）+ GitHub + Wikipedia + Books（Gutenberg 与 Books3）+ arXiv + Stack Exchange；质量分类器的正例取自 Wikipedia 页面引用指向的网页 |
 | FineWeb | 15T tokens | 96 个 Common Crawl dumps（[arXiv:2406.17557](https://arxiv.org/abs/2406.17557)），MinHash 去重 + PII 匿名 |
 | Dolma | v1.6 约 3.06T tokens；v1.7 全量 2.31T tokens，按来源比例采样后取 1.72T 子集训练 OLMo 7B-v1.7 | AI2 开源多来源混合（Reddit + PeS2o + C4 + Gutenberg + Wikipedia） |
 | DCLM | DCLM-Pool 240T tokens / 200B documents（未过滤 Common Crawl，gzip 后 370 TB）；DCLM-Baseline 3.8T tokens（fastText 质量过滤后；论文公开口径） | [DataComp-LM arXiv:2406.11794](https://arxiv.org/abs/2406.11794)、[HF mlfoundations/dclm-baseline-1.0](https://huggingface.co/datasets/mlfoundations/dclm-baseline-1.0) |
 | Nemotron-CC | 6.3T tokens（4.4T 真实去重 + 1.9T 合成；HQ 子集 1.1T） | HTML→text 选用 **jusText**：它抽出的 token 总量与高质量 token 数都高于 trafilatura，而下游精度基本持平 |
 | The Stack v2 | 104.2M GitHub 仓库、3.28B unique files、67.5 TB 未压缩；供 StarCoder2-15B 使用的训练集含 913B+ unique tokens，模型实际训练 4.3T tokens | 代码数据 |
 | CommonPile | 8TB | permissive-licensed only，探讨 license laundering 风险；包含 Comma v0.1-1T / 2T 两个 7B 验证模型 |
-| Llama 3 训练语料 | 15.6T tokens（旗舰 405B；8B / 70B 同语料；arXiv:2407.21783） | 与 FineWeb 同量级 |
+| Llama 3 训练语料 | 15.6T tokens（旗舰 405B；8B / 70B 同语料；[arXiv:2407.21783](https://arxiv.org/abs/2407.21783)） | 与 FineWeb 同量级 |
 | Qwen3 训练语料 | 36T tokens | |
 | DeepSeek V3 训练语料 | 14.8T tokens（V3 paper abstract 与正文报告，multi-stage sampling 后） | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) |
 
@@ -204,7 +204,7 @@ Qwen 3 的公开材料也体现了这种阶段分工：预训练覆盖大规模�
 
 **Anthropic 版权诉讼和解（案件事实链）。** Bartz v. Anthropic PBC（Case No. 4:24-cv-05417-AMO, N.D. Cal.；2025 年承办法官为 William Alsup，2025 年 12 月退休后由 Araceli Martínez-Olguín 法官承继，案号 -AMO 后缀随承办法官变化而变化，案件主体不变）是 Andrea Bartz 等作者提起的集体诉讼。2025 年 6 月 23 日，法院就 fair use 作出 summary judgment：用合法取得的图书副本训练模型构成 fair use，把合法购买的纸书扫描留作模型训练库也构成 fair use，但下载并长期保存数百万本盗版书籍本身不构成 fair use（piracy 部分发回审判）。2025 年 8 月 26 日，Anthropic 同意支付 15 亿美元（约 48.2 万部作品）达成和解，是当时美国公开记录中金额最高的版权和解；2025 年 9 月 25 日法院作出 preliminary approval。
 
-**Anthropic 版权诉讼和解（2026 年进展）。** Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官。2026 年 5 月 14 日后者举行 75 分钟 fairness hearing，对律师费明细、lead-plaintiff 服务费、开支分摊与未及时 opt-out 通知提出补充材料要求；2026 年 7 月 20 日 Judge Martínez-Olguín 作出 final approval，确认 <span>$</span>1.5B、482,460 部作品（claims rate 约 91.3% = 440,490 / 482,460、约 <span>$</span>3,000/部）的条款公平合理，仍是美国公开记录中金额最高的版权和解；同时命令 Anthropic 在 final judgment 后 30 日内销毁所有 LibGen / PiLiMi 来源的盗版文件。
+**Anthropic 版权诉讼和解（2026 年进展）。** Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官。2026 年 5 月 14 日后者举行 75 分钟 fairness hearing，对律师费明细、lead-plaintiff 服务费、开支分摊与未及时 opt-out 通知提出补充材料要求；2026 年 7 月 20 日 Judge Martínez-Olguín 作出 final approval，确认 <span>$</span>1.5B、482,460 部 eligible works（filed claims 447,576、opt-outs 440,490，claims rate 约 92.77% = 447,576 / 482,460、约 <span>$</span>3,000/部）的条款公平合理，仍是美国公开记录中金额最高的版权和解；同时命令 Anthropic 在 final judgment 后 30 日内销毁所有 LibGen / PiLiMi 来源的盗版文件。
 
 该案的争议核心是从盗版图书库获取语料能否被 fair use 覆盖，而购买并扫描同一批图书并不能豁免此前下载盗版副本的责任。
 
@@ -373,7 +373,7 @@ $$
 
 这条 S 型曲线决定去重阈值。band 内部要求全部相等、band 之间只要一个命中，这种 and-or 结构把平缓的 $s$ 变成陡峭的门限。增大 $r$ 会提高单个 band 的全匹配门槛，曲线右移，只有更相似的文档才成为候选；增大 $b$ 会增加命中机会，曲线左移，更多中等相似度文档进入候选集。
 
-Lee 等人在 arXiv:2107.06499 中使用的一组具体参数是： $n = 9000$ 个哈希函数（5-gram 文档签名），分成 $b = 20$ 个 band，每 band $r = 450$ 行。相变阈值 $\theta = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.993$ ：在这个相似度上，单个 band 全匹配的概率恰好是 $1/b$ ，于是候选碰撞概率为 $1 - (1 - 1/b)^b \approx 1 - 1/e \approx 0.63$ 。相似度高于 0.993 的文档对碰撞概率迅速趋近 1，低于 0.993 的则迅速趋近 0，全量 $O(N^2)$ 精确比对由此压缩成对少量候选对的验证。进入候选集后，论文再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做一次精确过滤（论文 §4.2）：LSH 的 0.993 相变点作用在 5-gram shingle 的 Jaccard 上，负责把召回拉满；0.8 的二次阈值作用在成对精算的 Jaccard 与编辑相似度上，负责精度。两道门在同一相似度轴上前后接力。
+Lee 等人在 [arXiv:2107.06499](https://arxiv.org/abs/2107.06499) 中使用的一组具体参数是： $n = 9000$ 个哈希函数（5-gram 文档签名），分成 $b = 20$ 个 band，每 band $r = 450$ 行。相变阈值 $\theta = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.993$ ：在这个相似度上，单个 band 全匹配的概率恰好是 $1/b$ ，于是候选碰撞概率为 $1 - (1 - 1/b)^b \approx 1 - 1/e \approx 0.63$ 。相似度高于 0.993 的文档对碰撞概率迅速趋近 1，低于 0.993 的则迅速趋近 0，全量 $O(N^2)$ 精确比对由此压缩成对少量候选对的验证。进入候选集后，论文再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做一次精确过滤（论文 §4.2）：LSH 的 0.993 相变点作用在 5-gram shingle 的 Jaccard 上，负责把召回拉满；0.8 的二次阈值作用在成对精算的 Jaccard 与编辑相似度上，负责精度。两道门在同一相似度轴上前后接力。
 
 ![图 10.2-5 LSH band 与相似度关系](images/10-2-5-lsh-bands-threshold.png)
 
@@ -399,9 +399,9 @@ Lee 等人在 arXiv:2107.06499 中使用的一组具体参数是： $n = 9000$ �
 
 | 数据集 | 公开版本 / 论文 | 规模（tokens / 文档） | 来源构成 | 去重与过滤 |
 | --- | --- | --- | --- | --- |
-| The Pile | arXiv:2101.00027；HF `monology/pile-uncopyrighted` | ~334B tokens（GPT-NeoX tokenizer）；全局文档级去重后 ~207B tokens | 22 个来源混合：Common Crawl、Pile-CC、Books3、GitHub、arXiv、Wikipedia、StackExchange 等 | 全局文档级 exact-hash 去重；无模型质量分类器 |
-| FineWeb | arXiv:2406.17557；HF `HuggingFaceFW/fineweb` | 15T tokens | 96 个 Common Crawl dumps 拼接 | MinHash 文档级去重（5-gram、112 哈希、14 buckets、阈值 0.75）；自定义 PII 匿名；多种 quality 配置（FineWeb-Edu 教育分 ≥ 3） |
-| DCLM-Baseline | arXiv:2406.11794；HF `mlfoundations/dclm-baseline-1.0` | 3.8T tokens（fastText 过滤后，论文公开口径）；DCLM-Pool 240T tokens / 200B documents（未过滤） | Common Crawl 单源（多个 crawl dump 拼接） | fastText 质量分类器（正例取 OpenHermes 2.5 + r/ExplainLikeImFive 高赞帖；负例取 RefinedWeb 随机子样）+ hash 去重 + 启发式过滤；DataComp-LM 流程标准化 |
+| The Pile | [arXiv:2101.00027](https://arxiv.org/abs/2101.00027)；HF [`monology/pile-uncopyrighted`](https://huggingface.co/datasets/monology/pile-uncopyrighted) | ~334B tokens（GPT-NeoX tokenizer）；全局文档级去重后 ~207B tokens | 22 个来源混合：Common Crawl、Pile-CC、Books3、GitHub、arXiv、Wikipedia、StackExchange 等 | 全局文档级 exact-hash 去重；无模型质量分类器 |
+| FineWeb | [arXiv:2406.17557](https://arxiv.org/abs/2406.17557)；HF [`HuggingFaceFW/fineweb`](https://huggingface.co/datasets/HuggingFaceFW/fineweb) | 15T tokens | 96 个 Common Crawl dumps 拼接 | MinHash 文档级去重（5-gram、112 哈希、14 buckets、阈值 0.75）；自定义 PII 匿名；多种 quality 配置（FineWeb-Edu 教育分 ≥ 3） |
+| DCLM-Baseline | [arXiv:2406.11794](https://arxiv.org/abs/2406.11794)；HF [`mlfoundations/dclm-baseline-1.0`](https://huggingface.co/datasets/mlfoundations/dclm-baseline-1.0) | 3.8T tokens（fastText 过滤后，论文公开口径）；DCLM-Pool 240T tokens / 200B documents（未过滤） | Common Crawl 单源（多个 crawl dump 拼接） | fastText 质量分类器（正例取 OpenHermes 2.5 + r/ExplainLikeImFive 高赞帖；负例取 RefinedWeb 随机子样）+ hash 去重 + 启发式过滤；DataComp-LM 流程标准化 |
 
 三套语料的设计取向不同：The Pile 优先广覆盖能力面，FineWeb 优先给大规模研究提供可控的 Common Crawl 处理链，DCLM-Baseline 把质量分类器当作主入口、用单一 crawl 池子保证过滤信号干净。这三种取向也直接影响下游如何配比混合：Pile 类多源语料需要 UniMax 这类 epoch cap 控制小来源；FineWeb 这种大规模同质语料可以直接按 token 数比例采样；DCLM 这类已带质量分的语料则适合按 fastText 分桶再混合。
 
@@ -556,13 +556,49 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 
 ## 来源与更新记录
 
-- 课程材料：CS336 2026 Lecture 13（数据来源、版权与公开数据集）与 Lecture 14（转换、过滤、去重、混合、后训练合成数据）slides/video。
-- 数据集规模：[The Pile](https://arxiv.org/abs/2101.00027)（[Pythia](https://arxiv.org/abs/2304.01373) 的 token 口径）、[C4](https://arxiv.org/abs/1910.10683) 与 [HF `allenai/c4`](https://huggingface.co/datasets/allenai/c4)、[LLaMA 1](https://arxiv.org/abs/2302.13971) 表 2、[FineWeb](https://arxiv.org/abs/2406.17557)、[Dolma](https://huggingface.co/datasets/allenai/dolma)、[DCLM](https://arxiv.org/abs/2406.11794) 与 [HF `mlfoundations/dclm-baseline-1.0`](https://huggingface.co/datasets/mlfoundations/dclm-baseline-1.0)、[Nemotron-CC](https://arxiv.org/abs/2412.02595)、[The Stack v2](https://arxiv.org/abs/2402.19173)（3.28B files / 104.2M repos / 67.5TB → 32.1TB 去重 / 约 900B 训练 tokens）与 [HF `bigcode/the-stack-v2`](https://huggingface.co/datasets/bigcode/the-stack-v2)；查阅日期：2026-09-22。
-- Common Crawl 单次 crawl 统计：[Common Crawl 官方 crawl 公告（CC-MAIN-2026-17）](https://commoncrawl.org/) 与 [官方 about 页面](https://commoncrawl.org/big-picture/)（约每月发布一次、每次通常超过 20 亿网页、归档总量超过 10 PiB）；查阅日期：2026-09-22。
-- 过滤与去重方法：[OpenWebMath](https://arxiv.org/abs/2310.06786) 表 2 的 MATH Algebra-Easy 对照：1.4B 模型在 14.7B OpenWebMath tokens 上 5.62%，相同 14.7B Pile/ProofPile tokens 2.81%，Pythia-1.4B 在 300B Pile tokens 上 3.93%；[phi-1](https://arxiv.org/abs/2306.11644) §2.1 的 350M 模型 96K / 36K 步对照，HumanEval 12.19% → 17.68%；同篇 abstract 给出 phi-1 主模型 1.3B 参数与 phi-1-small = 350M、HumanEval 45% 的两个版本；[Kandpal 等](https://arxiv.org/abs/2202.06539)（重复 10 次的序列被生成的频率约为出现 1 次序列的 1000 倍）、[Lee 等](https://arxiv.org/abs/2107.06499) §4.2 的 $n = 9000$ 个 MinHash 函数 / 5-gram 文档签名、 $b = 20$ 个 band、每 band $r = 450$ 行，与本节「b 个 band、每 band r 行」约定一致；相变阈值 $\theta = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.993$；论文在候选对上再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做精确过滤；[UniMax](https://arxiv.org/abs/2304.09151)，§5.3 进一步 ablation 中 max-epoch $N \in \{1, 5, 10\}$ 的 TyDi QA 对照与 $N = 1$ 的默认设定；查阅日期：2026-09-22。
-- 法律与数据安全：Bartz v. Anthropic PBC, Case No. 4:24-cv-05417-AMO (N.D. Cal.) [公开报道与和解页面](https://www.anthropiccopyrightsettlement.com/)、[Carlini 等](https://arxiv.org/abs/2302.10149)、[Wallace 等](https://arxiv.org/abs/2010.12563)、[毒样本规模无关性论文](https://arxiv.org/abs/2510.07192)；查阅日期：2026-09-22。
-- 后训练合成数据：[OpenThoughts](https://arxiv.org/abs/2506.04178) §4.1 的 27 code / 21 math / 14 science 来源与 §4.4 的 1× / 4× / 16× 采样 ablation、[HF `open-thoughts/OpenThoughts3-1.2M`](https://huggingface.co/datasets/open-thoughts/OpenThoughts3-1.2M)、[SWE-smith](https://arxiv.org/abs/2504.21798)（128 GitHub 仓库生成 50K+ 任务）、[SWE-Zero](https://arxiv.org/abs/2604.01496)（300K trajectories / 150K PRs / 13.2K SWE-Hero 执行 trajectories；OpenHands scaffold 与 Qwen3-Coder-480B distill）、[SWE-rebench](https://arxiv.org/abs/2505.20411)、[HF `AlienKevin/SWE-ZERO-12M-trajectories`](https://huggingface.co/datasets/AlienKevin/SWE-ZERO-12M-trajectories)（32K 可执行 + 120K 不可执行 SWE-rebench-v2 任务）；查阅日期：2026-09-22。
-- 训练数据评估：[信息引导探针](https://arxiv.org/abs/2503.12072)，参考模型为 BERT-110M、探针形式为 cloze 填空；查阅日期：2026-09-22。
-- CommonPile 数据集（[arXiv:2506.05209](https://arxiv.org/abs/2506.05209) 与 [HF `common-pile/common-pile`](https://huggingface.co/datasets/common-pile/common-pile)）；查阅日期：2026-09-22。
-- DeepSeek V3 训练语料：[DeepSeek-V3 技术报告](https://arxiv.org/abs/2412.19437) abstract 与正文报告 14.8T tokens；查阅日期：2026-09-22。
-- 状态：模型、数据集规模与法律进展变化较快，按上述论文与官方页面的新版本更新。
+### 官方来源
+
+- [The Pile, arXiv:2101.00027](https://arxiv.org/abs/2101.00027)
+- [Pythia, arXiv:2304.01373](https://arxiv.org/abs/2304.01373)
+- [C4, arXiv:1910.10683](https://arxiv.org/abs/1910.10683)
+- [HF `allenai/c4`](https://huggingface.co/datasets/allenai/c4)
+- [LLaMA 1, arXiv:2302.13971](https://arxiv.org/abs/2302.13971) 表 2
+- [FineWeb, arXiv:2406.17557](https://arxiv.org/abs/2406.17557)
+- [Dolma](https://huggingface.co/datasets/allenai/dolma)
+- [DCLM, arXiv:2406.11794](https://arxiv.org/abs/2406.11794)
+- [HF `mlfoundations/dclm-baseline-1.0`](https://huggingface.co/datasets/mlfoundations/dclm-baseline-1.0)
+- [Nemotron-CC, arXiv:2412.02595](https://arxiv.org/abs/2412.02595)
+- [The Stack v2, arXiv:2402.19173](https://arxiv.org/abs/2402.19173)（3.28B files / 104.2M repos / 67.5TB → 32.1TB 去重 / 约 900B 训练 tokens）
+- [HF `bigcode/the-stack-v2`](https://huggingface.co/datasets/bigcode/the-stack-v2)
+- [Common Crawl 官方 crawl 公告（CC-MAIN-2026-17）](https://commoncrawl.org/blog/april-2026-crawl-archive-now-available)
+- [Common Crawl 官方 about 页面](https://commoncrawl.org/big-picture/)（约每月发布一次、每次通常超过 20 亿网页、归档总量超过 10 PiB）
+- [OpenWebMath, arXiv:2310.06786](https://arxiv.org/abs/2310.06786)
+- [phi-1, arXiv:2306.11644](https://arxiv.org/abs/2306.11644)
+- [Kandpal et al., arXiv:2202.06539](https://arxiv.org/abs/2202.06539)
+- [Lee et al., arXiv:2107.06499](https://arxiv.org/abs/2107.06499)
+- [UniMax, arXiv:2304.09151](https://arxiv.org/abs/2304.09151)
+- [Bartz v. Anthropic PBC, Case No. 4:24-cv-05417-AMO (N.D. Cal.) 公开报道与和解页面](https://www.anthropiccopyrightsettlement.com/)
+- [Carlini et al., arXiv:2302.10149](https://arxiv.org/abs/2302.10149)
+- [Wallace et al., arXiv:2010.12563](https://arxiv.org/abs/2010.12563)
+- [毒样本规模无关性论文, arXiv:2510.07192](https://arxiv.org/abs/2510.07192)
+- [OpenThoughts, arXiv:2506.04178](https://arxiv.org/abs/2506.04178)
+- [HF `open-thoughts/OpenThoughts3-1.2M`](https://huggingface.co/datasets/open-thoughts/OpenThoughts3-1.2M)
+- [SWE-smith, arXiv:2504.21798](https://arxiv.org/abs/2504.21798)
+- [SWE-Zero, arXiv:2604.01496](https://arxiv.org/abs/2604.01496)（300K trajectories / 150K PRs / 13.2K SWE-Hero 执行 trajectories；OpenHands scaffold 与 Qwen3-Coder-480B distill）
+- [SWE-rebench, arXiv:2505.20411](https://arxiv.org/abs/2505.20411)
+- [HF `AlienKevin/SWE-ZERO-12M-trajectories`](https://huggingface.co/datasets/AlienKevin/SWE-ZERO-12M-trajectories)（32K 可执行 + 120K 不可执行 SWE-rebench-v2 任务）
+- [信息引导探针, arXiv:2503.12072](https://arxiv.org/abs/2503.12072)（参考模型为 BERT-110M、探针形式为 cloze 填空）
+- [CommonPile, arXiv:2506.05209](https://arxiv.org/abs/2506.05209)
+- [HF `common-pile/common-pile`](https://huggingface.co/datasets/common-pile/common-pile)
+- [DeepSeek-V3 技术报告, arXiv:2412.19437](https://arxiv.org/abs/2412.19437)
+- 查阅日期：2026-09-22。
+
+### 本节事实声明的来源指向
+
+- OpenWebMath 表 2 MATH Algebra-Easy 对照：1.4B 模型在 14.7B OpenWebMath tokens 上 5.62%，相同 14.7B Pile/ProofPile tokens 2.81%，Pythia-1.4B 在 300B Pile tokens 上 3.93%
+- phi-1 §2.1 的 350M 模型 96K / 36K 步对照，HumanEval 12.19% → 17.68%；abstract 给出 phi-1 主模型 1.3B 参数与 phi-1-small = 350M、HumanEval 45%
+- Kandpal et al. — 重复 10 次的序列被生成的频率约为出现 1 次序列的 1000 倍
+- Lee et al. §4.2 — $n = 9000$ 个 MinHash 函数 / 5-gram 文档签名、 $b = 20$ 个 band、每 band $r = 450$ 行；相变阈值 $\theta = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.993$；候选对上再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做精确过滤
+- UniMax §5.3 — ablation 中 max-epoch $N \in \{1, 5, 10\}$ 的 TyDi QA 对照与 $N = 1$ 的默认设定
+- OpenThoughts §4.1 的 27 code / 21 math / 14 science 来源与 §4.4 的 1× / 4× / 16× 采样 ablation
+- DeepSeek-V3 abstract 与正文报告 14.8T tokens

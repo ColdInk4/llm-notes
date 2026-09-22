@@ -19,7 +19,7 @@ LLM 推理能力既是可观察的生成行为，也是消耗系统预算的训�
 本节先用三个近期公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖图论与组合（2026 年 Knuth）、理论物理的解析推导（2026 年 Brenner 等）和经典 Lie 群上的特征值计算（2026 年 Feng）三类典型应用，能力、概率与系统代价的拆解见后续 §3 预训练与解码、§4 后训练、§5 CoT、§6 Prompt 与 §7 外部工具搜索。
 
 - Donald Knuth 在 2026 年的 [PDF *Claude's Cycles*](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf) 中记录了 Claude Opus 4.6（Anthropic）求解一个图论开放问题的过程，并把 Claude 构造的 Hamilton 环称为 *Claude's cycle*。
-- Brenner、Cohen-Addad 和 Woodruff 在 [arXiv:2603.04735 *Solving an Open Problem in Theoretical Physics using AI-Assisted Discovery*](https://arxiv.org/abs/2603.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
+- Brenner、Cohen-Addad 和 Woodruff 在 [arXiv:2503.04735 *Solving an Open Problem in Theoretical Physics using AI-Assisted Discovery*](https://arxiv.org/abs/2503.04735) 中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
 - Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：核心数学内容由内部推理代理 _Aletheia_（基于 Gemini Deep Think 构建）完整生成，论文把 Feng–Yun–Zhang 在 [FYZ25a] 中只覆盖了若干特殊情形的 eigenweights 推到 Type A（ $GL_n$ ）、Type C（ $PSp_{2n}$ ）与 Type D（ $PSO_{2n}$ ）三个群族的一般情形（Type B 结果沿用 FYZ25a），论文正文给出这三个群族的完整证明。人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
 
 三个案例从不同角度展示同一类机制：模型负责生成推理轨迹和数学构造，作者负责设定目标、组织验证与最终叙述。CoT、多路径采样与工具扩展主题随后展开；推理行为既可以由模型直接产生，也可以由作者代理作为中间环节。
@@ -250,7 +250,7 @@ RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度
 
 专题图 13 的机制是比较 Transformer 各层对同一 token 的预测分布变化。若某个 token 在浅层就基本稳定，它通常承担语法、模板或填充表达；若预测分布到深层才稳定，它更可能承担关键计算或推断。DTR 与准确率正相关，说明有效推理不只看输出长度，还要看生成 token 是否真的调用了更深层计算。
 
-DTR 仍然是统计性指标。完整推理链需要浅层组织语言，也需要深层完成关键判断；未来如果要用 DTR 控制 CoT，还需要结合 token 置信度、路径一致性、外部验证器和任务难度。Qwen 3 公开的混合思维模式（hybrid thinking modes）也沿着这条线索前进：通过 thinking 与 non-thinking 数据混合、特殊终止标记和 thinking budget，让模型在不同任务上调节推理长度。
+DTR 仍然是统计性指标。完整推理链需要浅层组织语言，也需要深层完成关键判断；未来如果要用 DTR 控制 CoT，还需要结合 token 置信度、路径一致性、外部验证器和任务难度。[Qwen 3 技术报告（arXiv:2505.09388）](https://arxiv.org/abs/2505.09388) 公开的混合思维模式（hybrid thinking modes）也沿着这条线索前进：通过 thinking 与 non-thinking 数据混合、特殊终止标记和 thinking budget，让模型在不同任务上调节推理长度。
 
 到这里，读者应能区分 CoT 长度、有效深度和外部奖励信号对最终行为的不同影响。
 
@@ -318,7 +318,7 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 
 ## 参考资料
 
-- [Brenner / Cohen-Addad / Woodruff：AI 辅助求解宇宙弦引力辐射功率谱解析解](https://arxiv.org/abs/2603.04735)
+- [Brenner / Cohen-Addad / Woodruff：AI 辅助求解宇宙弦引力辐射功率谱解析解](https://arxiv.org/abs/2503.04735)
 - [Tony Feng：Eigenweights for arithmetic Hirzebruch Proportionality（Aletheia 代理生成 Type A、C、D 群族 eigenweights 的一般情形）](https://arxiv.org/abs/2601.23245)
 - [Google DeepMind 团队 Denny Zhou 的 LLM 推理研究探讨](https://dennyzhou.github.io/LLM-Reasoning-Stanford-CS-25.pdf)
 - [DeepSeek-R1 的训练经验总结](https://arxiv.org/abs/2501.12948)
@@ -340,6 +340,11 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 
 ## 来源与更新记录
 
-- **官方来源**：案例与论文链接见上方「参考资料」；查阅日期 2026-09-22，状态：论文 / 官方。本专题与第 9 章的 serving / inference systems 分工互补；rollout、训练 infra 和 serving 成本等系统侧细节由第 9 章与第 13 章承载，本专题引用其结论。
-- **课程来源**：CS336 2026 Lecture 10（inference 系统账本）、Lecture 15（SFT / RLHF / DPO 与长度、风格副作用）和 Lecture 16（PPO 到 GRPO、RLVR 与现代推理案例）提供后训练背景；CoT、多路径解码、DTR、工具增强等主题依据上方公开论文。
-- **事实声明指向**：[第 13 章 §13.4.1 R1-Zero：纯 GRPO 起点](../chapter13/chapter13_可验证奖励的强化学习.md) 与 [第 13 章 §13.3.1 GRPO：去掉了价值函数的 PPO / §13.3.2 GRPO 的两类偏差：问题难度与响应长度](../chapter13/chapter13_可验证奖励的强化学习.md) 与本专题 §4 后训练：奖励信号如何改变搜索偏好 中的 RLVR 副作用部分共享同一组证据（"RL 不必然增加新能力，更可能重排基座模型的轨迹概率"）；[第 14 章 本章总结与下章衔接](../chapter14/chapter14_多模态模型.md) 在章末把多模态 agent trace 与 RLVR 验证指向本专题；外部论文按 arXiv 提交日期记录。
+### 官方来源
+
+- 本专题引用的论文、技术报告、官方文档与 CS336 课程主页链接统一列在[参考资料](#参考资料)；查阅日期 `2026-09-22`，状态：论文 / 官方 / 课程材料。
+- 本专题与第 9 章 serving / inference systems 分工互补；rollout、训练 infra 与 serving 成本等系统侧细节由 [第 9 章 §9.1 Inference Workload](../chapter9/chapter9_推理系统.md) 与 [第 9 章 §9.5 Dynamic Serving](../chapter9/chapter9_推理系统.md) 承载，本专题直接引用其结论。
+
+### 本节事实声明的来源指向
+
+- [第 13 章 §13.4.1 R1-Zero：纯 GRPO 起点](../chapter13/chapter13_可验证奖励的强化学习.md) 与 [第 13 章 §13.3.1 GRPO：去掉了价值函数的 PPO](../chapter13/chapter13_可验证奖励的强化学习.md) / [§13.3.2 GRPO 的两类偏差：问题难度与响应长度](../chapter13/chapter13_可验证奖励的强化学习.md) 与本专题 [§4 后训练：奖励信号如何改变搜索偏好](#后训练奖励信号如何改变搜索偏好) 中的 RLVR 副作用部分共享同一组证据（"RL 不必然增加新能力，更可能重排基座模型的轨迹概率"），对应一手论文 [Does Reinforcement Learning Really Incentivize Reasoning Capacity in LLMs Beyond the Base Model? (arXiv:2504.13837)](https://arxiv.org/abs/2504.13837) 与 [On the Interplay of Pre-Training, Mid-Training, and RL on Reasoning Language Models (arXiv:2512.07783)](https://arxiv.org/abs/2512.07783)；[第 14 章 本章总结与下章衔接](../chapter14/chapter14_多模态模型.md) 在章末把多模态 agent trace 与 RLVR 验证指向本专题；其余外部论文按 arXiv 提交日期记录于[参考资料](#参考资料)。

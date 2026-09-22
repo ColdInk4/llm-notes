@@ -49,8 +49,8 @@ $$T_{\text{kernel}} = \max\!\left( T_{\text{memory}},\; T_{\text{compute}} \righ
 | SM 数 | 108 | 132 | 148 |
 | 每 SM register | 256 KB | 256 KB | 256 KB |
 | 每 SM L1 + shared memory | 192 KB | 256 KB | 256 KB |
-| L2 cache | 40 MB | 50 MB | 126 MB（[NVIDIA Blackwell tuning guide §1.4.2.2](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) 公布的全封装 L2；B200 单封装内含 2 颗 Blackwell die 共 148 SMs，每 die 约 63 MB） |
-| HBM 容量与类型 | 80 GB HBM2e | 80 GB HBM3 | 192 GB HBM3e（物理容量；NVIDIA Blackwell tuning guide §1.4.2.1 写 "up to 180 GB"，与 NVIDIA DGX B200 系统规格按 1,440 GB / 8 卡的口径一致，两种口径的对应见来源记录「来源对齐」） |
+| L2 cache | 40 MB | 50 MB | 126 MB（[NVIDIA Blackwell tuning guide §1.4.2.2](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html) 公布的全封装 L2；B200 单封装内含 2 颗 Blackwell die 共 148 SMs，每 die 约 63 MB） |
+| HBM 容量与类型 | 80 GB HBM2e | 80 GB HBM3 | 192 GB HBM3e（物理容量；[NVIDIA Blackwell tuning guide §1.4.2.1](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html) 写 "up to 180 GB"，与 NVIDIA DGX B200 系统规格按 1,440 GB / 8 卡的口径一致，两种口径的对应见来源记录「来源对齐」） |
 | HBM 带宽量级 | 2 TB/s | 3.35 TB/s | 8 TB/s |
 
 *表 6.1 A100/H100/B200 硬件数量级*
@@ -540,17 +540,26 @@ PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微�
 
 ## 来源与更新记录
 
-- 来源：本章以 CUTLASS 3.x 源码、Triton 文档、PTX ISA 与 NVIDIA H100/B200 datasheet 为主。
-- 课程材料：CS336 2026 Lecture 6 code lecture（硬件速查表、benchmark / profiling、kernel fusion、Triton GeLU / softmax / row sum / matmul 示例与 PTX 观察）。
-- 事实声明指向：表 6.3–6.6 的 benchmark / profiler 数字与 kernel 名对应课程实测输出（单卡 B200）；表 6.7 与表 6.8 的 PTX 信号对应 `triton_gelu-ptx.txt`。
-- 硬件规格：[Blackwell Tuning Guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html) §1.4.1.1–1.4.2.3（register file 64K 32-bit registers/SM、max 255 registers/thread；portable cluster size 8 与 B200 的非 portable cluster size 16；shared memory CC 10.0 = 228 KB/SM carveout，max 227 KB/CTA），查阅日期 2026-09-05，状态：官方。
-- Tensor Memory：[CUDA PTX ISA — Tensor Memory](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#tensor-memory) 与 [Colfax Research Blackwell TMEM GEMM 教程](https://research.colfax-intl.com/cutlass-tutorial-writing-gemm-kernels-using-tensor-memory-for-nvidia-blackwell)（256 KB/SM、512 columns × 128 lanes × 32-bit = 65,536 × 4 B；`tcgen05.alloc` 与 `tcgen05.dealloc` 必须由同一个 warp 发起），查阅日期 2026-09-05，状态：官方 + 社区实现说明。
-- Wave / tile quantization：[NVIDIA Matrix Multiplication Background User's Guide](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html)（ $256 \times 128$ tile、A100 108 SM 的一波 tile 数），查阅日期 2026-09-05，状态：官方。
-- Fused softmax 访存账本：[Triton fused softmax 教程](https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html)（朴素实现总访存 $8MN + 4M$、理想 $2MN$、理论加速约 4 倍），查阅日期 2026-09-05，状态：官方文档。
-- 表 6.2 的 register bandwidth 为按 SM 数、时钟与寄存器端口宽度换算的量级估计，其余三级带宽取自各代 datasheet 公布值。
-- 参考：[`triton_gelu-ptx.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/triton_gelu-ptx.txt)；Triton 文档；PyTorch `torch.compile` 文档。
+### 官方来源
+
+- [Blackwell Tuning Guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html) §1.4.1.1–1.4.2.3（register file 64K 32-bit registers/SM、max 255 registers/thread；portable cluster size 8 与 B200 的非 portable cluster size 16；shared memory CC 10.0 = 228 KB/SM carveout，max 227 KB/CTA）
+- [CUDA PTX ISA — Tensor Memory](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#tensor-memory)
+- [Colfax Research Blackwell TMEM GEMM 教程](https://research.colfax-intl.com/cutlass-tutorial-writing-gemm-kernels-using-tensor-memory-for-nvidia-blackwell)（256 KB/SM、512 columns × 128 lanes × 32-bit = 65,536 × 4 B；`tcgen05.alloc` 与 `tcgen05.dealloc` 必须由同一个 warp 发起）
+- [NVIDIA Matrix Multiplication Background User's Guide](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html)（ $256 \times 128$ tile、A100 108 SM 的一波 tile 数）
+- [Triton fused softmax 教程](https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html)（朴素实现总访存 $8MN + 4M$、理想 $2MN$、理论加速约 4 倍）
+- [NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)
+- [NVIDIA B200 datasheet](https://www.nvidia.com/en-us/data-center/hgx/)
+- [Stanford CS336 `triton_gelu-ptx.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/triton_gelu-ptx.txt)
+- 本章以 CUTLASS 3.x 源码、Triton 文档、PTX ISA 与 NVIDIA H100/B200 datasheet 为主。
+- 查阅日期：2026-09-05。
+
+### 本节事实声明的来源指向
+
+- 表 6.3–6.6 的 benchmark / profiler 数字与 kernel 名对应课程实测输出（单卡 B200）
+- 表 6.7 与表 6.8 的 PTX 信号对应 [`triton_gelu-ptx.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/triton_gelu-ptx.txt)
+- 表 6.2 的 register bandwidth 为按 SM 数、时钟与寄存器端口宽度换算的量级估计，其余三级带宽取自各代 datasheet 公布值
 
 ### 来源对齐
 
-- **B200 HBM 容量 192 GB vs 180 GB**：课程硬件表与 NVIDIA datasheet（HGX B200 / GB200 NVL72 product brief 等）写 192 GB HBM3e 物理容量；NVIDIA Blackwell Tuning Guide §1.4.2.1 写 "capacity up to 180 GB"，NVIDIA DGX B200 系统规格写 8 卡合计 1,440 GB（即 180 GB/卡）、64 TB/s（即 8 TB/s/卡），与 tuning guide 同口径。192 GB 是物理容量口径，180 GB 是 tuning guide 与 DGX 系统规格采用的软件可见口径，两者对应同一硬件的不同计数方式。表 6.1 记 192 GB 物理容量并标注 tuning guide 的 180 GB 口径；引用单卡容量给 192 GB（物理）或 180 GB（软件可见），引用系统容量给 NVIDIA 页面的 1,440 GB。
+- **B200 HBM 容量 192 GB vs 180 GB**：课程硬件表与 NVIDIA datasheet（HGX B200 / GB200 NVL72 product brief 等）写 192 GB HBM3e 物理容量；NVIDIA Blackwell Tuning Guide §1.4.2.1 写 "capacity up to 180 GB"，NVIDIA DGX B200 系统规格写 8 卡合计 1,440 GB（即 180 GB/卡）、64 TB/s = 8 TB/s/卡，与 tuning guide 同口径。192 GB 是物理容量口径，180 GB 是 tuning guide 与 DGX 系统规格采用的软件可见口径，两者对应同一硬件的不同计数方式。表 6.1 记 192 GB 物理容量并标注 tuning guide 的 180 GB 口径；引用单卡容量给 192 GB（物理）或 180 GB（软件可见），引用系统容量给 NVIDIA 页面的 1,440 GB。
 - **B200 L2 容量 126 MB**：NVIDIA Blackwell Tuning Guide §1.4.2.2 原文把 126 MB 归到 "GB200 GPU"；课程硬件表给 B200 写 96–126 MB。126 MB 对应双 die 全封装：B200 单封装含 2 颗 Blackwell die 共 148 SMs，每 die 约 63 MB，GB200 superchip 的两颗 die 即此配置。表 6.1 取全封装上界 126 MB；引用时给 126 MB（全封装）或 63 MB（单 die），并注明 tuning guide 把该条目命名为 GB200。

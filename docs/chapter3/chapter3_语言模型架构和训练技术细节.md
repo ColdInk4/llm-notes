@@ -473,7 +473,7 @@ RMSNorm 运行时的收益已经能在论文中观察到；更重要的可迁移
 
 在中间插入 LayerNorm 会把 LayerNorm 的可学习缩放叠加进 residual stream，因此 Pre-norm 把 LayerNorm 移到子层输入前，让 residual stream 保持「纯」恒等。这一点正好与之前展示的梯度尖峰现象吻合。
 
-虽然 LayerNorm 效果良好，许多现代模型改用 RMSNorm——这一选择属于算术强度 / 数据移动公理下的工程推论。lecture_03 引用 Ivanov et al 2023「Matrix multiplies are the vast majority of FLOPs (and memory)」：归一化层 FLOPs 占比小但算术强度低，RMSNorm 通过去除均值中心化与 bias 减少参数和访存，能改善 wall-clock 表现。ablation 数据见 [arXiv:2102.11972](https://arxiv.org/abs/2102.11972) Table 1。
+虽然 LayerNorm 效果良好，许多现代模型改用 RMSNorm——这一选择属于算术强度 / 数据移动公理下的工程推论。Ivanov et al 2023 的「Matrix multiplies are the vast majority of FLOPs (and memory)」说明：归一化层 FLOPs 占比小但算术强度低，RMSNorm 通过去除均值中心化与 bias 减少参数和访存，能改善 wall-clock 表现。ablation 数据见 [arXiv:2102.11972](https://arxiv.org/abs/2102.11972) Table 1。
 
 ### 3.2.2 前馈网络
 
@@ -969,7 +969,7 @@ CSA 层执行流程可以概括为：先对 KV cache 做可学习的加权压缩
 
 HCA 的目标是极低成本地维护一个覆盖十万级 token 的全局背景视野。它只做压缩，不做稀疏选择。
 
-其实 HCA 与 CSA 类似，但压缩率 m 比 CSA 要大得多，多个 token 的局部信息被融合。`DeepSeek-V4-Pro/config.json` 的 `compress_ratios` 逐层给出这两档取值（`num_hidden_layers = 61` 配置下，列表本身含 60 个数值）：开头两层是 `128, 128`，之后按 `4, 128` 反复交替 28 对共 56 个值，最后以一个 `4, 0` 收尾（即末尾两层 HCA 压缩率 4、SWA/全分辨率 full-attention 层 0）。因此 HCA 层压缩率 128、CSA 层压缩率 4，序列中只有首尾几层与该交替模式不完全吻合——最末 `0` 走 SWA/全分辨率路径，开头两层为 HCA bootstrap。因为压缩得足够狠，序列长度变得极短。所以 HCA 可以在这个极短的序列上进行**密集注意力**，让每个 token 都能不丢失地看到整个全局背景。由于序列短，计算成本完全可控。
+其实 HCA 与 CSA 类似，但压缩率 m 比 CSA 要大得多，多个 token 的局部信息被融合。`DeepSeek-V4-Pro/config.json` 的 `compress_ratios` 逐层给出这两档取值（`num_hidden_layers = 61` 配置下，列表含 61 个数值）：开头两层是 `128, 128`，之后按 `4, 128` 反复交替 29 对共 58 个值，最末以单个 `0` 收尾（即倒数第二个值为 CSA 压缩率 4、最末 `0` 紧邻 SWA / 全分辨率 full-attention 层）。因此 HCA 层压缩率 128、CSA 层压缩率 4，序列中只有首尾几层与该交替模式不完全吻合——最末 `0` 走 SWA / 全分辨率路径，开头两层为 HCA bootstrap。因为压缩得足够狠，序列长度变得极短。所以 HCA 可以在这个极短的序列上进行**密集注意力**，让每个 token 都能不丢失地看到整个全局背景。由于序列短，计算成本完全可控。
 
 ### 3.2.5.8 线性时间替代：linear attention / Mamba-2 / Gated DeltaNet
 
@@ -1262,8 +1262,35 @@ $$
 
 ## 来源与更新记录
 
-- 课程映射：Lecture 3 提供现代 dense Transformer 默认骨架；Lecture 4 补充 attention alternatives 与 MoE 边界；Lecture 10 支撑 GQA、MLA、CLA 与 KV cache 的推理成本讨论。
-- 相关论文：Transformer、RMSNorm、SwiGLU/GLU、RoPE（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864)）、[GQA](https://arxiv.org/abs/2305.13245)、[MLA / DeepSeek-V2](https://arxiv.org/abs/2405.04434)、CLA（[Brandon et al., arXiv:2405.12981](https://arxiv.org/abs/2405.12981)）、[Sparse Transformer, arXiv:1904.10509](https://arxiv.org/abs/1904.10509)、[Gated DeltaNet](https://arxiv.org/abs/2412.06464)。
-- 架构消融与超参数：[Narang et al., EMNLP 2021](https://arxiv.org/abs/2102.11972)（Table 1 的 step/s 与 final loss）、[Kaplan et al., 2020](https://arxiv.org/abs/2001.08361)（Figure 5 的 FFN ratio / aspect ratio / head dim 扫描）、[PaLM](https://arxiv.org/abs/2204.02311) Table 1 与训练设置、[ST-MoE](https://arxiv.org/abs/2202.08906)（router z-loss 与 Mesh TensorFlow z-loss 的关系）、[OLMo 2](https://arxiv.org/abs/2501.00656) Table 3 的稳定性配方、[Methods of improving LLM training stability, arXiv:2410.16682](https://arxiv.org/abs/2410.16682) Table 4 的困惑度对比、[Bhojanapalli et al., ICML 2020](https://arxiv.org/abs/2002.07028)（Low-Rank Bottleneck in Multi-head Attention Models）。
-- 官方配置：[`mistralai/Mistral-7B-v0.1`](https://huggingface.co/mistralai/Mistral-7B-v0.1)、[`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m)、[`Qwen/Qwen2-7B`](https://huggingface.co/Qwen/Qwen2-7B)、`Gemma2Config` 与 `Gemma4TextConfig`（Hugging Face Transformers main 分支）、[`deepseek-ai/DeepSeek-V2-Chat`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)、[Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/model_doc/deepseek_v4)与 [DeepSeek-V4-Pro 配置](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)。查阅日期：2026-09-15。
-- DeepSeek-V4-Flash 配置：[`deepseek-ai/DeepSeek-V4-Flash`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/config.json)（`index_topk=512`、`num_hidden_layers=43`、`hidden_size=4096`、`n_routed_experts=256`、`routed_scaling_factor=1.5`、`sliding_window=128`；与 Pro 共用 `index_n_heads=64` / `index_head_dim=128` / `num_experts_per_tok=6`；`compress_ratios` 模式为开头 `0, 0` + 中间 `(4, 128)` 反复 20 对 + 末尾 `4, 0`，列表共 44 项）。查阅日期：2026-09-15。
+### 官方来源
+
+- [Transformer, arXiv:1706.03762](https://arxiv.org/abs/1706.03762)
+- [RMSNorm, arXiv:1910.07467](https://arxiv.org/abs/1910.07467)
+- [SwiGLU/GLU, arXiv:2002.05202](https://arxiv.org/abs/2002.05202)
+- [RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864)
+- [GQA, arXiv:2305.13245](https://arxiv.org/abs/2305.13245)
+- [MLA / DeepSeek-V2, arXiv:2405.04434](https://arxiv.org/abs/2405.04434)
+- [CLA (Brandon et al.), arXiv:2405.12981](https://arxiv.org/abs/2405.12981)
+- [Sparse Transformer, arXiv:1904.10509](https://arxiv.org/abs/1904.10509)
+- [Gated DeltaNet, arXiv:2412.06464](https://arxiv.org/abs/2412.06464)
+- [Narang et al., EMNLP 2021, arXiv:2102.11972](https://arxiv.org/abs/2102.11972)
+- [Kaplan et al., 2020, arXiv:2001.08361](https://arxiv.org/abs/2001.08361)
+- [PaLM, arXiv:2204.02311](https://arxiv.org/abs/2204.02311)
+- [ST-MoE, arXiv:2202.08906](https://arxiv.org/abs/2202.08906)
+- [OLMo 2, arXiv:2501.00656](https://arxiv.org/abs/2501.00656)
+- [Methods of improving LLM training stability, arXiv:2410.16682](https://arxiv.org/abs/2410.16682)
+- [Bhojanapalli et al., ICML 2020, arXiv:2002.07028](https://arxiv.org/abs/2002.07028)
+- [`mistralai/Mistral-7B-v0.1`](https://huggingface.co/mistralai/Mistral-7B-v0.1)
+- [`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m)
+- [`Qwen/Qwen2-7B`](https://huggingface.co/Qwen/Qwen2-7B)
+- [Gemma 3 Transformers 文档](https://huggingface.co/docs/transformers/main/en/model_doc/gemma3)
+- [Gemma 4 Transformers 文档](https://huggingface.co/docs/transformers/main/en/model_doc/gemma4)
+- [`deepseek-ai/DeepSeek-V2-Chat`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)
+- [Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/en/model_doc/deepseek_v4)
+- [`deepseek-ai/DeepSeek-V4-Pro`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)
+- [`deepseek-ai/DeepSeek-V4-Flash`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/config.json)（`index_topk=512`、`num_hidden_layers=43`、`hidden_size=4096`、`n_routed_experts=256`、`routed_scaling_factor=1.5`、`sliding_window=128`；与 Pro 共用 `index_n_heads=64` / `index_head_dim=128` / `num_experts_per_tok=6`；`compress_ratios` 模式为开头 `0, 0` + 中间 `(4, 128)` 反复 20 对 + 末尾 `4, 0`，列表共 44 项）
+- 查阅日期：2026-09-15。
+
+### 本节事实声明的来源指向
+
+- 架构消融与超参数：Narang et al. Table 1（step/s 与 final loss）、Kaplan et al. Figure 5（FFN ratio / aspect ratio / head dim 扫描）、PaLM Table 1 与训练设置、ST-MoE（router z-loss 与 Mesh TensorFlow z-loss 的关系）、OLMo 2 Table 3 稳定性配方、Methods of improving LLM training stability Table 4 困惑度对比、Bhojanapalli et al.（Low-Rank Bottleneck in Multi-head Attention Models）。

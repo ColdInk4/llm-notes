@@ -279,17 +279,32 @@ token id 序列是模型接触张量之前的最后一步；进入训练侧后�
 
 ## 来源与更新记录
 
-- [Stanford CS336 lectures 仓库](https://github.com/stanford-cs336/lectures)
-- [CS336 2026 `gpt5_tokenizer_vocab.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/gpt5_tokenizer_vocab.txt)（查阅日期 2026-09-05；课程材料）
+### 官方来源
+
+- [Sennrich et al., 2016: Neural Machine Translation of Rare Words with Subword Units](https://arxiv.org/abs/1508.07909)（v1 提交日期 2015-08-31，ACL 2016 发表）
+- [Kudo and Richardson, 2018: SentencePiece](https://arxiv.org/abs/1808.06226)
+- [Kudo, 2018 §3.2 Unigram language model](https://arxiv.org/pdf/1804.10959)
+- [Wu et al., 2016 §4.1 Wordpiece Model](https://arxiv.org/pdf/1609.08144)（其文献 [35] 为 Schuster and Nakajima, *Japanese and Korean voice search*, ICASSP 2012）
+- [DeepSeek-V3 技术报告 §4.1 Data Construction](https://arxiv.org/html/2412.19437v2)（"The tokenizer for DeepSeek-V3 employs Byte-level BPE with an extended vocabulary of 128K tokens."）
+- [Qwen3 技术报告 §2 Architecture](https://arxiv.org/html/2505.09388v1)（"byte-level byte-pair encoding (BBPE) with a vocabulary size of 151,669"）
+- [tiktoken `tiktoken_ext/openai_public.py`](https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py)（`o200k_base` 的 `ENDOFTEXT: 199999` 与 `ENDOFPROMPT: 200018`；`o200k_harmony` 的 `<|startoftext|>: 199998`、`<|return|>: 200002`、`<|constrain|>: 200003`、`<|channel|>: 200005`、`<|start|>: 200006`、`<|end|>: 200007`、`<|message|>: 200008`、`<|call|>: 200012`，reserved 区间填到 201087）
+- [`o200k_base.tiktoken`](https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken)（合并表 199,998 行，末行 rank 199997）
+- [tiktoken `tiktoken/model.py`](https://github.com/openai/tiktoken/blob/main/tiktoken/model.py)（`MODEL_PREFIX_TO_ENCODING` 中 `gpt-5` / `gpt-4o-` / `o1-` / `o3-` → `o200k_base`，`gpt-oss-` → `o200k_harmony`）
+- [OpenAI Harmony 格式说明](https://developers.openai.com/cookbook/articles/openai-harmony)（`<|start|>` 200006、`<|channel|>` 200005 等控制 token id）
+- [DeepSeek-V3 `config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/main/config.json)（`vocab_size` 129280）
+- [Qwen3-235B-A22B `config.json`](https://huggingface.co/Qwen/Qwen3-235B-A22B/blob/main/config.json)（`vocab_size` 151936）
+- [GPT-2 `src/encoder.py`](https://github.com/openai/gpt-2/blob/master/src/encoder.py)（第 53 行 `self.pat`；`bytes_to_unicode()` 文档串 "And avoids mapping to whitespace/control characters the bpe code barfs on."）
+- [DeepSeek-R1 `tokenizer.json`](https://huggingface.co/deepseek-ai/DeepSeek-R1/blob/main/tokenizer.json)（`pre_tokenizer` 为 Sequence：Split `\p{N}{1,3}` → Split `[一-龥぀-ゟ゠-ヿ]+` → Split 字母与标点长正则 → ByteLevel；`vocab` 128,000 条、`merges` 127,741 条）
+- [llama.cpp `src/llama-vocab.cpp`](https://github.com/ggml-org/llama.cpp/blob/master/src/llama-vocab.cpp)（`LLAMA_VOCAB_PRE_TYPE_DEEPSEEK3_LLM` 记录同三条正则）
 - [Hugging Face LLM Course: Tokenizers](https://huggingface.co/learn/llm-course/en/chapter6/1)
 - [Hugging Face Transformers: Tokenization algorithms](https://huggingface.co/docs/transformers/en/tokenizer_summary)
-- [Sennrich et al., 2016: Neural Machine Translation of Rare Words with Subword Units](https://arxiv.org/pdf/1508.07909)
-- [Kudo and Richardson, 2018: SentencePiece](https://arxiv.org/pdf/1808.06226)
 - [Tiktokenizer DeepSeek-R1 tokenizer view](https://tiktokenizer.vercel.app/?model=deepseek-ai%2FDeepSeek-R1)
-- 词表规模，状态「官方」，查阅日期 2026-09-05：tiktoken `tiktoken_ext/openai_public.py` https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py（`o200k_base` 的 `ENDOFTEXT: 199999` 与 `ENDOFPROMPT: 200018`；`o200k_harmony` 的 `<|startoftext|>: 199998`、`<|return|>: 200002`、`<|constrain|>: 200003`、`<|channel|>: 200005`、`<|start|>: 200006`、`<|end|>: 200007`、`<|message|>: 200008`、`<|call|>: 200012`，reserved 区间填到 201087）；`o200k_base.tiktoken` https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken（合并表 199,998 行，末行 rank 199997）；tiktoken `tiktoken/model.py` https://github.com/openai/tiktoken/blob/main/tiktoken/model.py（`MODEL_PREFIX_TO_ENCODING` 中 `gpt-5` / `gpt-4o-` / `o1-` / `o3-` → `o200k_base`，`gpt-oss-` → `o200k_harmony`）；OpenAI Harmony 格式说明 https://developers.openai.com/cookbook/articles/openai-harmony（`<|start|>` 200006、`<|channel|>` 200005 等控制 token id）；DeepSeek-V3 `config.json` https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/main/config.json（`vocab_size` 129280）；Qwen3-235B-A22B `config.json` https://huggingface.co/Qwen/Qwen3-235B-A22B/blob/main/config.json（`vocab_size` 151936）。
-- 论文正文口径，状态「论文」，查阅日期 2026-09-05：DeepSeek-V3 技术报告 §4.1 Data Construction https://arxiv.org/html/2412.19437v2（"The tokenizer for DeepSeek-V3 employs Byte-level BPE with an extended vocabulary of 128K tokens."）；Qwen3 技术报告 §2 Architecture https://arxiv.org/html/2505.09388v1（"byte-level byte-pair encoding (BBPE) with a vocabulary size of 151,669"）；Wu et al., 2016 §4.1 Wordpiece Model https://arxiv.org/pdf/1609.08144（"we adopt the wordpiece model (WPM) implementation initially developed to solve a Japanese/Korean segmentation problem"，其文献 [35] 为 Schuster and Nakajima, *Japanese and Korean voice search*, ICASSP 2012）；Sennrich et al. https://arxiv.org/abs/1508.07909（v1 提交日期 2015-08-31，ACL 2016 发表）；Kudo, 2018 §3.2 Unigram language model https://arxiv.org/pdf/1804.10959（步骤 (c)："Sort the symbols by loss_i and keep top η % of subwords (η is 80, for example). Note that we always keep the subwords consisting of a single character to avoid out-of-vocabulary."）。
-- 预分词与 byte 映射，状态「官方」，查阅日期 2026-09-05：GPT-2 `src/encoder.py` https://github.com/openai/gpt-2/blob/master/src/encoder.py（第 53 行 `self.pat`；`bytes_to_unicode()` 文档串 "And avoids mapping to whitespace/control characters the bpe code barfs on."）；DeepSeek-R1 `tokenizer.json` https://huggingface.co/deepseek-ai/DeepSeek-R1/blob/main/tokenizer.json（`pre_tokenizer` 为 Sequence：Split `\p{N}{1,3}` → Split `[一-龥぀-ゟ゠-ヿ]+` → Split 字母与标点长正则 → ByteLevel；`vocab` 128,000 条、`merges` 127,741 条）；llama.cpp `src/llama-vocab.cpp` https://github.com/ggml-org/llama.cpp/blob/master/src/llama-vocab.cpp（`LLAMA_VOCAB_PRE_TYPE_DEEPSEEK3_LLM` 记录同三条正则）。
-- 本章实证段的可复现命令，状态「官方」，查阅日期 2026-09-05：`tiktoken` 0.14.0 上 `tiktoken.get_encoding("o200k_base")` 对 `"Stanford was founded in 1885."` 输出 `[93447, 9201, 673, 24303, 306, 220, 13096, 20, 13]`，`n_vocab` 为 200019，`_pat_str` 含数字分支 `\p{N}{1,3}`，完整字符串仅含数字的 token 共 1290 个（1 位 109、2 位 167、3 位 1014，其中 ASCII 子集对应 1 位 10、2 位 100、3 位 1000 共 1110 个；其他数字来自阿拉伯印度、孟加拉、全角等 Unicode 脚本）；`token_byte_values()` 返回按字节序排序的 199,998 条（`v == sorted(v)` 为真；以 0 起下标，制表符起头段自第 11 项开始、空格起头段第 1,257 至 107,785 项、三字节前导码自第 181,212 项开始、四字节前导码自第 199,933 项开始）；图 1.3-2 与图 1.5-1 的 12 个 id 用 DeepSeek-R1 `tokenizer.json` 的 `vocab` 反查 GPT-2 `bytes_to_unicode()` 映射，两图仅第 10 个 id 不同：图 1.3-2 是 `238`、对应字节 `0x8d`（emoji 🌍 的第 4 个 UTF-8 字节），图 1.5-1 是 `240`、对应字节 `0x8f`（emoji 🌏 的第 4 个 UTF-8 字节），其余 11 个 id 对应同一片段序列 `你好` / ` ，` / `hello` / `,` / ` ` / ` world` / ` !` / ` ` / ` \xf0\x9f\x8c` / ` ` / `！`；§1.3 的 BPE trace 用课程 `lecture_01.py` 的 `train_bpe("the cat in the hat", num_merges=3)` 复现，三轮合并依次是 `(116,104)→256 th`、`(256,101)→257 the`、`(257,32)→258 the `。
+- 查阅日期：2026-09-05。
+
+### 本节事实声明的来源指向
+
+- 词表规模与 token id 实证段：上列 tiktoken / DeepSeek-V3 / Qwen3 一手源；`tiktoken` 0.14.0 上 `tiktoken.get_encoding("o200k_base")` 对 `"Stanford was founded in 1885."` 输出 `[93447, 9201, 673, 24303, 306, 220, 13096, 20, 13]`，`n_vocab` 为 200019，`_pat_str` 含数字分支 `\p{N}{1,3}`，完整字符串仅含数字的 token 共 1290 个（1 位 109、2 位 167、3 位 1014，其中 ASCII 子集对应 1 位 10、2 位 100、3 位 1000 共 1110 个；其他数字来自阿拉伯印度、孟加拉、全角等 Unicode 脚本）；`token_byte_values()` 返回按字节序排序的 199,998 条（`v == sorted(v)` 为真；以 0 起下标，制表符起头段自第 11 项开始、空格起头段第 1,257 至 107,785 项、三字节前导码自第 181,212 项开始、四字节前导码自第 199,933 项开始）；图 1.3-2 与图 1.5-1 的 12 个 id 用 DeepSeek-R1 `tokenizer.json` 的 `vocab` 反查 GPT-2 `bytes_to_unicode()` 映射，两图仅第 10 个 id 不同：图 1.3-2 是 `238`、对应字节 `0x8d`（emoji 🌍 的第 4 个 UTF-8 字节），图 1.5-1 是 `240`、对应字节 `0x8f`（emoji 🌏 的第 4 个 UTF-8 字节），其余 11 个 id 对应同一片段序列 `你好` / ` ，` / `hello` / `,` / ` ` / ` world` / ` !` / ` ` / ` \xf0\x9f\x8c` / ` ` / `！`。
+- BPE 训练 trace 实证段：§1.3 用课程 `lecture_01.py` 的 `train_bpe("the cat in the hat", num_merges=3)` 复现，三轮合并依次是 `(116,104)→256 th`、`(256,101)→257 the`、`(257,32)→258 the `。
 
 ## 附录：代码实验
 

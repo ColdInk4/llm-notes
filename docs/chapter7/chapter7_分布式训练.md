@@ -1337,24 +1337,35 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 
 ## 来源与更新记录
 
+### 官方来源
 
-- 参考：PyTorch distributed 文档；NCCL 文档；ZeRO/FSDP、Megatron-LM、GPipe 相关论文或文档；[NVIDIA Megatron Core MoE 文档](https://docs.nvidia.com/megatron-core/developer-guide/latest/user-guide/features/moe.html)。
-- 课程来源：CS336 2026 Lecture 7（collective 语义、通信 benchmark 与最小分布式代码讲义）与 Lecture 8（ZeRO、流水线、张量、序列与专家并行 slides），对应关系见 `sources/cs336-2026.md`。
-- 一手来源核对（2026-09-03）：
-  - Rajbhandari et al., *ZeRO*, [arXiv:1910.02054](https://arxiv.org/abs/1910.02054) — Figure 1（Ψ=7.5B / $N_d$=64 / K=12，120 → 31.4 → 16.6 → 1.88 GB）、Table 1（按 DP degree 的每卡内存）、§7.2.2（ZeRO-3 通信量 3Ψ = 1.5× baseline）；"a modest 50% increase in communication volume" 出自 §1 Extended Introduction 对三个阶段的列举，不在 abstract 里。论文按 fp16 混合精度记账。
-  - Korthikanti et al., *Reducing Activation Recomputation in Large Transformer Models*, [arXiv:2205.05198](https://arxiv.org/abs/2205.05198) — Eq. (1) $\mathrm{sbh}(34 + 5as/h)$ 与 Eq. (2) $\mathrm{sbh}(10 + 24/t + 5as/(ht))$；34 拆为 attention 11 + MLP 19 + LayerNorm 4。
-  - Grattafiori et al., *The Llama 3 Herd of Models*, [arXiv:2407.21783](https://arxiv.org/abs/2407.21783) Table 4 — 三阶段 TP/CP/PP/DP 配置与 MFU。
-  - DeepSeek-AI, *DeepSeek-V3 Technical Report*, [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §3.2、§4.3 — 16-way PP / 64-way EP / ZeRO-1 DP；长上下文用 YaRN 两阶段扩窗。
-  - Gemma Team, *Gemma 2*, [arXiv:2408.00118](https://arxiv.org/abs/2408.00118) Table 3 — 2B/9B/27B 的 chip 数与 data / model 分片数。
-  - [NVIDIA NVLink 规格页](https://www.nvidia.com/en-us/data-center/nvlink/)、[GB200 NVL72 数据表](https://www.nvidia.com/en-us/data-center/gb200-nvl72/) — 第四代 NVLink 每 GPU 18 link / 900 GB/s；NVL72 为 36 Grace CPU + 72 Blackwell GPU，13.4 TB HBM3E。
-  - [CS336 `lecture_07_stdout.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/traces/lecture_07_stdout.txt) — §7.2.3 至 §7.4 引用的 collective 输出、耗时与带宽数值。
-  - [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) `runtime_configs/benchmarking/runtime.conf` — Mixtral 8x22B 与 Qwen3-235B-A22B 的 benchmarking 并行度；该仓库由社区维护，构建在 Megatron-Core 之上。
-- 一手来源核对（2026-09-04）：
-  - [nccl-tests `doc/PERFORMANCE.md`](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md) — algorithm bandwidth $S/t$ 与 bus bandwidth 的修正系数（all-reduce $2(n-1)/n$ ，reduce-scatter / all-gather $(n-1)/n$ ）由 benchmark 侧计算；同一套公式见 lecture 引用的 [`all_reduce_bench.py`](https://github.com/stas00/ml-engineering/blob/master/network/benchmarks/all_reduce_bench.py)（`busbw_coeff = (2*(ranks - 1) / ranks)`）。
-  - Liu et al., *MoE Parallel Folding*, [arXiv:2504.14960](https://arxiv.org/abs/2504.14960) §3.2 — 传统映射把 EP group 放进 DP 子组，专家并行度被数据并行度上限卡住；folding 后 attention 用 TP×CP×DP×PP、MoE 用 ETP×EP×EDP×PP，只要求 PP 划分一致。
-  - NVIDIA, *NVIDIA Nemotron 3: Efficient and Open Intelligence*, [arXiv:2512.20856](https://arxiv.org/abs/2512.20856) — Nemotron 3 家族的 LatentMoE 架构与 NVFP4 训练；Super 120B-A12B 的训练侧并行度不在该论文与 HF model card 内。
-  - Narayanan et al., *Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM*, [arXiv:2104.04473](https://arxiv.org/abs/2104.04473) Table 1 — 弱扩展模型规模为 1.7B / 3.6B / 7.5B / 18B / 39B / 76B / 145B / 310B / 530B / 1T；论文正文另以 GPT-3 175B 作为参照配置。§7.10-4 引用已同步更改为 17 亿起的真实表行。
-- 一手来源核对（2026-09-22）：
-  - [nccl-tests `doc/PERFORMANCE.md`](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md) — bus bandwidth 修正系数按点对点数据传输次数计数（all-reduce 共需 $2(n-1)$ 次数据传输），原文写明该口径 "independent of the algorithm used (ring, tree, or other)"。
-  - NVIDIA, *Nemotron 3 Super Technical Report*（[技术报告 PDF](https://research.nvidia.com/labs/nemotron/files/NVIDIA-Nemotron-3-Super-Technical-Report.pdf)）§2.6 — LC-Phase 长上下文扩展使用 64-way context parallelism、2-way tensor parallelism 与 64-way expert parallelism，在 GB200 GPU 上训练。
-  - [Megatron-MoE-ModelZoo `runtime_configs/benchmarking/runtime.conf`](https://github.com/yanring/Megatron-MoE-ModelZoo/blob/main/runtime_configs/benchmarking/runtime.conf) — 列头 `TP PP EP CP VPP MBS GBS LAYERS DISPATCHER GROUPED_GEMM NNODES`；Mixtral 8x22B 行为 `2 8 8 1 7` @16 节点，Qwen3-235B-A22B 行为 `2 8 32 1 4` @32 节点，表中 DP 按 attention 侧 world = TP×CP×DP×PP 推得。
+- [PyTorch distributed 文档](https://pytorch.org/docs/stable/distributed.html)
+- [NCCL 文档](https://docs.nvidia.com/deeplearning/nccl/)
+- [NVIDIA Megatron Core MoE 文档](https://docs.nvidia.com/megatron-core/developer-guide/latest/user-guide/features/moe.html)
+- [nccl-tests `doc/PERFORMANCE.md`](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md)（algorithm bandwidth $S/t$ 与 bus bandwidth 的修正系数；all-reduce $2(n-1)/n$，reduce-scatter / all-gather $(n-1)/n$；"independent of the algorithm used (ring, tree, or other)"）
+- [`all_reduce_bench.py`](https://github.com/stas00/ml-engineering/blob/master/network/benchmarks/all_reduce_bench.py)（`busbw_coeff = (2*(ranks - 1) / ranks)`）
+- [NVIDIA NVLink 规格页](https://www.nvidia.com/en-us/data-center/nvlink/)
+- [GB200 NVL72 数据表](https://www.nvidia.com/en-us/data-center/gb200-nvl72/)（第四代 NVLink 每 GPU 18 link / 900 GB/s；NVL72 为 36 Grace CPU + 72 Blackwell GPU，13.4 TB HBM3E）
+- [ZeRO, Rajbhandari et al., arXiv:1910.02054](https://arxiv.org/abs/1910.02054)
+- [Korthikanti et al., arXiv:2205.05198](https://arxiv.org/abs/2205.05198)
+- [Llama 3 Herd of Models, arXiv:2407.21783](https://arxiv.org/abs/2407.21783)
+- [DeepSeek-V3 Technical Report, arXiv:2412.19437](https://arxiv.org/abs/2412.19437)
+- [Gemma 2, arXiv:2408.00118](https://arxiv.org/abs/2408.00118)
+- [MoE Parallel Folding, Liu et al., arXiv:2504.14960](https://arxiv.org/abs/2504.14960)
+- [NVIDIA Nemotron 3, arXiv:2512.20856](https://arxiv.org/abs/2512.20856)
+- [Nemotron 3 Super Technical Report PDF](https://research.nvidia.com/labs/nemotron/files/NVIDIA-Nemotron-3-Super-Technical-Report.pdf) §2.6（LC-Phase 长上下文扩展使用 64-way context parallelism、2-way tensor parallelism 与 64-way expert parallelism，在 GB200 GPU 上训练）
+- [Narayanan et al., Megatron-LM, arXiv:2104.04473](https://arxiv.org/abs/2104.04473)
+- [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo)（`runtime_configs/benchmarking/runtime.conf`，列头 `TP PP EP CP VPP MBS GBS LAYERS DISPATCHER GROUPED_GEMM NNODES`；Mixtral 8x22B 行为 `2 8 8 1 7` @16 节点，Qwen3-235B-A22B 行为 `2 8 32 1 4` @32 节点）
+- [CS336 `lecture_07_stdout.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/traces/lecture_07_stdout.txt)
+- 查阅日期：2026-09-22。
+
+### 本节事实声明的来源指向
+
+- ZeRO Figure 1（Ψ=7.5B / $N_d$=64 / K=12，120 → 31.4 → 16.6 → 1.88 GB）、Table 1（按 DP degree 的每卡内存）、§7.2.2（ZeRO-3 通信量 3Ψ = 1.5× baseline）；"a modest 50% increase in communication volume" 出自 §1 Extended Introduction 对三个阶段的列举，不在 abstract 里。论文按 fp16 混合精度记账。
+- Korthikanti et al. Eq. (1) $\mathrm{sbh}(34 + 5as/h)$ 与 Eq. (2) $\mathrm{sbh}(10 + 24/t + 5as/(ht))$；34 拆为 attention 11 + MLP 19 + LayerNorm 4。
+- Llama 3 Herd of Models Table 4 — 三阶段 TP/CP/PP/DP 配置与 MFU。
+- DeepSeek-V3 §3.2、§4.3 — 16-way PP / 64-way EP / ZeRO-1 DP；长上下文用 YaRN 两阶段扩窗。
+- Gemma 2 Table 3 — 2B/9B/27B 的 chip 数与 data / model 分片数。
+- MoE Parallel Folding §3.2 — 传统映射把 EP group 放进 DP 子组，专家并行度被数据并行度上限卡住；folding 后 attention 用 TP×CP×DP×PP、MoE 用 ETP×EP×EDP×PP，只要求 PP 划分一致。
+- Nemotron 3 — LatentMoE 架构与 NVFP4 训练。
+- Megatron-LM Table 1 — 弱扩展模型规模为 1.7B / 3.6B / 7.5B / 18B / 39B / 145B / 310B / 530B / 1T。

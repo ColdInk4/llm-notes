@@ -459,7 +459,7 @@ GRPO 与 Dr. GRPO 是当前 RLVR 的两大算法骨架。本节从 GRPO 的目�
 
 本节回答「去掉 value model 之后，GRPO 用什么替代 GAE」这个问题：保留 PPO 的概率比、裁剪和 KL 约束，把 advantage 换成「同问题多条回复的 reward z-score」。读完后应能写出 GRPO 的目标函数、组内 z-score 的计算方式，以及「policy loss + KL 惩罚」这两条损失在代码里如何合并。
 
-**GRPO (Group Relative Policy Optimization)** 最早在 [DeepSeekMath](https://arxiv.org/pdf/2402.03300) 中提出，随后成为 [DeepSeek-R1](https://arxiv.org/abs/2501.12948) 的核心 RL 算法之一。
+**GRPO (Group Relative Policy Optimization)** 最早在 [DeepSeekMath](https://arxiv.org/abs/2402.03300) 中提出，随后成为 [DeepSeek-R1](https://arxiv.org/abs/2501.12948) 的核心 RL 算法之一。
 
 它保留 PPO 的概率比、裁剪和 KL 约束，去掉 value model，并用同一问题内多条回复的 reward z-score 估计 advantage。
 
@@ -785,7 +785,7 @@ Dr. GRPO 对应的实现改动很小：在 `masked_mean` 里把 `mask.sum(axis=d
 
 ### 13.4.1 R1-Zero：纯 GRPO 起点
 
-[DeepSeek-R1](https://arxiv.org/pdf/2501.12948) 把规则奖励 RL、长 CoT 和蒸馏同时推到公开视野中。R1 系列分两条平行路径：R1-Zero 是纯 RL 起点（验证规则奖励驱动 RL 在大模型上的可学性；该团队在 DeepSeekMath 中提出 GRPO，所以 R1 系列常被一并阅读），R1 在 R1-Zero 之上加入冷启动 SFT + 多阶段 RL（验证可发布质量）。R1 蒸馏把这两条路径产出的轨迹迁回非推理学生模型。
+[DeepSeek-R1](https://arxiv.org/abs/2501.12948) 把规则奖励 RL、长 CoT 和蒸馏同时推到公开视野中。R1 系列分两条平行路径：R1-Zero 是纯 RL 起点（验证规则奖励驱动 RL 在大模型上的可学性；该团队在 DeepSeekMath 中提出 GRPO，所以 R1 系列常被一并阅读），R1 在 R1-Zero 之上加入冷启动 SFT + 多阶段 RL（验证可发布质量）。R1 蒸馏把这两条路径产出的轨迹迁回非推理学生模型。
 
 ![图 13.4-1 DeepSeek-R1 引发的关注](images/13-4-1-deepseek-r1-attention.png)
 
@@ -938,9 +938,9 @@ DeepSeek-R1 论文 [arXiv:2501.12948](https://arxiv.org/abs/2501.12948) Appendix
 
 *图 13.4-12 s1 使用 1k 高质量样本提升数学推理*
 
-[s1: Simple test-time scaling](https://arxiv.org/pdf/2501.19393)（Muennighoff 等，2025）使用 1k 个高质量、带有长思维链的数据，在 Qwen2.5-32B-Instruct 上进行 SFT，从而明显提升数学推理表现。
+[s1: Simple test-time scaling](https://arxiv.org/abs/2501.19393)（Muennighoff 等，2025）使用 1k 个高质量、带有长思维链的数据，在 Qwen2.5-32B-Instruct 上进行 SFT，从而明显提升数学推理表现。
 
-上海交通大学刘鹏飞团队的 [LIMO: Less is More for Reasoning](https://arxiv.org/abs/2502.03387) 得到相似结论：用不到千条高质量、带长思维链的样本在 Qwen2.5-32B-Instruct 上做 SFT，就能显著提高数学推理表现。论文 v3 §3.1.1 给出的候选筛选路径是从 tens of millions 数学题出发，先用 Qwen2.5-Math-7B-Instruct 做 baseline 难度过滤，再用 DeepSeek-R1-Distill-Qwen-32B 做 32 次采样评估（只保留 1-3/32 解出的），得到 2,125 条 LIMO-Pool；再按 solution length 30% + self-verification 20% + exploratory language 25% + adaptive granularity 25% 的质量分加权取 top 800 作为最终训练集合。Hugging Face 公开的 `GAIR/LIMO` 数据集含 817 行 question / solution / answer 三元组。
+上海交通大学刘鹏飞团队的 [LIMO: Less is More for Reasoning](https://arxiv.org/abs/2502.03387) 得到相似结论：用不到千条高质量、带长思维链的样本在 Qwen2.5-32B-Instruct 上做 SFT，就能显著提高数学推理表现。论文 v3 §3.1.1 给出的候选筛选路径是从 tens of millions 数学题出发，先用 Qwen2.5-Math-7B-Instruct 做 baseline 难度过滤，再用 DeepSeek-R1-Distill-Qwen-32B 做 32 次采样评估（只保留 1-3/32 解出的），得到 2,125 条 LIMO-Pool；再按 solution length 30% + self-verification 20% + exploratory language 25% + adaptive granularity 25% 的质量分加权取 top 800 作为最终训练集合。Hugging Face 公开的 [`GAIR/LIMO`](https://huggingface.co/datasets/GAIR/LIMO) 数据集含 817 行 question / solution / answer 三元组。
 
 ![图 13.4-13 LIMO 使用 800 个高质量样本提升数学推理](images/13-4-13-limo-small-data-math.png)
 
@@ -1153,7 +1153,7 @@ Qwen3 的后训练流程围绕两类控制展开：
 
 *图 13.4-23 思考模式融合阶段的 SFT 数据示例*
 
-思考模式融合让模型同时见到带 `<think>` 的长推理回答和直接回答，用户则通过 chat template 里的 `/think` 与 `/no think` 标记选择模式，默认是思考模式，多轮对话按最后一次出现的标记生效。
+思考模式融合让模型同时见到带 `<think>` 的长推理回答和直接回答，用户则通过 chat template 里的 `/think` 与 `/no_think` 标记选择模式，默认是思考模式，多轮对话按最后一次出现的标记生效。
 
 模型学会两种模式后，也能处理中间状态：当思考长度达到 thinking budget 时，系统截断 `<think>` 过程并插入一条停止思考的指令（"Considering the limited time by the user, I have to give the solution based on the thinking directly now."），模型再基于已经生成的推理给出最终答案。Qwen3 报告指出这种按预算截断的能力没有被显式训练，而是从模式融合的训练分布里自然出现的，所以预算控制在实现上只是一层外部逻辑。
 
@@ -1208,17 +1208,30 @@ RLVR 把后训练主线从“人类偏好 → 偏好模型”换成“可验证�
 
 ## 来源与更新记录
 
-- 来源说明：Lecture 16 是本章 RLVR 主依据；Lecture 15 用于承接 RLHF、PPO、DPO 与 overoptimization。
-- 论文与文档来源（查阅日期 2026-09-05）：
-  - [DeepSeekMath, arXiv:2402.03300](https://arxiv.org/abs/2402.03300) §4.1.1（PPO → GRPO 推导）、§4.1.2 / §4.1.3（outcome vs process supervision 与 GRPO+OS / GRPO+PS）、§4.2（约 144K 条 GSM8K + MATH CoT 训练数据）、§5.2.1（RFT = Rejection Sampling Fine-tuning）
-  - [Implementation Matters in Deep Policy Gradients, arXiv:2005.12729](https://arxiv.org/abs/2005.12729)（Engstrom et al., 2020）
-  - [alpaca_farm PPO trainer](https://github.com/tatsu-lab/alpaca_farm/blob/30717ddae735365de756ee2085191b491a71788d/src/alpaca_farm/rl/ppo_trainer.py)（`objective/kl_sum_seq`、`objective/rewards`、`objective/non_score_rewards`、`objective/shaped_rewards` 的定义）
-  - [DeepSeek-R1, arXiv:2501.12948](https://arxiv.org/abs/2501.12948) Appendix G.2 "Unsuccessful Attempts"（PRM / MCTS 落地难点）、Appendix B.3.2 冷启动数据收集（四步：R1-Zero 多 trajectory → V3 精修 → LLM 风格重写 → 人工验证）、Appendix B.3.3 "800K Supervised Data"（600k + 200k = 800k）、Appendix F "DeepSeek-R1 Distillation"（六个学生基座，只做 SFT）
-  - [Dr. GRPO, arXiv:2503.20783](https://arxiv.org/abs/2503.20783) §2.2 template 影响、§2.3 "Aha Moment Already Appears in Base Models Including DeepSeek-V3-Base"、§3.1 "GRPO Leads to Biased Optimization"（response-level length bias 与 question-level difficulty bias）、§3.2 Dr. GRPO 与 `masked_mean` 常量分母
-  - [Kimi k1.5, arXiv:2501.12599](https://arxiv.org/abs/2501.12599) §2.1 RL Prompt Set Curation（不带 CoT 猜答案、N = 8 easy-to-hack 过滤）、§2.3.3 Length Penalty、§2.3.5 Reward Modeling for Math（约 800k CoT 标注样本）
-  - [Qwen3, arXiv:2505.09388](https://arxiv.org/abs/2505.09388) §4.2 Reasoning RL（3,995 query-verifier pairs、170 RL steps、AIME 2024 70.1 → 85.1）、§4.3 Thinking Mode Fusion（`/think` 与 `/no think` 标记、预算耗尽时插入的停止思考指令）、Table 22（Qwen3-32B 在 Stage 2 / 3 / 4 的评测结果）
-  - [s1: Simple test-time scaling, arXiv:2501.19393](https://arxiv.org/abs/2501.19393)（1k 样本 + Qwen2.5-32B-Instruct）
-  - [LIMO, arXiv:2502.03387](https://arxiv.org/abs/2502.03387) §3.1.1（候选筛选路径 tens of millions → baseline 难度过滤 → 32 次采样评估 → 2,125 LIMO-Pool）、§3.1.2（推理链质量分加权 30/20/25/25 → top 800）；Hugging Face `GAIR/LIMO` 数据集 817 行（question / solution / answer 三元组，datasets-server `size` 接口）
-  - [LIMR, arXiv:2502.11886](https://arxiv.org/abs/2502.11886)（Qwen2.5-Math-7B + PPO，1,389 / 8,523 样本）
-  - [Less is More: Improving LLM Alignment via Preference Data Selection, arXiv:2502.14560](https://arxiv.org/abs/2502.14560)（Xun Deng et al., 2025；Bayesian Aggregation 数据选择、UltraFeedback 约 10% 子集、Llama / Mistral / Qwen 系列上 AlpacaEval 2.0 相对提升 3%-8%）
-  - [Qwen3-Coder-Next 模型卡](https://huggingface.co/Qwen/Qwen3-Coder-Next)（80B 总参 / 3B 激活 / 262,144 原生上下文）
+### 官方来源
+
+- [DeepSeekMath, arXiv:2402.03300](https://arxiv.org/abs/2402.03300)
+- [Implementation Matters in Deep Policy Gradients, arXiv:2005.12729](https://arxiv.org/abs/2005.12729)（Engstrom et al., 2020）
+- [alpaca_farm PPO trainer](https://github.com/tatsu-lab/alpaca_farm/blob/30717ddae735365de756ee2085191b491a71788d/src/alpaca_farm/rl/ppo_trainer.py)
+- [DeepSeek-R1, arXiv:2501.12948](https://arxiv.org/abs/2501.12948)
+- [Dr. GRPO, arXiv:2503.20783](https://arxiv.org/abs/2503.20783)
+- [Kimi k1.5, arXiv:2501.12599](https://arxiv.org/abs/2501.12599)
+- [Qwen3, arXiv:2505.09388](https://arxiv.org/abs/2505.09388)
+- [s1: Simple test-time scaling, arXiv:2501.19393](https://arxiv.org/abs/2501.19393)
+- [LIMO, arXiv:2502.03387](https://arxiv.org/abs/2502.03387)
+- [LIMR, arXiv:2502.11886](https://arxiv.org/abs/2502.11886)
+- [Less is More: Improving LLM Alignment via Preference Data Selection, arXiv:2502.14560](https://arxiv.org/abs/2502.14560)（Xun Deng et al., 2025；Bayesian Aggregation 数据选择、UltraFeedback 约 10% 子集、Llama / Mistral / Qwen 系列上 AlpacaEval 2.0 相对提升 3%-8%）
+- [Qwen3-Coder-Next 模型卡](https://huggingface.co/Qwen/Qwen3-Coder-Next)（80B 总参 / 3B 激活 / 262,144 原生上下文）
+- [GAIR/LIMO 数据集](https://huggingface.co/datasets/GAIR/LIMO)（817 行，question / solution / answer 三元组）
+- 查阅日期：2026-09-22。
+
+### 本节事实声明的来源指向
+
+- DeepSeekMath §4.1.1（PPO → GRPO 推导）、§4.1.2 / §4.1.3（outcome vs process supervision 与 GRPO+OS / GRPO+PS）、§4.2（约 144K 条 GSM8K + MATH CoT 训练数据）、§5.2.1（RFT = Rejection Sampling Fine-tuning）
+- alpaca_farm PPO trainer — `objective/kl_sum_seq`、`objective/rewards`、`objective/non_score_rewards`、`objective/shaped_rewards` 的定义
+- DeepSeek-R1 Appendix G.2 "Unsuccessful Attempts"（PRM / MCTS 落地难点）；Appendix B.3.2 冷启动数据收集（四步：R1-Zero 多 trajectory → V3 精修 → LLM 风格重写 → 人工验证）；Appendix B.3.3 "800K Supervised Data"（600k + 200k = 800k）；Appendix F "DeepSeek-R1 Distillation"（六个学生基座，只做 SFT）
+- Dr. GRPO §2.2 template 影响；§2.3 "Aha Moment Already Appears in Base Models Including DeepSeek-V3-Base"；§3.1 "GRPO Leads to Biased Optimization"（response-level length bias 与 question-level difficulty bias）；§3.2 Dr. GRPO 与 `masked_mean` 常量分母
+- Kimi k1.5 §2.1 RL Prompt Set Curation（不带 CoT 猜答案、N = 8 easy-to-hack 过滤）；§2.3.3 Length Penalty；§2.3.5 Reward Modeling for Math（约 800k CoT 标注样本）
+- Qwen3 §4.2 Reasoning RL（3,995 query-verifier pairs、170 RL steps、AIME 2024 70.1 → 85.1）；§4.3 Thinking Mode Fusion（`/think` 与 `/no_think` 标记、预算耗尽时插入的停止思考指令）；Table 22（Qwen3-32B 在 Stage 2 / 3 / 4 的评测结果）
+- LIMO §3.1.1（候选筛选路径 tens of millions → baseline 难度过滤 → 32 次采样评估 → 2,125 LIMO-Pool）；§3.1.2（推理链质量分加权 30/20/25/25 → top 800）
+- LIMR — Qwen2.5-Math-7B + PPO，1,389 / 8,523 样本

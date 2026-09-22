@@ -594,7 +594,7 @@ MoE 相较于传统 dense 模型的优势是：它可以扩大总参数规模，
 
 实证结果显示，这两条路径在不同设置下表现差异显著。比如：
 
-- OLMoE 的实验发现，采用 token-choice routing 从零训练的 MoE 在约 500–600B tokens 时就能追上并在随后超越 upcycled 模型，相当于原始 dense 模型训练数据量约 25% 的计算预算即可达到追赶点。
+- OLMoE 的实验发现，采用 token-choice routing 从零训练的 MoE 在约 500B tokens 时就能追上并在随后超越 upcycled 模型，相当于原始 dense 模型训练数据量约 25% 的计算预算即可达到追赶点。
 - Komatsuzaki 等人在其 upcycling 工作中，视觉模型与语言模型的 encoder 侧使用 expert-choice routing（容量因子 C = 2），语言模型的 decoder 侧为兼顾训练时 teacher forcing 与推理时自回归解码的一致性改用 top-K = 2 routing；其论文 Figure 4 报告的结论是，语言侧从零训练的 MoE 需要大约原 dense checkpoint 计算预算的 120% 才能追上 upcycled 模型。二者差异来自实验范式、路由策略、模型结构和训练预算不同。
 
 OLMoE 与 Komatsuzaki 这两组实验放在一起，给出 upcycling vs 从零训练的一条机制。公理起点是 SGD 的初始化偏差：upcycling 把已有 dense FFN 权重 $W_{\text{dense}}$ 复制成 $E$ 个 expert 权重 $\{W_{\text{dense}}^{(j)} : 1 \le j \le E\}$，梯度更新按 $W_{t+1}^{(j)} = W_{t}^{(j)} - \eta \nabla_W \mathcal{L}(W_{t}^{(j)})$ 进行。
@@ -1151,7 +1151,7 @@ DeepSeek-V3 在 256 routed experts 上选 64-way EP（跨 8 节点 64 GPU），�
 | Qwen 1.5 MoE | 60 routed + 4 shared = 64 | 4 | 4 | (4 routed + 4 shared) / 64 = 8/64 = 1/8 = 12.5% | [Qwen/Qwen1.5-MoE-A2.7B config](https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B)：`num_experts: 60`、`num_experts_per_tok: 4`；shared expert 计数见下方 NOTE |
 | DeepSeek v3 | 256 routed + 1 shared = 257 | 8 | 1 | (8 routed + 1 shared) / 257 = 9/257 ≈ 3.5% ≈ 1/28.6 | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) + [DeepSeek-V3 config](https://huggingface.co/deepseek-ai/DeepSeek-V3) |
 | OlMoE | 64 | 8 | 0 | 8/64 = 1/8 | [arXiv:2409.02060](https://arxiv.org/abs/2409.02060) |
-| Llama 4 Maverick | 128 routed + 1 shared = 129 | 1 | 1 | (1 routed + 1 shared) / 129 = 2/129 ≈ 1.55% | [Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct)：`num_local_experts: 128`、`num_experts_per_tok: 1`；PyTorch / Meta 官方说明每 token 由 shared expert + 1 个 routed expert 组成（约 17B active / ~400B total） |
+| Llama 4 Maverick | 128 routed + 1 shared = 129 | 1 | 1 | (1 routed + 1 shared) / 129 = 2/129 ≈ 1.55% | [Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct)：`num_local_experts: 128`、`num_experts_per_tok: 1`；config.json 本身未列 `shared_experts` 字段，按 Meta / PyTorch 官方说明每 token 由 1 个 shared expert + 1 个 routed expert 组成（约 17B active / ~400B total） |
 | MiniMax-M1 | 32 routed + 0 shared = 32 | 2 | 0 | 2/32 = 1/16 = 6.25% | [MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k)：`num_local_experts: 32`、`num_experts_per_tok: 2`、`shared_intermediate_size: 0`（无 shared expert）；[MiniMax-M1 论文](https://arxiv.org/abs/2506.13585) 给出 456B total / 45.9B activated，45.9B / 456B ≈ 10.1% 是折进 attention、embedding 等 dense 部分后的总激活比例，单纯按 MoE expert 计数为 2/32 = 1/16 |
 
 > [!NOTE]
@@ -1225,7 +1225,27 @@ DeepSeek-V3 在 256 routed experts 上选 64-way EP（跨 8 节点 64 GPU），�
 
 ## 来源与更新记录
 
-- 公开模型配置：[OlMoE config](https://huggingface.co/allenai/OLMoE-1B-7B-0924)、[Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct)。DeepSeek-V4 系列配置见 [DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)：`n_routed_experts: 384`、`n_shared_experts: 1`、`num_experts_per_tok: 6`、`topk_method: "noaux_tc"`、`scoring_func: "sqrtsoftplus"`、`num_hash_layers: 3`、`swiglu_limit: 10.0`（查阅日期 2026-09-03）。
-- §4.5 expert 配置表的 Qwen 1.5 MoE 行取自 [Qwen1.5-MoE-A2.7B config](https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B/blob/main/config.json)（查阅日期 2026-09-05）；MiniMax-M1 行取自 [MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k/blob/main/config.json) 与 [MiniMax-M1 论文](https://arxiv.org/abs/2506.13585) 的 456B / 45.9B 参数口径（查阅日期 2026-09-22）。
-- 课程材料：CS336 2026 Lecture 4 slides 与 video，对应 lecture 映射见 [`sources/cs336-2026.md`](../../sources/cs336-2026.md)。
-- 本节事实声明的来源指向：§4.1.2 router z-loss 与低精度 router 分析（ST-MoE [arXiv:2202.08906](https://arxiv.org/abs/2202.08906) §3.3， $c_z = 0.001$）；§4.1.3 从零训练 25% 追赶（OLMoE [arXiv:2409.02060](https://arxiv.org/abs/2409.02060) §4.1.5）与 upcycled 120% 预算（[arXiv:2212.05055](https://arxiv.org/abs/2212.05055) Figure 4）；§4.3.1 DeepSeekMoE §4.4 Pile loss 1.808 / 1.806 / 1.811；§4.3.2 seq-wise $\alpha = 0.0001$、bias 更新 $\gamma = 0.001$、MTP 深度 $D = 1$ 与 14.8T tokens（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §4.2、Table 1、Table 4）；§4.5 Switch 表口径（[arXiv:2101.03961](https://arxiv.org/abs/2101.03961) Table 9）；§4.4 Kimi K2 QK-Clip 阈值 $\tau = 100$ 与 15.5T 零 loss spike（[arXiv:2507.20534](https://arxiv.org/abs/2507.20534)）（查阅日期 2026-09-22）。
+### 官方来源
+
+- [OlMoE config](https://huggingface.co/allenai/OLMoE-1B-7B-0924)
+- [Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct)
+- [DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)（`n_routed_experts: 384`、`n_shared_experts: 1`、`num_experts_per_tok: 6`、`topk_method: "noaux_tc"`、`scoring_func: "sqrtsoftplus"`、`num_hash_layers: 3`、`swiglu_limit: 10.0`）
+- [Qwen1.5-MoE-A2.7B config](https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B/blob/main/config.json)
+- [MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k/blob/main/config.json)
+- [MiniMax-M1 论文](https://arxiv.org/abs/2506.13585)（456B / 45.9B 参数口径）
+- [ST-MoE, arXiv:2202.08906](https://arxiv.org/abs/2202.08906)
+- [OLMoE, arXiv:2409.02060](https://arxiv.org/abs/2409.02060)
+- [Upcycled MoE, arXiv:2212.05055](https://arxiv.org/abs/2212.05055)
+- [DeepSeekMoE §4.4 Pile loss 数据见 DeepSeek-V3 技术报告 §4.2 / Table 1 / Table 4，arXiv:2412.19437](https://arxiv.org/abs/2412.19437)
+- [Switch Transformer, arXiv:2101.03961](https://arxiv.org/abs/2101.03961)
+- [Kimi K2, arXiv:2507.20534](https://arxiv.org/abs/2507.20534)
+- 查阅日期：2026-09-22。
+
+### 本节事实声明的来源指向
+
+- §4.1.2 router z-loss 与低精度 router 分析（ST-MoE [arXiv:2202.08906](https://arxiv.org/abs/2202.08906) §3.3， $c_z = 0.001$）
+- §4.1.3 从零训练 25% 追赶（OLMoE [arXiv:2409.02060](https://arxiv.org/abs/2409.02060) §4.1.5）与 upcycled 120% 预算（[arXiv:2212.05055](https://arxiv.org/abs/2212.05055) Figure 4）
+- §4.3.1 DeepSeekMoE §4.4 Pile loss 1.808 / 1.806 / 1.811
+- §4.3.2 seq-wise $\alpha = 0.0001$、bias 更新 $\gamma = 0.001$、MTP 深度 $D = 1$ 与 14.8T tokens（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §4.2、Table 1、Table 4）
+- §4.5 Switch 表口径（[arXiv:2101.03961](https://arxiv.org/abs/2101.03961) Table 9）
+- §4.4 Kimi K2 QK-Clip 阈值 $\tau = 100$ 与 15.5T 零 loss spike（[arXiv:2507.20534](https://arxiv.org/abs/2507.20534)）

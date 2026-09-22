@@ -63,7 +63,7 @@ GPU 的历史背景只需要抓住一条主线：它最初为图形渲染中的�
 
 | 指标 | A100 | H100 | H200 | B200 |
 | --- | --- | --- | --- | --- |
-| SM 数 | 108 | 132 | 132 | 单 GB100 die 物理 80 SM、启用 74 SM；B200 全封装 2 个 GB100 die，启用 SM 总数 = 148（74 × 2，部分 die 内 SM 被禁用以保良率）；每 SM 128 个 FP32 core，2 个 die 全封装 18,944 个 FP32 CUDA core（[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) + TechInsights GB100 teardown） |
+| SM 数 | 108 | 132 | 132 | 单 GB100 die 物理 192 SM、启用 74 SM；B200 全封装 2 个 GB100 die，启用 SM 总数 = 148（74 × 2，部分 die 内 SM 被禁用以保良率）；每 SM 128 个 FP32 core，2 个 die 全封装 18,944 个 FP32 CUDA core（[NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) + Chips and Cheese GB100 die shot + TechInsights GB100 teardown） |
 | 每 SM 寄存器 | 256 KB | 256 KB | 256 KB | 256 KB |
 | 每 SM L1 + shared memory | 192 KB | 256 KB | 256 KB | 256 KB |
 | L2 cache | 40 MB | 50 MB | 50 MB | 单颗 GB200 / B200 GPU（全封装，含 2 个 GB100 die）L2 = 126 MB（[NVIDIA Blackwell tuning guide §1.4.2.2](https://docs.nvidia.com/cuda/blackwell-tuning-guide/)）；折算每 GB100 die ≈ 63 MB |
@@ -996,5 +996,25 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 
 ## 来源与更新记录
 
+### 官方来源
 
-- 本节硬件数字（B200 L2 ≈ 63 MB/GB100 die、GB200 superchip package 126 MB、HGX B200 HBM3e 软件可见 180 GB / 物理 192 GB raw、OCP MXFP8 / MXFP4 每 32 元素共享一个 E8M0 scale factor、NVIDIA Blackwell NVFP4 每 16 元素共享一个 E4M3 microexponent scale、TPU v5p 每芯片 2 个 TensorCore × 4 个 MXU = 8 MXU、单芯片 BF16 459 TFLOP/s、HBM 95 GiB、带宽 2765 GB/s、整 pod 8960 颗芯片、MXU 128×128 systolic array、batch 64 / feature 128 padding）以 [NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/)、[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)、[NVIDIA A100 datasheet](https://www.nvidia.com/en-us/data-center/a100/)（INT4 Tensor Core 1248/2496 TOPS、FP32 CUDA core 总数 6912、SM 108、die 826 mm²、7nm N7、L2 读带宽 5120 Bytes/clk）、OCP Microscaling Formats specification（[OCP Microscaling Formats MX v1.0 Spec Final（2023-09）](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf)）与 [Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p) 为一手出处。MXFP4 与 NVFP4 在元素块大小上不同：OCP MX 规范定义 MXFP4 为 32 元素块 + E8M0 缩放；NVIDIA Blackwell 实际部署的 4-bit 路径是 NVFP4 变体（16 元素块 + E4M3 microexponent + 每张量额外 FP32 全局缩放）。笔记中"MXFP4 / 1 per 16"指 NVIDIA Blackwell NVFP4 部署口径，不是 OCP MXFP4 规范的块大小。H100 SXM 的 FP32 (vector) CUDA Core 整卡峰值 = 67 TFLOP/s（H100 PCIe 版 = 51 TFLOP/s，差异来自 TDP 与 boost clock），§5.6.2 表中 FP8 行的「约 30×」按 H100 SXM 自身 Tensor Core FP8 dense 1,979 TFLOP/s ÷ H100 SXM FP32 CUDA Core 67 TFLOP/s 算出。FlashAttention V3 FP8 attention 的 matmul 累加器为 FP32、中间 softmax 统计量（ $m_i, l_i$ ）保留在 FP32（参考 [FlashAttention-3 论文 §3.1-3.2](https://arxiv.org/abs/2407.08608)）；本章已据此修正 5.7.3 与 5.7.4 中的累加器精度描述。A100 L2 读带宽约为 V100 的 2.3×（[NVIDIA Ampere architecture in-depth blog](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/)）；TPU 2015 年起在 Google 内部数据中心部署、2016 年 5 月在 Google I/O 首次公开（[Wikipedia TPU 条目](https://en.wikipedia.org/wiki/Tensor_Processing_Unit)）。§5.3.1 全局内存延迟、A100 实测 latency table（Global memory = 290 cycles；L2 = 200；L1 = 33；Shared Memory ld/st = 23/19）与图 5.3-1 同源。查阅日期：2026-09-22。
+- [NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) — B200 / GB200 规格、L2 cache 126 MB（GB200 全封装）、HBM3e 软件可见 180 GB；2026-09-22 查阅。
+- [NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/) — H100 SXM5 BF16 / FP16 Tensor Core dense 989.5 TFLOP/s、FP8 dense 1,979 TFLOP/s、FP32 CUDA Core 67 TFLOP/s（SXM5）/ 51 TFLOP/s（PCIe）、HBM3 80 GB、HBM 带宽 3.35 TB/s；2026-09-22 查阅。
+- [NVIDIA A100 datasheet](https://www.nvidia.com/en-us/data-center/a100/) — A100 SM 108、FP32 CUDA core 总数 6912、die 826 mm²、7nm N7、INT4 Tensor Core 1,248 TOPS（dense）/ 2,496 TOPS（with sparsity）、HBM2e 80 GB、HBM 带宽 2 TB/s；2026-09-22 查阅。
+- [NVIDIA Ampere architecture in-depth blog](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/) — A100 L2 读带宽约为 V100 的 2.3×（5120 Bytes/clk 分区 crossbar 结构）；2026-09-22 查阅。
+- [OCP Microscaling Formats MX v1.0 Spec Final（2023-09）](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) — MXFP8 / MXFP4 的 32 元素块 + E8M0 scale factor 定义；2026-09-22 查阅。
+- [Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p) — TPU v5p 每芯片 2 个 TensorCore × 4 个 MXU = 8 MXU、单芯片 BF16 459 TFLOP/s、HBM 95 GiB、带宽 2,765 GB/s、整 pod 8,960 颗芯片、MXU 128×128 systolic array；2026-09-22 查阅。
+- [Wikipedia: Tensor Processing Unit](https://en.wikipedia.org/wiki/Tensor_Processing_Unit) — TPU 2015 年起在 Google 内部数据中心部署、2016 年 5 月在 Google I/O 首次公开；2026-09-22 查阅。
+- [JAX scaling book: roofline](https://jax-ml.github.io/scaling-book/roofline/) — H100 BF16 989.5 TFLOP/s、HBM 3.35 TB/s、roofline 转折点 ≈ 295 FLOPs/byte 的算术强度速查；2026-09-22 查阅。
+
+### 本节事实声明的来源指向
+
+- §5.1.3 硬件表（A100/H100/H200/B200 在 SM 数、HBM 容量与带宽、L2 cache 的量级差异）：NVIDIA Blackwell tuning guide §1.4.2.2 + NVIDIA H100 / A100 datasheets；GB200 NVL72 反推 186 GB/GPU 的总 HBM3e 13.4 TB / 72 GPU 见 [第 2 章 §2.4 计算效率](../chapter2/chapter2_pytorch与资源核算.md) 与 [第 7 章 §7.1.4 GPU、TPU 和数据中心拓扑](../chapter7/chapter7_分布式训练.md)。
+- §5.1.4 / §5.3.1 / §5.3.2 Tensor Core 吞吐与 A100 内存层次：NVIDIA A100 datasheet specs table；A100 L2 读带宽约 5,120 Bytes/clk 来自 NVIDIA Ampere architecture in-depth blog。
+- §5.3.1 全局内存延迟表（Global memory = 290 cycles；L2 = 200；L1 = 33；Shared Memory ld/st = 23/19）— 来自 NVIDIA A100 实测 latency table，与图 5.3-1 同源。
+- §5.4.2 TPU v5p TensorCore / MXU / 459 TFLOP/s / HBM 95 GiB / 2,765 GB/s / 8,960 chips per pod / 128×128 systolic array / batch 64 padding — Google Cloud TPU v5p 文档。
+- §5.6.2 低精度表的「FP8 约 30×」相对值：H100 SXM Tensor Core FP8 dense 1,979 TFLOP/s ÷ H100 SXM FP32 CUDA Core 67 TFLOPs（NVIDIA H100 datasheet，PCIe 版 FP32 = 51 TFLOPs）。
+- §5.6.2 OCP MX 与 NVIDIA Blackwell NVFP4 块大小差异：OCP MXFP8 / MXFP4 规范定义 32 元素块 + E8M0 scale；Blackwell NVFP4 部署为 16 元素块 + E4M3 microexponent + 每张量 FP32 全局缩放——笔记中"MXFP4 / 1 per 16"指 NVIDIA Blackwell NVFP4 部署口径，不是 OCP MXFP4 规范的块大小。
+- §5.7.3 FlashAttention V2 性能（A100 上 50-73% Tensor Core 利用率、最高约 230 TFLOPs/s、H100 上约 335 TFLOPs/s）：[FlashAttention-2 论文 §3](https://arxiv.org/abs/2307.08691) + [Stanford Hazy Research blog（2023-07-17 FlashAttention-2）](https://hazyresearch.stanford.edu/blog/2023-07-17-flash2)。
+- §5.7.4 FlashAttention V3 性能（H100 FP16 路径约 75% 利用率 ≈ 740 TFLOPs/s、FP8 路径约 60% 利用率 ≈ 1,200 TFLOPs/s、前向约 1.5-2× 加速、反向约 1.5-1.75× 加速）：[FlashAttention-3 论文](https://arxiv.org/abs/2407.08608) + [Tri Dao 2024-07 FlashAttention-3 blog](https://tridao.me/blog/2024/flash3/)。
+- §5.7.4 FlashAttention V3 FP8 attention matmul 累加器精度（FP32）与 softmax 统计量（ $m_i$ / $l_i$ ）保留 FP32：[FlashAttention-3 论文 §3.1-3.2](https://arxiv.org/abs/2407.08608)。

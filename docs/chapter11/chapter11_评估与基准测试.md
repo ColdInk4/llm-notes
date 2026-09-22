@@ -866,7 +866,59 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 
 ## 来源与更新记录
 
-- 来源：本章以公开评估资料、论文与模型技术报告为主；现代榜单、模型分数和 benchmark 声明按官方榜单、论文或模型卡逐条复核。
-- 课程映射：Lecture 12 提供 difficulty、realism、validity、rules of the game、contamination、agent benchmark 和安全评估主线；evaluation 主线对应本笔记第 11 章。
-- 来源说明：现代榜单、模型分数和 benchmark 声明随官方来源更新；本节事实声明的数字（WildBench Table 3、MLE-bench Table 2 / §1、GPQA §1 §3 §4、HLE 2500 题 + 14% multimodal、Terminal-Bench 93/229/89、Cybench 40 + 24h54m、SWE-bench 2294、MMLU-Pro 12032、τ-bench 38%、GPQA Diamond 榜单超过 94%、SWE-bench Verified 榜单最高 76.8%）均来自对应 arXiv 一手页面、HF / 官方仓库或官方榜单。
-- 查阅日期：2026-05-28（首次成体系核证）；2026-09-05（Section 11.4.1 MMLU Table 1、Section 11.4.2 MMLU-Pro、Section 11.4.3 GPQA 分档准确率、Section 11.5.4 WildBench 小节编号与相关系数、Section 11.10.2 agentic benchmark 复核，参考文献补全）；2026-09-16（§11.3 perplexity 公理起点、§11.4 MMLU / MMLU-Pro / GPQA / HLE 第一性原理强化与段落拆段、§11.5 Chatbot Arena BT 公理 + LLM-as-judge 偏差公理 + WildBench Pearson 数字修正、§11.6 agent scaffold 四组件公理 + Terminal-Bench 拆段、§11.7 ARC-AGI 第一性原理、§11.8 propensity vs capability 公理、§11.10 contamination 四路线公理 + Docent 拆段、§11.11 method vs system 公理、本章总结三条规则公理化）；2026-09-22（§11.6 基准饱和段的 GPQA Diamond 榜单（gpqa.ai）与 SWE-bench Verified 榜单最高分（swebench.com）复核，§11.6.2 Terminal-Bench 数据集构造段「后续版本可能扩展」trailing-comment 撤回 + 论文署名元句改写为 `[Merrill 等, 2026, arXiv:2601.11868](...)` 完整链接形式，arXiv:2601.11868 一手页面复核确认标题、作者、提交日期、89 任务数与摘要描述）；2026-09-22（Phase 14.1v2 audit-fix：图 11.1-3 alt text + caption 的 "LM Arena" 统一改为 "LMArena"，§11.4.2 与 §11.5.4 中 "Claude-3-Opus" 统一改为 "Claude 3 Opus"，§11.5.4 WildBench 段落中 `$K{=}500$` 改写为 `$K = 500$`；MMLU-Pro 12032 题 / 14 学科 / 来源 6810+4083+598+541、GPQA 448/546/198、GPQA 专家 65%/74% / 非专家 34.1%±2.3% / GPT-4 38.7/39.7/38.8%、HLE 2500 题 + 14% multimodal + 24%/76% MCQ/EM + $500K 奖金、SWE-bench 2294 题 / 12 仓库、SWE-bench Verified 76.8% 最高（Claude Sonnet 4.6）、Cybench 40 题 + FST 2 分钟到 24 小时 54 分钟、MLE-bench 75 题 + o1-preview+AIDE pass@1 16.9% / pass@8 34.1%、WildBench 1024 题 + WB-Reward500^gpt4t P-Cor_top 0.992 + WB-Score 0.955 + ArenaHard 0.91 + AlpacaEval 2.0 LC 0.89、DeepSeek-R1 arXiv:2501.12948 标题复核 等数字均已联网核对无误，无需再改）。
+### 官方来源
+
+- [HellaSwag, arXiv:1905.07830](https://arxiv.org/abs/1905.07830)（§11.3.8）
+- [MMLU / Hendrycks 2020, arXiv:2009.03300](https://arxiv.org/abs/2009.03300)（§11.4.1 Table 1）
+- [MMLU-Pro, arXiv:2406.01574](https://arxiv.org/abs/2406.01574)（§11.4.2 §3 / Table 1）
+- [GPQA, arXiv:2311.12022](https://arxiv.org/abs/2311.12022)（§11.4.3 §1 §3 §4 Table 5）
+- [Humanity's Last Exam, arXiv:2501.14249](https://arxiv.org/abs/2501.14249)（§11.4.4 §2）
+- [τ-bench, arXiv:2406.12045](https://arxiv.org/abs/2406.12045)（§11.10.2 引言）
+- [LAMBADA, arXiv:1606.06031](https://arxiv.org/abs/1606.06031)（§11.3.8）
+- [Jozefowicz 等, Exploring the Limits of Language Modeling, arXiv:1602.02410](https://arxiv.org/abs/1602.02410)（§11.3.4）
+- [Oren 等, Proving Test Set Contamination in Black Box Language Models, arXiv:2310.17623](https://arxiv.org/abs/2310.17623)（§11.10.1 路线 1）
+- [Andy K Zhang 等, Language model developers should report train-test overlap, arXiv:2410.08385](https://arxiv.org/abs/2410.08385)（§11.10.1 路线 2）
+- [Chatbot Arena, arXiv:2403.04132](https://arxiv.org/abs/2403.04132)（§11.5.1 §3）
+- [IFEval, arXiv:2311.07911](https://arxiv.org/abs/2311.07911)（§11.5.2）
+- [AlpacaEval 2.0 length-controlled debiasing, arXiv:2404.04475](https://arxiv.org/abs/2404.04475)（§11.5.3）
+- [WildBench, arXiv:2406.04770](https://arxiv.org/abs/2406.04770)（§11.5.4 §2 §3 §4 Table 3）
+- [LLM-as-judge (Zheng 2023), arXiv:2306.05685](https://arxiv.org/abs/2306.05685)（§11.5.5 §3）
+- [JudgeBench, arXiv:2410.12784](https://arxiv.org/abs/2410.12784)（§11.5.5）
+- [SWE-bench, arXiv:2310.06770](https://arxiv.org/abs/2310.06770)（§11.6.1 §3）
+- [Terminal-Bench, arXiv:2601.11868](https://arxiv.org/abs/2601.11868)（§11.6.2 §2 / 摘要），[官方网站](https://www.tbench.ai/)
+- [Cybench, arXiv:2408.08926](https://arxiv.org/abs/2408.08926)（§11.6.3 §5 / Figure 3）
+- [MLE-bench, arXiv:2410.07095](https://arxiv.org/abs/2410.07095)（§11.6.4 Table 2 / §1）
+- [AIR-Bench, arXiv:2407.17436](https://arxiv.org/abs/2407.17436)（§11.8.2 §3）
+- [HarmBench, arXiv:2402.04249](https://arxiv.org/abs/2402.04249)（§11.8.1 §3）
+- [Zou 等, Universal and Transferable Adversarial Attacks (GCG), arXiv:2307.15043](https://arxiv.org/abs/2307.15043)（§11.8.3）
+- [Clio, arXiv:2412.13678](https://arxiv.org/abs/2412.13678)（§11.9.2）
+- [MedHELM, arXiv:2505.23802](https://arxiv.org/abs/2505.23802)（§11.9.3 §3）
+- [GDPval, arXiv:2510.04374](https://arxiv.org/pdf/2510.04374)（§11.9.1 §2）
+- ["Do Large Language Model Benchmarks Test Reliability?" (Platinum), arXiv:2502.03461](https://arxiv.org/abs/2502.03461)（§11.10.2）
+- [Zhu 等, Establishing Best Practices for Building Rigorous Agentic Benchmarks, arXiv:2507.02825](https://arxiv.org/abs/2507.02825)（§11.10.2 §1 §5.2）
+- [DeepSeek-R1, arXiv:2501.12948](https://arxiv.org/abs/2501.12948)（图 11.1-5 Table 3）
+- [Llama 4 Behemoth 博客](https://ai.meta.com/blog/llama-4-multimodal-intelligence/)（图 11.1-6）
+- [OLMo-2-32B 博客](https://allenai.org/blog/olmo2-32B)（图 11.1-7）
+- [OpenAI, Introducing SWE-bench Verified](https://openai.com/index/introducing-swe-bench-verified/)（§11.6.1 / §11.10.2）
+- [GPQA Diamond 官方榜单 (gpqa.ai)](https://gpqa.ai/)（§11.6 基准饱和段）
+- [SWE-bench Verified 官方榜单 (swebench.com)](https://www.swebench.com/)（§11.6 基准饱和段）
+- [HELM Leaderboard](https://crfm.stanford.edu/helm/latest/)（§11.1.2 / §11.4 / §11.5 / §11.8 / §11.9）
+- [LMArena Leaderboard](https://lmarena.ai/)（§11.1.1 / §11.5.1）
+- [Artificial Analysis](https://artificialanalysis.ai/)（§11.1.1 / §11.1.2）
+- [OpenRouter Rankings](https://openrouter.ai/rankings)（§11.1.1 / §11.1.2）
+- [nanoGPT speedrun (Modded NanoGPT)](https://github.com/KellerJordan/ModdedNanoGPT)（§11.11）
+- [Docent（Transluce）：用 LLM 审查 agent 执行轨迹](https://transluce.org/introducing-docent)（§11.10.2）
+- 查阅日期：2026-05-28 / 2026-09-05 / 2026-09-16 / 2026-09-22。
+
+### 本节事实声明的来源指向
+
+本章事实声明均按论文 § 编号 + 段首句定位：
+
+- §11.3 perplexity 公理起点：language model as distribution $p(x)$ 与 $\mathrm{PPL}=e^L$ 定义见 lecture_12.py L60-L106；Jozefowicz 等 2016 1BW 困惑度 51.3 → 30.0 见 [arXiv:1602.02410](https://arxiv.org/abs/1602.02410) §2 / Table 2。
+- §11.4 知识类基准：MMLU GPT-3 X-Large 43.9% / Small 25.9% / Medium 24.9% / Large 26.0% 见 [arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1；MMLU-Pro 12,032 题 + 14 学科 + 来源组成 6,810 + 4,083 + 598 + 541 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §3 Table 1；GPT-4o MMLU 88.7% (CoT) / 87.2% (direct) 与 MMLU-Pro 72.6% 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §4 Table 2；GPQA 448 / 546 / 198 题数 + 61 PhD contractors + 65% / 74% 专家准确率 + 34.1% ± 2.3% 非专家准确率 + GPT-4 38.7% / 39.7% / 38.8% 见 [arXiv:2311.12022](https://arxiv.org/abs/2311.12022) §1 §3.1 §3.2 §4 Table 5；HLE 2,500 题 + 14% multimodal + 24% / 76% MCQ / EM + $500K 奖金见 [arXiv:2501.14249](https://arxiv.org/abs/2501.14249) §2。
+- §11.5 指令遵循基准：Chatbot Arena BT 公理 $p(A \succ B) = \sigma(\alpha_A - \alpha_B)$ 与 $\prod_{(i,j)} p(i \succ j)^{[i \succ j]}$ 见 [arXiv:2403.04132](https://arxiv.org/abs/2403.04132) §3；WildBench 1024 题（从 1M 中筛出）+ WB-Reward / WB-Score Pearson 相关系数 + 多 judge ensemble 见 [arXiv:2406.04770](https://arxiv.org/pdf/2406.04770) §2.1 §3.1 §3.2 §4.2 Table 3；AlpacaEval 2.0 length-controlled win rate 见 [arXiv:2404.04475](https://arxiv.org/abs/2404.04475)；LLM-as-judge 四类偏差（length / position / self-preference / style）见 [arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3。
+- §11.6 智能体基准：SWE-bench 2,294 题 + 12 仓库见 [arXiv:2310.06770](https://arxiv.org/abs/2310.06770) §3；Terminal-Bench 2.0 数据集构造（93 contributors / 229 tasks / 89 tasks 入 2.0 / frontier < 65%）见 [arXiv:2601.11868](https://arxiv.org/abs/2601.11868) §2 / 摘要；Cybench 40 题 + FST 2 分钟到 24 小时 54 分钟见 [arXiv:2408.08926](https://arxiv.org/abs/2408.08926) §5 / Figure 3；MLE-bench 75 题 + o1-preview + AIDE pass@1 16.9% / pass@8 34.1% 见 [arXiv:2410.07095](https://arxiv.org/abs/2410.07095) Table 2 / §1。
+- §11.8 安全基准：HarmBench 510 行为类别见 [arXiv:2402.04249](https://arxiv.org/abs/2402.04249) §3；AIR-Bench 314 风险类别 + 5,694 提示见 [arXiv:2407.17436](https://arxiv.org/abs/2407.17436) §3。
+- §11.9 真实性：GDPval 44 职业 + 9 行业见 [arXiv:2510.04374](https://arxiv.org/pdf/2510.04374) §2；MedHELM 121 临床任务 + 29 临床医生贡献见 [arXiv:2505.23802](https://arxiv.org/abs/2505.23802) §3。
+- §11.10 有效性：contamination 四条路线的公理起点见 [arXiv:2310.17623](https://arxiv.org/abs/2310.17623) §3 与 [arXiv:2410.08385](https://arxiv.org/abs/2410.08385) §1；τ-bench airline 子集 38% trivial 胜率见 [arXiv:2507.02825](https://arxiv.org/abs/2507.02825) §1 §5.2。
+- §11.11 rules of the game：method vs model/system 的 ImageNet 时代 vs foundation-model 时代边界见 lecture_12.py L379-L390；nanoGPT speedrun 范式见 lecture_12.py L384-L386。

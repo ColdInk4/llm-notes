@@ -719,7 +719,46 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 
 ## 来源与更新记录
 
-- 官方来源：链接复核 2026-09-04（[LLaDA2.0: Scaling Up Diffusion Language Models to 100B, arXiv:2512.15745](https://arxiv.org/abs/2512.15745)，Tiwei Bie 等 31 位作者按姓氏字母序署名，机构覆盖 Ant Group / Renmin University of China / Zhejiang University / Westlake University / Hong Kong University of Science and Technology 五所，v1 提交 2025-12-10 / v2 修订 2025-12-24；MiniMax-01 [arXiv:2501.08313](https://arxiv.org/abs/2501.08313) 引用回连到第 3 章与第 8 章；稀疏 attention 一节引用 [Native Sparse Attention (arXiv:2502.11089)](https://arxiv.org/abs/2502.11089) 与 [Sparse Transformer (arXiv:1904.10509)](https://arxiv.org/abs/1904.10509)；其余链接本次复核仍可访问）。
-- 课程来源：CS336 2026 Lecture 10（inference workload、arithmetic intensity、KV cache 压缩、speculative sampling、continuous batching 与 PagedAttention），对应关系按 `sources/cs336-2026.md`。
-- 本节事实声明的来源指向——推理系统与指标：[JAX Scaling Book: Inference](https://jax-ml.github.io/scaling-book/inference)（Transformer inference 综述，2025-02-04 出版）；[vLLM / PagedAttention](https://arxiv.org/abs/2309.06180)；[Orca (OSDI 2022, Gyeong-In Yu 等)](https://www.usenix.org/conference/osdi22/presentation/yu)，continuous batching 的 iteration-level scheduling 与 selective batching 出处；SGLang / RadixAttention；[TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/)（NVIDIA 官方文档，2026-09-04 查阅）；[Prompt Compression Survey (NAACL 2025)](https://aclanthology.org/2025.naacl-long.368/)；[Speculative decoding (arXiv:2211.17192)](https://arxiv.org/abs/2211.17192) 与 [Speculative sampling (arXiv:2302.01318)](https://arxiv.org/abs/2302.01318)。
-- 本节事实声明的来源指向——结构与压缩：[GQA](https://arxiv.org/abs/2305.13245)（uptraining：KV 投影 mean pooling + 5% 原始预训练 compute）、[DeepSeek-V2 / MLA](https://arxiv.org/abs/2405.04434)（ $d_c=512$、RoPE 额外 $d_h^R=64$，合计每 token 每层 576 维）、[CLA](https://arxiv.org/abs/2405.12981)、[Mistral 7B](https://arxiv.org/abs/2310.06825)（rolling buffer cache， $W=4096$）、[Longformer (arXiv:2004.05150)](https://arxiv.org/abs/2004.05150)、[Sparse Transformer](https://arxiv.org/abs/1904.10509)、[Native Sparse Attention (arXiv:2502.11089)](https://arxiv.org/abs/2502.11089)、[GPTQ](https://arxiv.org/abs/2210.17323)、[AWQ](https://arxiv.org/abs/2306.00978)、[pruning 与 distillation (arXiv:2407.14679)](https://arxiv.org/abs/2407.14679)、[Medusa (arXiv:2401.10774)](https://arxiv.org/abs/2401.10774)、[EAGLE (arXiv:2401.15077)](https://arxiv.org/abs/2401.15077)、prompt compression、DeepSeek-OCR、[MiniMax-01 (arXiv:2501.08313，7 个 lightning attention 层后接 1 个 softmax attention 层，共 80 层)](https://arxiv.org/abs/2501.08313)、[S4 (arXiv:2111.00396)](https://arxiv.org/abs/2111.00396)、[Diffusion-LM (arXiv:2205.14217)](https://arxiv.org/abs/2205.14217)、[LLaDA2.0 (arXiv:2512.15745)](https://arxiv.org/abs/2512.15745)、[Faster Cascades via Speculative Decoding (arXiv:2405.19261)](https://arxiv.org/abs/2405.19261)。
+### 官方来源
+
+- [LLaDA2.0: Scaling Up Diffusion Language Models to 100B, arXiv:2512.15745](https://arxiv.org/abs/2512.15745) — Tiwei Bie 等 31 位作者按姓氏字母序署名，机构覆盖 Ant Group / Renmin University of China / Zhejiang University / Westlake University / Hong Kong University of Science and Technology 五所，v1 提交 2025-12-10 / v2 修订 2025-12-24；查阅日期 2026-09-04，状态「论文」。
+- [MiniMax-01, arXiv:2501.08313](https://arxiv.org/abs/2501.08313) — 7 个 lightning attention 层后接 1 个 softmax attention 层，共 80 层；引用回连到 [第 3 章](../chapter3/chapter3_语言模型架构和训练技术细节.md) 与 [第 8 章](../chapter8/chapter8_Scaling_Laws.md)；查阅日期 2026-09-04，状态「论文」。
+- [Native Sparse Attention, arXiv:2502.11089](https://arxiv.org/abs/2502.11089) — compression / selection / sliding window 三分支结构与 gate 机制 Equation 5；查阅日期 2026-09-04，状态「论文」。
+- [Sparse Transformer, arXiv:1904.10509](https://arxiv.org/abs/1904.10509) — sparse attention 早期工作；查阅日期 2026-09-04，状态「论文」。
+- 其余链接本次复核仍可访问。
+
+### 本节事实声明的来源指向
+
+推理系统与指标：
+
+- [JAX Scaling Book: Inference](https://jax-ml.github.io/scaling-book/inference) — Transformer inference 综述，2025-02-04 出版。
+- [vLLM / PagedAttention, arXiv:2309.06180](https://arxiv.org/abs/2309.06180) — PagedAttention 分页显存管理出处。
+- [Orca, OSDI 2022, Gyeong-In Yu 等](https://www.usenix.org/conference/osdi22/presentation/yu) — continuous batching 的 iteration-level scheduling 与 selective batching 出处。
+- [SGLang / RadixAttention](https://sgl-project.github.io/) — radix-tree prefix cache 复用。
+- [TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/) — NVIDIA 官方文档，查阅日期 2026-09-04。
+- [Prompt Compression Survey, NAACL 2025](https://aclanthology.org/2025.naacl-long.368/) — prompt compression 综述。
+- [Speculative decoding, arXiv:2211.17192](https://arxiv.org/abs/2211.17192) — Leviathan 等。
+- [Speculative sampling, arXiv:2302.01318](https://arxiv.org/abs/2302.01318) — Chen 等。
+
+结构与压缩：
+
+- [GQA, arXiv:2305.13245](https://arxiv.org/abs/2305.13245) — uptraining：KV 投影 mean pooling + 5% 原始预训练 compute。
+- [DeepSeek-V2 / MLA, arXiv:2405.04434](https://arxiv.org/abs/2405.04434) — $d_c=512$、RoPE 额外 $d_h^R=64$，合计每 token 每层 576 维。
+- [CLA, arXiv:2405.12981](https://arxiv.org/abs/2405.12981) — cross-layer attention，1B / 3B 规模 Pareto frontier。
+- [Mistral 7B, arXiv:2310.06825](https://arxiv.org/abs/2310.06825) — rolling buffer cache， $W=4096$ 。
+- [Longformer, arXiv:2004.05150](https://arxiv.org/abs/2004.05150) — local / sliding-window attention 出处。
+- [Sparse Transformer, arXiv:1904.10509](https://arxiv.org/abs/1904.10509) — sparse attention 出处。
+- [Native Sparse Attention, arXiv:2502.11089](https://arxiv.org/abs/2502.11089) — compression / selection / sliding window 三分支 + learned gate。
+- [GPTQ, arXiv:2210.17323](https://arxiv.org/abs/2210.17323) — Hessian-based PTQ。
+- [AWQ, arXiv:2306.00978](https://arxiv.org/abs/2306.00978) — activation-aware weight quantization。
+- [Compact Language Models via Pruning and Knowledge Distillation, arXiv:2407.14679](https://arxiv.org/abs/2407.14679) — NVIDIA 剪枝 + 蒸馏流程。
+- [Medusa, arXiv:2401.10774](https://arxiv.org/abs/2401.10774) — 多 token 预测头 draft。
+- [EAGLE, arXiv:2401.15077](https://arxiv.org/abs/2401.15077) — target model 高层特征 draft。
+- [Prompt Compression Survey, NAACL 2025](https://aclanthology.org/2025.naacl-long.368/) — hard / soft / visual 三类 prompt compression。
+- [DeepSeek-OCR, arXiv:2510.18234](https://arxiv.org/abs/2510.18234) — 视觉 prompt compression。
+- [MiniMax-01, arXiv:2501.08313](https://arxiv.org/abs/2501.08313) — 7 个 lightning attention 层后接 1 个 softmax attention 层，共 80 层。
+- [S4, arXiv:2111.00396](https://arxiv.org/abs/2111.00396) — structured state spaces 出处。
+- [Diffusion-LM, arXiv:2205.14217](https://arxiv.org/abs/2205.14217) — 离散扩散语言模型。
+- [LLaDA2.0, arXiv:2512.15745](https://arxiv.org/abs/2512.15745) — 16B-mini / 100B-flash MoE 扩散语言模型，block diffusion + WSD 调度。
+- [Step-3 / AFD, arXiv:2507.19427](https://arxiv.org/abs/2507.19427) — Attention-FFN Disaggregation，attention / FFN 分到两套 GPU 子系统。
+- [Faster Cascades via Speculative Decoding, arXiv:2405.19261](https://arxiv.org/abs/2405.19261) — speculative cascades 风险路由。

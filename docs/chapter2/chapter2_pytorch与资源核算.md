@@ -1440,33 +1440,23 @@ class CruncherCheckpointed(nn.Module):
 
 ## 来源与更新记录
 
-- CS336 Lecture 2 `lecture_02.py`（resource accounting 主线、`get_promised_flop_per_sec` / `AdaGrad` / `DeepNetwork` 代码）。
+### 官方来源
+
 - [NVIDIA H100 Tensor Core GPU 产品页](https://www.nvidia.com/en-sg/data-center/h100/)：H100 SXM FP16/BF16 Tensor Core 1,979 TFLOPS（含稀疏）、FP32 67 TFLOPS、显存带宽 3.35 TB/s，查阅日期 2026-09-03。
 - [NVIDIA H200 产品页](https://www.nvidia.com/en-us/data-center/h200/)：141 GB HBM3e、4.8 TB/s、BF16 Tensor Core 1,979 TFLOPS，查阅日期 2026-09-03。
-- [NVIDIA HGX B200 datasheet](https://www.nvidia.com/en-us/data-center/hgx/dgx-blackwell-datasheet/)：B200 FP32 75 TFLOPS、BF16 Tensor 2.25 PFLOPS dense / 4.5 PFLOPS sparse、HGX B200 180 GB HBM3e / 7.7 TB/s；GB200 NVL72 单 GPU 8 TB/s（GB200 NVL72 datasheet 按总 HBM3e 13.4 TB / 72 GPU 推回 186 GB），查阅日期 2026-09-03。
-- [Nemotron 3 Super, arXiv:2604.12374](https://arxiv.org/abs/2604.12374)：NVFP4 全程预训练 25T token 的首个生产级模型，查阅日期 2026-09-03。
+- [NVIDIA HGX B200 产品页](https://www.nvidia.com/en-us/data-center/hgx/)：HGX B200 平台 BF16 Tensor Core 36 PFLOPS（含稀疏；dense 为一半，约 18 PFLOPS）/ FP32 600 TFLOPS / 1.4 TB 总显存，查阅日期 2026-09-03。
+- [Nemotron 3 Super, arXiv:2604.12374](https://arxiv.org/abs/2604.12374)：120B（active 12B）hybrid Mamba-Attention MoE，首个 NVFP4 全程预训练 25T token 的生产级模型，查阅日期 2026-09-03。
 - [FP8-LM, arXiv:2310.18313](https://arxiv.org/abs/2310.18313)：Microsoft 提出的 FP8 大模型训练框架，查阅日期 2026-09-03。
 - [FP8 Formats for Deep Learning, arXiv:2209.05433](https://arxiv.org/abs/2209.05433)：Micikevicius et al. 2022 NVIDIA FP8 E4M3/E5M2 格式规范，查阅日期 2026-09-03。
 - [Mixed Precision Training, arXiv:1710.03740](https://arxiv.org/abs/1710.03740)：Micikevicius et al. 2017（ICLR 2018）半精度训练策略，查阅日期 2026-09-22。
 - [Glorot & Bengio 2010](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf)：式 1 standard initialization 与式 16 normalized（Xavier / Glorot）initialization，查阅日期 2026-09-03。
 - [Goodfellow et al. *Deep Learning* §8.4](https://www.deeplearningbook.org/contents/optimization.html)：参数初始化策略与式 8.23，查阅日期 2026-09-03。
 - [LLaMA, arXiv:2302.13971](https://arxiv.org/abs/2302.13971) Table 1：预训练数据各子集磁盘大小，查阅日期 2026-09-03。
-- [PyTorch AMP 文档](https://pytorch.org/docs/stable/amp.html)、[PyTorch `nn.init` 文档](https://docs.pytorch.org/docs/stable/nn.init.html)、NVIDIA Transformer Engine / FP8-LM 相关资料。
+- [PyTorch AMP 文档](https://pytorch.org/docs/stable/amp.html)、[PyTorch `nn.init` 文档](https://docs.pytorch.org/docs/stable/nn.init.html)、[NVIDIA Transformer Engine 仓库](https://github.com/NVIDIA/TransformerEngine)、[FP8-LM MS-AMP 仓库](https://github.com/Azure/MS-AMP)（FP8-LM Microsoft Research 路线，与 NVIDIA Transformer Engine 区分）。
 - [PyTorch `torch/optim/optimizer.py`](https://github.com/pytorch/pytorch/blob/main/torch/optim/optimizer.py)：`def zero_grad(self, set_to_none: bool = True)`，查阅日期 2026-09-04。
-- [Kaplan et al. 2020, *Scaling Laws for Neural Language Models*, arXiv:2001.08361](https://arxiv.org/abs/2001.08361)：§2.1 "Parameter and Compute Scaling of Transformers" 一段写 "Accounting for the backwards pass (approximately twice the compute as the forwards pass), we then define the estimated non-embedding compute as $C \approx 6N$ floating point operators per training token"，并把总训练 compute 写成 $C_{\min} \equiv 6 N B_{\text{crit}} S$（ $N$ 非 embedding 参数量、 $B$ batch size、 $S$ step 数， $BS$ 即总 token 数 $N_{\text{token}}$）；§2.4.3 的 $6 \times N_{\text{param}} \times N_{\text{token}}$ 公式以此为最早出处，查阅日期 2026-09-14。
-- [Hoffmann et al. 2022 (Chinchilla), *Training Compute-Optimal Large Language Models*, arXiv:2203.15556](https://arxiv.org/abs/2203.15556)：§3.3 "Approach 3: Fitting a parametric loss function" 下 "Efficient frontier" 一段直接写 "minimizing the parametric loss $\hat{L}$ under the constraint $\mathrm{FLOPs}(N,D) \approx 6ND$ ([Kaplan et al., 2020](https://arxiv.org/abs/2001.08361))"，与 Kaplan 2020 的 $6NBS$ 口径一致（ $D = BS = N_{\text{token}}$），查阅日期 2026-09-22。
-- [Austin et al., *How to Scale Your Model*, "All the Transformer Math You Need to Know"](https://jax-ml.github.io/scaling-book/transformers)：Jacob Austin, Sholto Douglas, Roy Frostig, Anselm Levskaya, Charlie Chen, Sharad Vikram, Federico Lebron, Peter Choy, Vinay Ramasesh, Albert Webson, Reiner Pope（Reiner Pope 现已离开 Google DeepMind 加入 MatX），Google DeepMind，2025-02-04 发布；页内 "Forward and reverse FLOPs" 一节把每层训练 FLOPs 写成前向 $2NPM$ + 反向 $4NPM = 6NPM$（ $N$ batch 维度、 $P$ 输入维度、 $M$ 输出维度），其中反向拆为 $dL/dB$ 的 $2NPM$ 与 $dL/dA$ 的 $2NPM$，§2.4.3 按层链式法则展开采用的记号即来自该页，查阅日期 2026-09-14。
 
-## 参考文献
+### 本节事实声明的来源指向
 
-- [PyTorch Docs on Tensors](https://pytorch.org/docs/stable/tensors.html)
-- [Einops Tutorial](https://einops.rocks/)
-- [Kaplan et al. 2020, arXiv:2001.08361](https://arxiv.org/abs/2001.08361)
-- [Hoffmann et al. 2022 (Chinchilla), arXiv:2203.15556](https://arxiv.org/abs/2203.15556)
-- [How to Scale Your Model (Austin et al., 2025)](https://jax-ml.github.io/scaling-book/)
-- [FlashAttention, arXiv:2205.14135](https://arxiv.org/abs/2205.14135)
-- [NVIDIA H100 Datasheet](https://resources.nvidia.com/en-us-tensor-core/nvidia-tensor-core-gpu-datasheet)
-- [PyTorch AMP (`torch.amp.autocast`)](https://pytorch.org/docs/stable/amp.html)
-- [FP8-LM, arXiv:2310.18313](https://arxiv.org/abs/2310.18313)
-- [AdaGrad (Duchi et al. 2011)](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
-- [Mixed Precision (Narang et al. 2018), arXiv:1710.03740](https://arxiv.org/abs/1710.03740)
+- $F_{\text{total}} \approx 6 \times N_{\text{param}} \times N_{\text{token}}$ 公式最早出处：[Kaplan et al. 2020, *Scaling Laws for Neural Language Models*, arXiv:2001.08361](https://arxiv.org/abs/2001.08361) §2.1 "Parameter and Compute Scaling of Transformers" 一段写 "Accounting for the backwards pass (approximately twice the compute as the forwards pass), we then define the estimated non-embedding compute as $C \approx 6N$ floating point operators per training token"，并把总训练 compute 写成 $C_{\min} \equiv 6 N B_{\text{crit}} S$（ $N$ 非 embedding 参数量、 $B$ batch size、 $S$ step 数， $BS$ 即总 token 数 $N_{\text{token}}$）；§2.4.3 的 $6 \times N_{\text{param}} \times N_{\text{token}}$ 公式以此为最早出处，查阅日期 2026-09-14。
+- Chinchilla 沿用同一口径：[Hoffmann et al. 2022 (Chinchilla), *Training Compute-Optimal Large Language Models*, arXiv:2203.15556](https://arxiv.org/abs/2203.15556) §3.3 "Approach 3: Fitting a parametric loss function" 下 "Efficient frontier" 一段直接写 "minimizing the parametric loss $\hat{L}$ under the constraint $\mathrm{FLOPs}(N,D) \approx 6ND$ ([Kaplan et al., 2020](https://arxiv.org/abs/2001.08361))"，与 Kaplan 2020 的 $6NBS$ 口径一致（ $D = BS = N_{\text{token}}$），查阅日期 2026-09-22。
+- 反向 FLOPs 链式法则展开记号：[Austin et al., *How to Scale Your Model*, "All the Transformer Math You Need to Know"](https://jax-ml.github.io/scaling-book/transformers)：Jacob Austin, Sholto Douglas, Roy Frostig, Anselm Levskaya, Charlie Chen, Sharad Vikram, Federico Lebron, Peter Choy, Vinay Ramasesh, Albert Webson, Reiner Pope（Reiner Pope 现已离开 Google DeepMind 加入 MatX），Google DeepMind，2025-02-04 发布；页内 "Forward and reverse FLOPs" 一节把每层训练 FLOPs 写成前向 $2NPM$ + 反向 $4NPM = 6NPM$（ $N$ batch 维度、 $P$ 输入维度、 $M$ 输出维度），其中反向拆为 $dL/dB$ 的 $2NPM$ 与 $dL/dA$ 的 $2NPM$，§2.4.3 按层链式法则展开采用的记号即来自该页，查阅日期 2026-09-14。

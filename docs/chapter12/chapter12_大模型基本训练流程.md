@@ -492,29 +492,42 @@ mode collapse 是另一类副作用。经过强偏好优化后，模型可能减
 
 ## 来源与更新记录
 
-- 论文与技术报告：
-  - [Stiennon et al., 2020, *Learning to summarize from human feedback*, NeurIPS 2020, arXiv:2009.01325](https://arxiv.org/abs/2009.01325) — RM + PPO 两段式 RLHF 范式源头
-  - [Ouyang et al., 2022, *Training language models to follow instructions with human feedback* (InstructGPT), arXiv:2203.02155](https://arxiv.org/abs/2203.02155)
-  - [Bai et al., 2022, *Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback* (Anthropic HH), arXiv:2204.05862](https://arxiv.org/abs/2204.05862)
-  - [Bai et al., 2022, *Constitutional AI: Harmlessness from AI Feedback*, arXiv:2212.08073](https://arxiv.org/abs/2212.08073)
-  - [Schulman et al., 2017, *Proximal Policy Optimization Algorithms*, arXiv:1707.06347](https://arxiv.org/abs/1707.06347)
-  - [Gao et al., 2022, *Scaling Laws for Reward Model Overoptimization*, arXiv:2210.10760](https://arxiv.org/abs/2210.10760)
-  - [Hosking, Blunsom, Bartolo, 2024, *Human Feedback is not Gold Standard*, ICLR 2024, arXiv:2309.16349](https://arxiv.org/abs/2309.16349)
-  - [Santurkar et al., 2023, *Whose Opinions Do Language Models Reflect?*, ICML 2023, arXiv:2303.17548](https://arxiv.org/abs/2303.17548) — §4.1 demographic transfer 结论（base LM 代表 Protestant / Roman Catholic；RLHF 模型对齐 liberal、高收入、高学历与非宗教或佛教 / 伊斯兰 / 印度教之外宗教的群体，与 InstructGPT 众包标注者人口构成吻合）已核验，查阅日期 2026-09-22
-  - [Rafailov et al., 2023, *Direct Preference Optimization*, arXiv:2305.18290](https://arxiv.org/abs/2305.18290) — §3/§4 的 KL-constrained RLHF objective → closed-form optimal policy → 隐式 reward 重参数化 → Bradley-Terry → DPO cross-entropy 推导路径已核验，查阅日期 2026-09-16
-  - [Meng et al., 2024, *SimPO: Simple Preference Optimization with a Reference-Free Reward*, NeurIPS 2024, arXiv:2405.14734](https://arxiv.org/abs/2405.14734)
-  - [Singhal et al., 2024, *A Long Way to Go: Investigating Length Correlations in RLHF*, arXiv:2310.03716](https://arxiv.org/abs/2310.03716) — §3.2 Table 2 的纯长度 reward（LPPO）对照实验已核验（WebGPT 56% / Stack 59% / RLCD 64%），查阅日期 2026-09-16
-  - [Tunstall et al., 2023, *Zephyr: Direct Distillation of LM Alignment*, arXiv:2310.16944](https://arxiv.org/abs/2310.16944) — dSFT（UltraChat）+ dDPO（UltraFeedback）的全 AI feedback 链路
-  - [Cui et al., 2023, *UltraFeedback: Boosting Language Models with Scaled AI Feedback*, arXiv:2310.01377](https://arxiv.org/abs/2310.01377) — 63,967 instruction / 255,864 completion / 340,025 preference pair
-  - [Lambert et al., 2024, *Tulu 3: Pushing Frontiers in Open Language Model Post-Training*, arXiv:2411.15124](https://arxiv.org/abs/2411.15124) — Table 7 prompt 池 / SFT / DPO 三列口径（23,327,961 / 939,344 / 425,145）已核验，Table 8 去污染比例，查阅日期 2026-09-16
-  - [Dubois et al., 2023, *AlpacaFarm: A Simulation Framework for Methods that Learn from Human Feedback*, arXiv:2305.14387](https://arxiv.org/abs/2305.14387) — AlpacaFarm 同时复现 RLHF overoptimization 现象并分析 human / AI 偏好方差，Table 2 PPO Sim 46.8±1.8 / DPO Sim 46.8±1.7 / PPO Human 55.1±1.7 / DPO Human 未报告 已核验；附录 C.2 Figure 9 人类 longer 62% / lists 69% 与模拟 64% / 63% 已核验，查阅日期 2026-09-22
-  - [Touvron et al., 2023, *Llama 2: Open Foundation and Fine-Tuned Chat Models*, arXiv:2307.09288](https://arxiv.org/abs/2307.09288) — §3.1 总 SFT 标注量 27,540 条已核验；§4.2.3 Safety RLHF "few thousand → RLHF" 引文，查阅日期 2026-09-16
-  - [Grattafiori et al., 2024, *The Llama 3 Herd of Models*, arXiv:2407.21783](https://arxiv.org/abs/2407.21783) — §4.1 Modeling 多轮外循环（reward modeling / rejection sampling / SFT / DPO）已核验，§4.2.2 rejection sampling K=10–30 已核验；早期版本以 Dubey et al. 署名，查阅日期 2026-09-16
-  - [Hu et al., 2024, *MiniCPM: Unveiling the Potential of Small Language Models with Scalable Training Strategies*, arXiv:2404.06395](https://arxiv.org/abs/2404.06395) — §6.3 decay phase 数据混合来源（UltraChat / SlimOrca / OssInstruct / EvolInstruct + 私有 SFT）
-  - [Wang et al., 2023, *How Far Can Camels Go? Exploring the State of Instruction Tuning on Open Resources*, arXiv:2306.04751](https://arxiv.org/abs/2306.04751) — Table 1 平均 completion 长度（ShareGPT 357.8 / OASST1 212.5 / Flan V2 31.2 / Self-Instruct 29.3）已核验；Table 7 单数据集 AlpacaEval 胜率，Figure 2 胜率与 unique token 数相关系数 0.96，查阅日期 2026-09-16
-  - [Bianchi et al., 2023, *Safety-Tuned LLaMAs: Lessons From Improving the Safety of Large Language Models that Follow Instructions*, arXiv:2309.07875](https://arxiv.org/abs/2309.07875) — 20,000 条 Alpaca 指令 + 100/300/500/1000/1500/2000 条安全指令的消融，§4 的 "500 to 1,000 safety instructions are enough to substantially reduce the harmfulness of the models" 原文已核验，exaggerated safety 观察，查阅日期 2026-09-16
-- 数据集：
-  - [OpenAssistant/oasst1](https://huggingface.co/datasets/OpenAssistant/oasst1) — [Köpf et al., 2023, arXiv:2304.07327](https://arxiv.org/abs/2304.07327)（10K+ trees / 161,443 messages / 35 languages / 461,292 quality ratings / 13,500+ volunteers；HF viewer 口径 train 84,437 + validation 4,401 = 88,838 行）
-  - [teknium/OpenHermes-2.5](https://huggingface.co/datasets/teknium/OpenHermes-2.5) — instruction / SFT 示范数据集（≈1M 行，human / gpt 多轮对话，无 chosen / rejected 字段）
-- 来源说明：本章对应 CS336 2026 Lecture 15 (RLHF / SFT / DPO / PPO)，正文事实取自上列论文、技术报告与官方数据集卡。
-- 查阅日期：2026-09-16。
+### 官方来源
+
+- [Stiennon et al., 2020, *Learning to summarize from human feedback*, NeurIPS 2020, arXiv:2009.01325](https://arxiv.org/abs/2009.01325)（RM + PPO 两段式 RLHF 范式源头）
+- [Ouyang et al., 2022, InstructGPT, arXiv:2203.02155](https://arxiv.org/abs/2203.02155)
+- [Bai et al., 2022, Anthropic HH, arXiv:2204.05862](https://arxiv.org/abs/2204.05862)
+- [Bai et al., 2022, *Constitutional AI: Harmlessness from AI Feedback*, arXiv:2212.08073](https://arxiv.org/abs/2212.08073)
+- [Schulman et al., 2017, *Proximal Policy Optimization Algorithms*, arXiv:1707.06347](https://arxiv.org/abs/1707.06347)
+- [Gao et al., 2022, *Scaling Laws for Reward Model Overoptimization*, arXiv:2210.10760](https://arxiv.org/abs/2210.10760)
+- [Hosking, Blunsom, Bartolo, 2024, *Human Feedback is not Gold Standard*, ICLR 2024, arXiv:2309.16349](https://arxiv.org/abs/2309.16349)
+- [Santurkar et al., 2023, *Whose Opinions Do Language Models Reflect?*, ICML 2023, arXiv:2303.17548](https://arxiv.org/abs/2303.17548)
+- [Rafailov et al., 2023, *Direct Preference Optimization*, arXiv:2305.18290](https://arxiv.org/abs/2305.18290)
+- [Meng et al., 2024, *SimPO: Simple Preference Optimization with a Reference-Free Reward*, NeurIPS 2024, arXiv:2405.14734](https://arxiv.org/abs/2405.14734)
+- [Singhal et al., 2024, *A Long Way to Go: Investigating Length Correlations in RLHF*, arXiv:2310.03716](https://arxiv.org/abs/2310.03716)
+- [Tunstall et al., 2023, *Zephyr: Direct Distillation of LM Alignment*, arXiv:2310.16944](https://arxiv.org/abs/2310.16944)
+- [Cui et al., 2023, *UltraFeedback*, arXiv:2310.01377](https://arxiv.org/abs/2310.01377)
+- [Lambert et al., 2024, *Tulu 3*, arXiv:2411.15124](https://arxiv.org/abs/2411.15124)
+- [Dubois et al., 2023, *AlpacaFarm*, arXiv:2305.14387](https://arxiv.org/abs/2305.14387)
+- [Touvron et al., 2023, *Llama 2*, arXiv:2307.09288](https://arxiv.org/abs/2307.09288)
+- [Grattafiori et al., 2024, *Llama 3 Herd of Models*, arXiv:2407.21783](https://arxiv.org/abs/2407.21783)
+- [Hu et al., 2024, *MiniCPM*, arXiv:2404.06395](https://arxiv.org/abs/2404.06395)
+- [Wang et al., 2023, *How Far Can Camels Go?*, arXiv:2306.04751](https://arxiv.org/abs/2306.04751)
+- [Bianchi et al., 2023, *Safety-Tuned LLaMAs*, arXiv:2309.07875](https://arxiv.org/abs/2309.07875)
+- [OpenAssistant/oasst1](https://huggingface.co/datasets/OpenAssistant/oasst1)（[Köpf et al., 2023, arXiv:2304.07327](https://arxiv.org/abs/2304.07327)；10K+ trees / 161,443 messages / 35 languages / 461,292 quality ratings / 13,500+ volunteers；HF viewer 口径 train 84,437 + validation 4,401 = 88,838 行）
+- [teknium/OpenHermes-2.5](https://huggingface.co/datasets/teknium/OpenHermes-2.5)（instruction / SFT 示范数据集，约 1M 行）
+- 查阅日期：2026-09-22。
+
+### 本节事实声明的来源指向
+
+- Santurkar et al. §4.1 demographic transfer 结论（base LM 代表 Protestant / Roman Catholic；RLHF 模型对齐 liberal、高收入、高学历与非宗教或佛教 / 伊斯兰 / 印度教之外宗教的群体，与 InstructGPT 众包标注者人口构成吻合）
+- Rafailov et al. §3/§4 的 KL-constrained RLHF objective → closed-form optimal policy → 隐式 reward 重参数化 → Bradley-Terry → DPO cross-entropy 推导路径
+- Singhal et al. §3.2 Table 2 纯长度 reward（LPPO）对照实验（WebGPT 56% / Stack 59% / RLCD 64%）
+- UltraFeedback — 63,967 instruction / 255,864 completion / 340,025 preference pair
+- Tulu 3 Table 7 prompt 池 / SFT / DPO 三列口径（23,327,961 / 939,344 / 425,145）已核验，Table 8 去污染比例
+- AlpacaFarm Table 2（PPO Sim 46.8±1.8 / DPO Sim 46.8±1.7 / PPO Human 55.1±1.7 / DPO Human 未报告）；附录 C.2 Figure 9 人类 longer 62% / lists 69% 与模拟 64% / 63%
+- Llama 2 §3.1 总 SFT 标注量 27,540 条；§4.2.3 Safety RLHF "few thousand → RLHF" 引文
+- Llama 3 §4.1 Modeling 多轮外循环（reward modeling / rejection sampling / SFT / DPO）；§4.2.2 rejection sampling K=10–30；早期版本以 Dubey et al. 署名
+- MiniCPM §6.3 decay phase 数据混合来源（UltraChat / SlimOrca / OssInstruct / EvolInstruct + 私有 SFT）
+- Wang et al. Table 1 平均 completion 长度（ShareGPT 357.8 / OASST1 212.5 / Flan V2 31.2 / Self-Instruct 29.3）；Table 7 单数据集 AlpacaEval 胜率；Figure 2 胜率与 unique token 数相关系数 0.96
+- Bianchi et al. §4 — 20,000 条 Alpaca 指令 + 100/300/500/1000/1500/2000 条安全指令的消融；"500 to 1,000 safety instructions are enough to substantially reduce the harmfulness of the models" 原文已核验；exaggerated safety 观察
