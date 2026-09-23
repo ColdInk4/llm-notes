@@ -977,7 +977,7 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 ![图 3.2-21 DSA 结构](images/3-2-21-dsa-structure.png)
 
-*图 3.2-21 DSA 用 Lightning Indexer 给历史 token 打分，Top-k Selector 筛出高分条目，与 Sliding Window 条目一起接入共享 KV 的 MQA*
+*图 3.2-21 DSA 实例化在 MLA 的 MQA 模式下：绿色路径的 Lightning Indexer 给历史 token 打分，Top-k Selector 筛出 key-value 条目进入核心注意力*
 
 1. **Lightning Indexer**（闪电索引器）:
 
@@ -999,11 +999,17 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 **CSA 的全称是 Compressed Sparse Attention，压缩稀疏注意力，HCA 的全称是 Heavily Compressed Attention，重度压缩注意力**。
 
-![图 3.2-23 DeepSeek-V4的评测和资源占用](images/3-2-23-deepseek-v4-evaluation-resource.png)
+相比 DeepSeek-V3.2，这套混合注意力把 DeepSeek-V4 的单 token 推理 FLOPs 降到 27%、KV cache 降到 10%（[DeepSeek-V4 技术报告, arXiv:2606.19348](https://arxiv.org/abs/2606.19348)）。
 
-*图 3.2-23 DeepSeek-V4 把资源占用和评测结果放在同一张快照里，便于观察注意力压缩是否换来可接受质量*
+![图 3.2-23 DeepSeek-V4 总体架构](images/3-2-23-deepseek-v4-overview-architecture.png)
 
-图 3.2-23 把资源占用与评测结果放在同一张快照里。
+*图 3.2-23 DeepSeek-V4 的 Transformer Block 内，Pre-Block Mixing 把主干分流到 CSA/HCA 注意力与 DeepSeekMoE 两条支路，Post-Block Mixing 与 Residual Mixing（mHC）汇回主干，块外接 Prediction Head 与 MTP Modules*
+
+![图 3.2-24 DeepSeek-V4 的评测和资源占用](images/3-2-24-deepseek-v4-evaluation-resource.png)
+
+*图 3.2-24 DeepSeek-V4 把资源占用和评测结果放在同一张快照里，便于观察注意力压缩是否换来可接受质量*
+
+图 3.2-24 把资源占用与评测结果放在同一张快照里。
 结合 [`DeepSeek-V4-Pro/config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 的字段
 （`index_topk` / `compress_ratios` / `index_n_heads` / `index_head_dim` / `sliding_window` 等）
 ，可以按三条线理解这个结构：CSA/DSA/HCA 负责压缩与稀疏选择长历史；滑动窗口分支和局部 RoPE 负责保留近邻上下文与位置关系；单 KV 头、共享 KV 与 grouped output projection 则共同指向更小的 KV cache、更低的 HBM 带宽压力和更可控的长上下文推理成本。
@@ -1013,6 +1019,10 @@ CSA 和 HCA 混合注意力架构以 MQA 风格的共享 KV 为基础。核心�
 ###### 3.2.5.7.3.1 CSA：压缩与稀疏的平衡
 
 CSA 的设计哲学是在大幅降低计算量的同时，保留对关键块的高分辨率注意力。它分两步走：**先压缩，后稀疏选择**。
+
+![图 3.2-25 CSA 结构](images/3-2-25-csa-structure.png)
+
+*图 3.2-25 CSA 的 Token-Level Compressor 把 KV token 压成块级条目，Lightning Indexer 打分经 Top-k Selector 筛出压缩 KV，与 Sliding Window KV 拼接后进入共享 KV 的 MQA*
 
 **1. KV cache 压缩**
 
@@ -1036,9 +1046,9 @@ CSA 层执行流程可以概括为：先对 KV cache 做可学习的加权压缩
 
 ###### 3.2.5.7.3.2 HCA：极高压缩率的全局背景
 
-![图 3.2-24 HCA 结构](images/3-2-24-hca-structure.png)
+![图 3.2-26 HCA 结构](images/3-2-26-hca-structure.png)
 
-*图 3.2-24 HCA 用更高压缩率维护低成本全局背景，与 CSA 的稀疏高分辨率读取互补*
+*图 3.2-26 HCA 用更高压缩率维护低成本全局背景，与 CSA 的稀疏高分辨率读取互补*
 
 HCA 的目标是极低成本地维护一个覆盖十万级 token 的全局背景视野。它只做压缩，不做稀疏选择。
 
@@ -1445,6 +1455,9 @@ Continuous Batching 的工程取舍见[第 9 章 §9.5.1 Continuous Batching 与
 - [Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/en/model_doc/deepseek_v4)
 - [`deepseek-ai/DeepSeek-V4-Pro`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)
 - [`deepseek-ai/DeepSeek-V4-Flash`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/config.json)（`index_topk=512`、`num_hidden_layers=43`、`hidden_size=4096`、`n_routed_experts=256`、`routed_scaling_factor=1.5`、`sliding_window=128`；与 Pro 共用 `index_n_heads=64` / `index_head_dim=128` / `num_experts_per_tok=6`；`compress_ratios` 模式为开头 `0, 0` + 中间 `(4, 128)` 反复 20 对 + 末尾 `4, 0`，列表共 44 项）
+- [DeepSeek-V4 技术报告, arXiv:2606.19348](https://arxiv.org/abs/2606.19348)（2026-04-26 提交；图 3.2-23 取 Figure 2 总体架构、图 3.2-25 取 Figure 3 CSA 核心结构；查阅日期 2026-09-23）
+- [DeepSeek-V3.2-Exp 技术报告](https://github.com/deepseek-ai/DeepSeek-V3.2/raw/main/DeepSeek_V3_2.pdf)（2025-09-29；图 3.2-21 取其 Figure 1「Attention architecture of DeepSeek-V3.2-Exp, where DSA is instantiated under MLA」；查阅日期 2026-09-23）
+- [`deepseek-ai/DeepSeek-V4-Pro` README](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro)（CSA/HCA 命名与「单 token 推理 FLOPs 27%、KV cache 10%（对比 DeepSeek-V3.2）」数字；查阅日期 2026-09-23）
 - [Transformers KV Caching Explained, João Lages, 2023-10-09](https://medium.com/@joaolages/kv-caching-explained-276520203249)（`社区观察`：图 3.2-12 分步动画与 GPT-2 / Tesla T4 开关 cache 计时，查阅日期 2026-09-23）
 - 查阅日期：2026-09-15。
 
