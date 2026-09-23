@@ -1141,7 +1141,7 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 | Chinchilla | 约 20 |
 | LLaMA 65B | 约 22 |
 | Llama 2 70B | 约 29 |
-| Mistral 7B | 官方未披露训练 token 数；多家二手估计分歧（公告 blog 提及「超过 1T」，UCStrategies 估约 8T） |
+| Mistral 7B | 官方未披露训练 token 数；UCStrategies 估约 8T（80% 多语种 web + 20% code） |
 | Llama 3 70B | 约 215（约 15T 语料 / 70B） |
 
 一个简单账本是：训练只付一次，但推理会在模型生命周期里反复付费。
@@ -1995,7 +1995,7 @@ Muon 相关（2026-09-05 复核）：Keller Jordan, [`Muon: An optimizer for hid
 - §8.3.3 effective data 公式与 Figure 1 右图 8.67B / 6.34B IsoFLOP 星点、Figure 3 100M unique tokens IsoLoss contours、Figure 4 三档 IsoFLOP 预算（ $9.3 \times 10^{20}$、 $2.1 \times 10^{21}$、 $9.3 \times 10^{21}$）及 Appendix F "Do Excess Parameters Hurt, Plateau or Help?" 见 [Muennighoff et al., arXiv:2305.16264](https://arxiv.org/abs/2305.16264)。
 - §8.3.3 data selection 与 quality-quantity tradeoff（图 8.3-10 DataComp A–F bucket 实验）见 [Goyal et al., arXiv:2404.07177](https://arxiv.org/abs/2404.07177)。
 - §8.4.2 内部 Method 3 underfit 复核（数据 forensics 重拟合）见 [Besiroglu et al., arXiv:2404.10102](https://arxiv.org/abs/2404.10102)。
-- §8.4.3 tokens-per-parameter 表（GPT-3 ≈ 2、Chinchilla ≈ 20、LLaMA 65B ≈ 22、Llama 2 70B ≈ 29、Mistral 7B 官方未披露、Llama 3 70B ≈ 215）来源：CS336 2026 Lecture 9 slide "Important note – train-optimal is likely not what you want"（抽文 `lecture_09.txt` L502–L512）。Mistral 7B 训练 token 数官方未公开；论文 [arXiv:2310.06825](https://arxiv.org/abs/2310.06825) PDF 全文 abstract 与正文均未披露训练 token 数（仅描述模型架构与 fine-tuning），Mistral AI 公告 [blog](https://mistral.ai/news/announcing-mistral-7b/) 提及「超过 1T」，UCStrategies 2026 估约 8T，多家二手估计分歧；笔记采用「官方未披露 + 多家估计分歧」口径，不强行给定单一数字。
+- §8.4.3 tokens-per-parameter 表（GPT-3 ≈ 2、Chinchilla ≈ 20、LLaMA 65B ≈ 22、Llama 2 70B ≈ 29、Mistral 7B 官方未披露、Llama 3 70B ≈ 215）来源：CS336 2026 Lecture 9 slide "Important note – train-optimal is likely not what you want"（抽文 `lecture_09.txt` L502–L512）。Mistral 7B 训练 token 数官方未公开；论文 [arXiv:2310.06825](https://arxiv.org/abs/2310.06825) PDF 全文 abstract 与正文均未披露训练 token 数（仅描述模型架构与 fine-tuning），Mistral AI 公告 [blog](https://mistral.ai/news/announcing-mistral-7b/) 全文亦未提及训练 token 数（2023-09-27 发布当日 archive 快照与现行页一致）；[UCStrategies Mistral 7B guide](https://ucstrategies.com/news/mistral-7b-guide-specs-benchmarks-edge-ai-deployment-2026/) 估约 8T，原文 "8 trillion tokens (80% multilingual web text, 20% code)"（2026-09-23 查阅）；笔记采用「官方未披露 + 二手估计明确归因」口径，不强行给定单一数字。
 - §8.6.1 MiniCPM muP 超参数（`Scale_emb = 12`、`Scale_depth = 1.4`、`init_std = 0.1`、`base LR = 0.01`）见 [MiniCPM paper Appendix A.1, arXiv:2404.06395](https://arxiv.org/abs/2404.06395)；CerebrasGPT µP 对照实验覆盖范围（111M / 256M / 590M / 1.3B / 2.7B）与 §3.3 Pile test loss 数值（µP 比 SP 平均低约 0.43%、µP 残差标准差 ≈ 0.04% vs SP ≈ 0.66%）见 [Cerebras-GPT §2.4 / Table 3 / §3.3, arXiv:2304.03208](https://arxiv.org/abs/2304.03208)。
 - §8.6.1 MiniCPM $D_{\mathrm{opt}}/N_{\mathrm{opt}} \approx 192$ 与 Llama 2 反推 70–100 见 MiniCPM 论文 §4.5 "Measuring the Scaling Law with WSD LRS"（同 [arXiv:2404.06395](https://arxiv.org/abs/2404.06395)）。
 - §8.6.2 DeepSeek LLM multi-step schedule（warmup 2000 steps、peak 段、80% 降到 31.6%、90% 降到 10%）见 [DeepSeek LLM §2.3 Figure 1, arXiv:2401.02954](https://arxiv.org/abs/2401.02954)；DeepSeek-V3 多段 schedule（10T tokens cosine + 500B final 段切换到 $7.3\times10^{-6}$）见 [DeepSeek-V3 §4.2, arXiv:2412.19437](https://arxiv.org/abs/2412.19437)。
