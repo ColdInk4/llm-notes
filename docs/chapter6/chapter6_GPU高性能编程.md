@@ -640,8 +640,8 @@ PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微�
 
 ### 来源对齐
 
-- **B200 HBM 容量 192 GB vs 180 GB**：课程硬件表与 NVIDIA datasheet（HGX B200 / GB200 NVL72 product brief 等）写 192 GB HBM3e 物理容量；
-  NVIDIA Blackwell Tuning Guide §1.4.2.1 写 "capacity up to 180 GB"，NVIDIA DGX B200 系统规格写 8 卡合计 1,440 GB（即 180 GB/卡）、64 TB/s = 8 TB/s/卡，与 tuning guide 同口径。
+- **B200 HBM 容量 192 GB vs 180 GB**：课程硬件表写 192 GB HBM3e 物理容量（物理口径 8 stack × 24 GB 的展开见[第 5 章 §5.1.3 A100/H100/H200/B200 四代硬件量级](../chapter5/chapter5_GPU和GPU相关优化.md)）；
+  NVIDIA 系统级页面写系统合计或软件可见容量：[Blackwell Tuning Guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html) §1.4.2.1 写 "capacity up to 180 GB"，[NVIDIA DGX B200](https://www.nvidia.com/en-us/data-center/dgx-b200/) 系统规格写 8 卡合计 1,440 GB（即 180 GB/卡）、64 TB/s = 8 TB/s/卡，[NVIDIA HGX 平台页](https://www.nvidia.com/en-us/data-center/hgx/) 给 HGX B200 Total Memory 1.4 TB，与 180 GB/卡同口径。
 - **B200 HBM 两种口径的对应**：192 GB 是物理容量口径，180 GB 是 tuning guide 与 DGX 系统规格采用的软件可见口径，两者对应同一硬件的不同计数方式。表 6.1 记 192 GB 物理容量并标注 tuning guide 的 180 GB 口径；
   引用单卡容量给 192 GB（物理）或 180 GB（软件可见），引用系统容量给 NVIDIA 页面的 1,440 GB。
 - **B200 L2 容量 126 MB**：NVIDIA Blackwell Tuning Guide §1.4.2.2 原文把 126 MB 归到 "GB200 GPU"；课程硬件表给 B200 写 96–126 MB。126 MB 对应双 die 全封装：

@@ -562,7 +562,7 @@ WildBench 与 Chatbot Arena 高度相关。论文 §4.2 Table 3 报告的 Pearso
 
 LLM-as-judge 把评估成本压低到可大规模运行的级别，但也把 judge 模型自身的偏差带进了分数。公理起点是「judge 是一个概率分布，其条件独立性只在 prompt 内成立」：当 rubric 要求 judge 同时评分两个回答时，位置 / 长度 / 风格等表面特征便会以非零权重进入条件概率，从而偏移评分。主要偏差来源有四类：
 
-- **位置偏差（position bias）**：judge 模型倾向给某一固定位置的回答更高分；多轮交换位置后取平均可以分离这一效应 ([Zheng et al., 2023, arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3.3)。
+- **位置偏差（position bias）**：judge 模型倾向给某一固定位置的回答更高分；同一对回答交换顺序判两次，两次都偏好同一方才计胜负，结果不一致则记为 tie，这样可以分离位置效应（另一种更激进的做法是随机分配位置）([Zheng et al., 2023, arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3.4)。
 - **冗长度偏差（verbosity bias）**：judge 模型倾向给更冗长的回答更高分，无论内容质量是否真的更高；这是 AlpacaEval、AlpacaEval 2.0 等基于 LLM-as-judge 的指标最被反复讨论的问题。
   缓解办法包括按字符 / token / 段落长度归一化分数、报告 length-controlled win rate，或在 prompt 中显式要求 judge 忽略长度。
 - **自我增强偏差（self-enhancement bias）**：judge 模型倾向给同家族模型更高分；常见缓解是引入多 judge 集成或与人类标注的校准。
@@ -845,7 +845,7 @@ GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重�
 
 公理：测试集中的样本应当可交换（exchangeability），即打乱顺序后模型的概率输出不变。若模型对某个排列显著更偏好，则可推断它曾接触过该集合的特定顺序。
 
-[PROVING TEST SET CONTAMINATION IN BLACK BOX LANGUAGE MODELS](https://arxiv.org/abs/2310.17623) 利用这一性质给出 black-box 模型污染的可证明下界。
+[PROVING TEST SET CONTAMINATION IN BLACK BOX LANGUAGE MODELS](https://arxiv.org/abs/2310.17623) 利用这一性质，用 permutation test 给出 black-box 模型污染判定的可证明假阳性率保证（provable false positive guarantees）。
 
 ![图 11.10-1 训练-测试重叠推断思路](images/11-10-1-contamination-exchangeability.png)
 
@@ -946,7 +946,7 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - [τ-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains, arXiv:2406.12045](https://arxiv.org/abs/2406.12045) — Yao、Shinn、Razavi、Narasimhan（2024-06），Sierra
 - [LAMBADA, arXiv:1606.06031](https://arxiv.org/abs/1606.06031)
 - [Jozefowicz 等, Exploring the Limits of Language Modeling, arXiv:1602.02410](https://arxiv.org/abs/1602.02410)
-- [Oren 等, Proving Test Set Contamination in Black Box Language Models, arXiv:2310.17623](https://arxiv.org/abs/2310.17623) — 用 permutation test 给出 black-box LLM 数据污染的可证明下界
+- [Oren 等, Proving Test Set Contamination in Black Box Language Models, arXiv:2310.17623](https://arxiv.org/abs/2310.17623) — 用 permutation test 给出 black-box LLM 数据污染判定的可证明假阳性率保证
 - [Andy K Zhang 等, Language model developers should report train-test overlap, arXiv:2410.08385](https://arxiv.org/abs/2410.08385)
 - [Chatbot Arena, arXiv:2403.04132](https://arxiv.org/abs/2403.04132)
 - [IFEval, arXiv:2311.07911](https://arxiv.org/abs/2311.07911)
@@ -1002,7 +1002,7 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - [HarmBench, arXiv:2402.04249](https://arxiv.org/abs/2402.04249)（§11.8.1 §4.1）
 - [Zou 等, Universal and Transferable Adversarial Attacks (GCG), arXiv:2307.15043](https://arxiv.org/abs/2307.15043)（§11.8.3）
 - [Clio, arXiv:2412.13678](https://arxiv.org/abs/2412.13678)（§11.9.2）
-- [MedHELM, arXiv:2505.23802](https://arxiv.org/abs/2505.23802)（§11.9.3 §3）
+- [MedHELM, arXiv:2505.23802](https://arxiv.org/abs/2505.23802)（§11.9.3 摘要 / §1）
 - [GDPval, arXiv:2510.04374](https://arxiv.org/abs/2510.04374)（§11.9.1 §2）
 - ["Do Large Language Model Benchmarks Test Reliability?" (Platinum), arXiv:2502.03461](https://arxiv.org/abs/2502.03461)（§11.10.2）
 - [Zhu 等, Establishing Best Practices for Building Rigorous Agentic Benchmarks, arXiv:2507.02825](https://arxiv.org/abs/2507.02825)（§11.10.2 §1 §5.2）
@@ -1029,11 +1029,11 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 本章事实声明均按论文 § 编号 + 段首句定位：
 
 - §11.3 perplexity 公理起点：language model as distribution $p(x)$ 与 $\mathrm{PPL}=e^L$ 定义见 lecture_12.py L60-L106；Jozefowicz 等 2016 1BW 困惑度 51.3 → 30.0 见 [arXiv:1602.02410](https://arxiv.org/abs/1602.02410) Table 1 / §5。
-- §11.4 知识类基准：MMLU GPT-3 X-Large 43.9% / Small 25.9% / Medium 24.9% / Large 26.0% 见 [arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1；MMLU-Pro 12,032 题 + 14 学科见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §3.1，来源组成 6,810 + 4,083 + 598 + 541 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) 附录 Table 5；GPT-4o MMLU 88.7% (CoT) / 87.2% (direct) 与 MMLU-Pro 72.6% 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §6.2 Table 3；GPQA 448 / 546 / 198 题数 + 61 PhD contractors + 65% / 74% 专家准确率 + 34.1% ± 2.3% 非专家准确率 + GPT-4 38.7% / 39.7% / 38.8% 见 [arXiv:2311.12022](https://arxiv.org/abs/2311.12022) §1 §3.1 §3.2 §4 Table 5；HLE 2,500 题 + 14% multimodal + 24% / 76% MCQ / EM + <span>$</span>500K 奖金见 [arXiv:2501.14249](https://arxiv.org/abs/2501.14249) §3。
+- §11.4 知识类基准：MMLU GPT-3 X-Large 43.9% / Small 25.9% / Medium 24.9% / Large 26.0% 见 [arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1；MMLU-Pro 12,032 题 + 14 学科见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §3.1，来源组成 6,810 + 4,083 + 598 + 541 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) 附录 Table 5；GPT-4o MMLU 88.7% (CoT) / 87.2% (direct) 与 MMLU-Pro 72.6% 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §6.2 Table 3；GPQA 448 / 546 / 198 题数 + 61 PhD contractors + 65% / 74% 专家准确率 + 34.1% ± 2.3% 非专家准确率 + GPT-4 38.7% / 39.7% / 38.8% 见 [arXiv:2311.12022](https://arxiv.org/abs/2311.12022) 摘要 / §1 §2.1 §2.3 §3.1 §3.2 §4 Table 5；HLE 2,500 题 + 14% multimodal + 24% / 76% MCQ / EM + <span>$</span>500K 奖金见 [arXiv:2501.14249](https://arxiv.org/abs/2501.14249) §3。
 - §11.5 指令遵循基准：Chatbot Arena BT 公理 $p(A \succ B) = \sigma(\alpha_A - \alpha_B)$ 与 $\prod_{(i,j)} p(i \succ j)^{[i \succ j]}$ 见 [arXiv:2403.04132](https://arxiv.org/abs/2403.04132) §4；WildBench 1024 题（从 1M 中筛出）+ WB-Reward / WB-Score Pearson 相关系数 + 多 judge ensemble 见 [arXiv:2406.04770](https://arxiv.org/abs/2406.04770) §2.1 §3.1 §3.2 §4.2 Table 3；AlpacaEval 2.0 length-controlled win rate 见 [arXiv:2404.04475](https://arxiv.org/abs/2404.04475)；LLM-as-judge 四类偏差（position / verbosity / self-enhancement / limited capability）见 [arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3.3。
 - §11.6 智能体基准：SWE-bench 2,294 题 + 12 仓库见 [arXiv:2310.06770](https://arxiv.org/abs/2310.06770) 摘要 / §2.1；Terminal-Bench 2.0 数据集构造（93 contributors / 229 tasks / 89 tasks 入 2.0 / frontier < 65%）见 [arXiv:2601.11868](https://arxiv.org/abs/2601.11868) §2 / 摘要；Cybench 40 题 + FST 2 分钟到 24 小时 54 分钟见 [arXiv:2408.08926](https://arxiv.org/abs/2408.08926) §5 / Figure 3；MLE-bench 75 题 + o1-preview + AIDE pass@1 16.9% / pass@8 34.1% 见 [arXiv:2410.07095](https://arxiv.org/abs/2410.07095) Table 2 / §1。
 - §11.7 纯推理：ARC-AGI-2 发布时纯 LLM 0%、公开推理系统仅个位数（[Announcing ARC-AGI-2 and ARC Prize 2025](https://arcprize.org/blog/announcing-arc-agi-2-and-arc-prize-2025)，2025-03-24）；2025-05 受测模型 semi-private 均低于 5%（o3 3.0%，[arXiv:2505.11831](https://arxiv.org/abs/2505.11831)）；2025-12 Opus 4.5 37.6% / Gemini 3 Pro refinement 54% / Kaggle 冠军 24.03%（[ARC Prize 2025 Results and Analysis](https://arcprize.org/blog/arc-prize-2025-results-analysis)）；2026-08-13 Gemini 3.7 Flash semi-private 84.6%（[ARC Prize: Google Gemini 3.7 Flash results](https://arcprize.org/results/google-gemini-3-7-flash)）。
 - §11.8 安全基准：HarmBench 510 行为类别见 [arXiv:2402.04249](https://arxiv.org/abs/2402.04249) §4.1；AIR-Bench 314 风险类别 + 5,694 提示见 [arXiv:2407.17436](https://arxiv.org/abs/2407.17436) 摘要 / §2.1。
-- §11.9 真实性：GDPval 44 职业 + 9 行业见 [arXiv:2510.04374](https://arxiv.org/abs/2510.04374) §2；MedHELM 121 临床任务 + 29 临床医生贡献见 [arXiv:2505.23802](https://arxiv.org/abs/2505.23802) §3。
-- §11.10 有效性：contamination 四条路线的公理起点见 [arXiv:2310.17623](https://arxiv.org/abs/2310.17623) §3 与 [arXiv:2410.08385](https://arxiv.org/abs/2410.08385) §1；τ-bench airline 子集 38% trivial 胜率见 [arXiv:2507.02825](https://arxiv.org/abs/2507.02825) §1 §5.2。
+- §11.9 真实性：GDPval 44 职业 + 9 行业见 [arXiv:2510.04374](https://arxiv.org/abs/2510.04374) §2；MedHELM 121 临床任务 + 29 临床医生贡献见 [arXiv:2505.23802](https://arxiv.org/abs/2505.23802) 摘要 / §1。
+- §11.10 有效性：contamination 四条路线的公理起点见 [arXiv:2310.17623](https://arxiv.org/abs/2310.17623) §2 与 [arXiv:2410.08385](https://arxiv.org/abs/2410.08385) §1；τ-bench airline 子集 38% trivial 胜率见 [arXiv:2507.02825](https://arxiv.org/abs/2507.02825) §1 §5.2。
 - §11.11 rules of the game：method vs model/system 的 ImageNet 时代 vs foundation-model 时代边界见 lecture_12.py L379-L390；nanoGPT speedrun 范式见 lecture_12.py L384-L386。

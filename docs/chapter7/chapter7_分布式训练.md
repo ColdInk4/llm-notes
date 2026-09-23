@@ -62,8 +62,8 @@ activation 与 sequence 的切分在 §7.9 推到 SP / CP。
 
 *图 7.1-2 模型的尺寸变化*
 
-理想情况下，我们希望多卡扩展同时带来近似线性的内存扩展和近似线性的训练吞吐扩展；现实里这两个目标常常互相牵制：分片把状态显存换成跨 rank 的通信字节，分片越细，每步要搬的字节越多。
-本章后面两处账本给出这个兑换比例——ZeRO-1/2 的通信量约为 2 倍参数量、ZeRO-3 约为 3 倍参数量（§7.6 ZeRO / FSDP），TP 在每个 Transformer block 内都要做一次 activation 大小的 collective（§7.8 张量并行）——显存与通信的兑换关系由具体公式给出，
+理想情况下，我们希望多卡扩展同时带来近似线性的内存扩展和近似线性的训练吞吐扩展；现实里这两个目标常常互相牵制：分片把状态显存换成跨 rank 的通信字节。
+本章后面两处账本给出这个兑换比例——数据并行的梯度同步与 ZeRO-1/2 的通信量都是约 2 倍参数量（优化器状态和梯度的分片不改变每步同步的字节数），ZeRO-3 进一步分片参数后升到约 3 倍参数量、即 1.5 倍通信代价（§7.6 ZeRO / FSDP）；TP 在每个 Transformer block 内前向 2 次、反向 2 次 activation 大小的 all-reduce（§7.8 张量并行）——显存与通信的兑换关系由具体公式给出，
 扩展目标之间的牵制也随分片粒度按这些公式放大。
 
 ### 7.1.2 多 GPU、多机并行架构
@@ -1341,14 +1341,14 @@ attention 没有 experts 可以 route token，所以不能靠 EP 解决 attentio
 *图 7.10-4 Narayanan 论文*
 
 Narayanan 2021 的实验（[arXiv:2104.04473](https://arxiv.org/abs/2104.04473)，*Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM*）
-展示了从 17 亿到 1 万亿参数（1.7B / 3.6B / 7.5B / 18B / 39B / 76B / 145B / 310B / 530B / 1T）模型的 3D 并行配置；论文另以 GPT-3 175B 作为参照配置。表格说明：随着模型变大，单靠 DP 不够，需要逐步增加 TP 和 PP；
-但只要组合得当，模型 FLOPs utilization 仍能维持在较高区间。
+展示了从 17 亿到 1 万亿参数（1.7B / 3.6B / 7.5B / 18.4B / 39.1B / 76.1B / 145.6B / 310.1B / 529.6B / 1008.0B）模型的 3D 并行配置；论文另以 GPT-3 175B 作为参照配置。表格说明：随着模型变大，单靠 DP 不够，需要逐步增加 TP 和 PP——TP 从 18.4B 配置起封顶在 8，PP 逐档增到 64，
+DP 由 32 递减到最大模型的 6；但只要组合得当，模型 FLOPs utilization 仍能维持在较高区间。
 
 ![图 7.10-5 3D 并行的收益](images/7-10-5-3d-parallelism-benefit.png)
 
 *图 7.10-5 3D 并行的收益*
 
-图 7.10-5 延续同一结论：TP 先在节点内增加，到合适互联范围后停止；模型继续变大时，PP 开始增加；DP 则使用剩余设备扩吞吐。模型越大，越多设备要先用于让模型和 activation 放得下，剩余设备再用于 DP 扩吞吐。
+图 7.10-5 把同一论文的 PTD-P（流水线、张量、数据并行的组合）与纯 ZeRO-3 放在一起比 per-GPU 吞吐：在 global batch 固定、ZeRO-3 不带模型并行的条件下，GPU 数从 768 涨到 1920，ZeRO-3 的每卡吞吐随规模下降，175B 与 530B 两条 PTD-P 曲线则基本持平——GPU 变多换来总吞吐线性增长，单卡利用率不掉。
 
 ![图 7.10-6 张量并行度 8 的经验最优](images/7-10-6-tensor-parallel-degree-8.png)
 
@@ -1473,4 +1473,4 @@ Mixtral / Gemma 2 / Qwen3 / Nemotron 3 Super 的公开并行度。
 - Gemma 2 Table 3 — 2B/9B/27B 的 chip 数与 data / model 分片数。
 - MoE Parallel Folding §3.2 — 传统映射把 EP group 放进 DP 子组，专家并行度被数据并行度上限卡住；folding 后 attention 用 TP×CP×DP×PP、MoE 用 ETP×EP×EDP×PP，只要求 PP 划分一致。
 - Nemotron 3 — LatentMoE 架构与 NVFP4 训练。
-- Megatron-LM Table 1 — 弱扩展模型规模为 1.7B / 3.6B / 7.5B / 18B / 39B / 76B / 145B / 310B / 530B / 1T。
+- Megatron-LM Table 1 — 弱扩展模型规模为 1.7B / 3.6B / 7.5B / 18.4B / 39.1B / 76.1B / 145.6B / 310.1B / 529.6B / 1008.0B。

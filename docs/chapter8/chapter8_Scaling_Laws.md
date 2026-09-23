@@ -207,9 +207,9 @@ Kolachina et al. 2012 问得更直接：如果只有小数据上的几个点，�
 
 *图 8.2-6 Neural machine translation learning curve*
 
-图 8.2-6 展示的是神经机器翻译任务上 BLEU 随训练句对规模增长的曲线。横轴是训练样本数（对数），纵轴是 BLEU 分数。
+图 8.2-6 展示神经机器翻译任务上数据规模与误差的关系。两幅子图的横轴都是训练数据集 token 数（对数坐标）；左图是 208 hidden 与 512 hidden 两个模型的 minimum test loss 曲线，拟合式 $\varepsilon_{208}(m)=41.2m^{-0.36}+0.39$ 与 $\varepsilon_{512}(m)=21.5m^{-0.30}+0.32$ 都带不可约误差项；右图是 token error rate 曲线，拟合式 $\varepsilon(m)=3.87m^{-0.13}$。
 
-读图时关注曲线拐点：拐点之前仍可测、可拟合，扩大资源仍有可见收益；拐点之后曲线变平，需要先判断瓶颈是数据噪声、模型容量还是任务上限，再决定是否值得继续投入资源。这条判断路径今天仍然适用，只是横轴换成了 tokens 或 compute。
+读图时关注曲线拐点：拐点之前仍可测、可拟合，扩大资源仍有可见收益；拐点之后曲线变平，需要先判断瓶颈是数据噪声、模型容量还是任务上限，再决定是否值得继续投入资源。这条判断路径今天仍然适用，横轴换成 compute 时同样成立。
 
 ![图 8.2-7 Power law learning curve](images/8-2-7-power-law-learning-curve.png)
 
@@ -807,7 +807,7 @@ Learning rate scaling 要回答的问题是：模型做宽、做深、做大之�
 
 #### muP：把 width scaling 写进超参规则
 
-muP 常写作 $\mu\mathrm{P}$ ，全称是 maximum update parametrization。正文后续统一写 `muP`。这里的 parametrization 指“同一个网络函数怎样用参数、初始化尺度和 learning rate 尺度表示”。
+muP 常写作 $\mu\mathrm{P}$ ，全称是 maximum update parametrization。这里的 parametrization 指“同一个网络函数怎样用参数、初始化尺度和 learning rate 尺度表示”。
 
 `maximum update` 强调宽度放大时仍要保留足够大的函数变化。更新太小，宽模型会更接近只在初始特征附近做线性化学习；更新太大，activation、gradient 或 logits 的尺度又可能失控。muP 选择的是中间那类可迁移尺度：一步更新对模型表示有实际影响，但数量级不随 width 明显漂移。
 
@@ -1278,8 +1278,8 @@ MiniCPM 的第一步是用 muP 改参数化，让 learning rate 更容易跨规�
 > [!NOTE]
 > MiniCPM paper（[arXiv:2404.06395](https://arxiv.org/abs/2404.06395) Appendix A.1）给出一组具体 muP 超参数：`Scale_emb = 12`、`Scale_depth = 1.4`、`init_std = 0.1`、`base learning rate = 0.01`。
 >
-> CerebrasGPT（[arXiv:2304.03208](https://arxiv.org/abs/2304.03208) §2.4 与 Table 3）的 µP 对照组只覆盖 111M / 256M / 590M / 1.3B / 2.7B 五档，没有 6.7B / 13B 的 µP 模型；6.7B / 13B 只出现在 SP 组里。
-> 论文 §3.3 报告 µP 模型在 Pile test loss 上平均比 SP 模型低约 0.43%，相对 SP scaling law 的残差标准差约 0.04%，SP 模型约 0.66%（相差约 16×），跨宽度 loss 稳定性验证在 111M–2.7B 之间完成。
+> CerebrasGPT（[arXiv:2304.03208](https://arxiv.org/abs/2304.03208) §2.4 与 Table 3）的 muP 对照组只覆盖 111M / 256M / 590M / 1.3B / 2.7B 五档，没有 6.7B / 13B 的 muP 模型；6.7B / 13B 只出现在 SP 组里。
+> 论文 §3.3 报告 muP 模型在 Pile test loss 上平均比 SP 模型低约 0.43%，相对 SP scaling law 的残差标准差约 0.04%，SP 模型约 0.66%（相差约 16×），跨宽度 loss 稳定性验证在 111M–2.7B 之间完成。
 > 具体微调（如 `d_base` 的取值）随模型族不同。
 
 ![图 8.6-3 MiniCPM scaling strategy](images/8-6-3-minicpm-scaling-strategy.png)
@@ -1681,7 +1681,7 @@ StepFun 先把 LR 和 batch 放进经验网格。
 
 StepFun 还检查训练设置的鲁棒性。它把 MoE、不同 dataset 和不同训练设置纳入复核，目标是判断这套 LR / batch 选择在相邻配置里是否仍然可用。
 
-MoE 侧，固定 active parameters 后，拟合出的最优 LR / batch 在各 sparsity 档上相对全局最优的预测误差在 0.5% 以内（§5.2）；数据配方侧，即使换成高度异质的数据，预测误差仍在全局最小值的 0.25% 以内，最优超参保持稳定（§5.3）。
+MoE 侧，固定 active parameters 后，拟合出的最优 LR / batch 在各 sparsity 档上相对全局最优的预测误差在 0.5% 以内（§3.5.2）；数据配方侧，即使换成高度异质的数据，预测误差仍在全局最小值的 0.25% 以内，最优超参保持稳定（§3.5.3）。
 
 ![图 8.6-33 Cautious AdamC scaling blow-up under extrapolation](images/8-6-33-adamc-scaling-blowup.png)
 
@@ -1691,11 +1691,11 @@ MoE 侧，固定 active parameters 后，拟合出的最优 LR / batch 在各 sp
 
 左右两图对应同一组数据的不同分析层级：左图在 $3 \times 10^{18}$ 到 $3 \times 10^{20}$ 七档 compute bucket 上分别拟合 IsoFLOP 抛物线，叉号标出每档的 minima。
 
-右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线， $10^{21}$ 处的虚线把图分成 fit 与 extrapolation 两段。
+右图把这些 minima 拟合成一条 compute 到 Paloma macro loss 的直线，虚线落在拟合上界 $3 \times 10^{20}$ 与第一个 held-out 点 $10^{21}$ 之间，把图分成 fit 与 extrapolation 两段。
 
 图中外推区的三个点展示 Cautious AdamC 的失败形态。博客正文（attempt 1）原文写「the 1e22 held-out run missed the forecast by 2.5%, and the 1e23 run diverged」。
 
-故 $10^{22}$ 处标注 `2.5% miss`， $10^{23}$ 处标注 *Run Diverged*； $10^{21}$ attempt 1 数字未给（attempt 2 给 +0.5% 不属于 attempt 1 描述）。
+图上三处标注依次为 $10^{21}$ 处 *0.8% worse*、 $10^{22}$ 处 *2.5% worse*、 $10^{23}$ 处 *Run Diverged*，博客正文点名了后两处。
 
 caption 将这组设置概括为 *Cautious AdamC + Sqrt batch-size scaling of learning rates*，并指出需要重新设计参数化、缩放或 optimizer 才能修复外推。
 
@@ -1770,11 +1770,11 @@ Muon 在大模型上的稳定性补丁是 MuonClip，由 Kimi K2 引入：在 at
 
 *图 8.6-36 Cerebras muP predictable scaling*
 
-图 8.6-36 把图 8.6-35 的 compute-loss baseline 转成相对偏差视角：纵轴是相对 standard-parametrization scaling law 的 loss 百分比偏差，蓝点对应 muP、橙点对应 standard parametrization。
+图 8.6-36 把图 8.6-35 的 compute-loss baseline 转成相对偏差视角：纵轴是相对 standard-parametrization scaling law 的 loss 百分比偏差，蓝点对应 standard parametrization、橙点对应 muP。
 
-两组点的标准差比较直接给出 muP 是否真把跨宽度 scale noise 压低。蓝点（µP）的标准差约为 `0.04%`，橙色 SP 点约为 `0.66%`，前者的 scale noise 在这组实验里低约 16 倍。
+两组点的标准差比较直接给出 muP 是否真把跨宽度 scale noise 压低。橙点（muP）的标准差约为 `0.04%`，蓝点（SP）约为 `0.66%`，前者的 scale noise 在这组实验里低约 16 倍。
 
-µP 模型的平均 Pile test loss 还比基线 fit 低约 `0.43%`（§3.3 报告的正是这一平均值；论文 §3 Results 开篇将其概括为 "improves the compute-optimal frontier loss by 0.4%"）。
+muP 模型的平均 Pile test loss 还比基线 fit 低约 `0.43%`（§3.3 报告的正是这一平均值；论文 §3 Results 开篇将其概括为 "improves the compute-optimal frontier loss by 0.4%"）。
 
 这些结果支持更稳定的超参数迁移，但实验只覆盖 Cerebras-GPT 的架构、optimizer 和训练设置。
 
@@ -2044,7 +2044,7 @@ Muon 相关（2026-09-05 复核）：Keller Jordan, [`Muon: An optimizer for hid
   原文 "8 trillion tokens (80% multilingual web text, 20% code)"（2026-09-23 查阅）；笔记采用「官方未披露 + 二手估计明确归因」口径，不强行给定单一数字。
 - §8.6.1 MiniCPM muP 超参数（`Scale_emb = 12`、`Scale_depth = 1.4`、`init_std = 0.1`、`base LR = 0.01`）见 [MiniCPM paper Appendix A.1, 
   arXiv:2404.06395](https://arxiv.org/abs/2404.06395)；
-  CerebrasGPT µP 对照实验覆盖范围（111M / 256M / 590M / 1.3B / 2.7B）与 §3.3 Pile test loss 数值（µP 比 SP 平均低约 0.43%、µP 残差标准差 ≈ 0.04% vs SP ≈ 0.66%）见 [Cerebras-GPT §2.4 / Table 3 / 
+  CerebrasGPT muP 对照实验覆盖范围（111M / 256M / 590M / 1.3B / 2.7B）与 §3.3 Pile test loss 数值（muP 比 SP 平均低约 0.43%、muP 残差标准差 ≈ 0.04% vs SP ≈ 0.66%）见 [Cerebras-GPT §2.4 / Table 3 / 
   §3.3, arXiv:2304.03208](https://arxiv.org/abs/2304.03208)。
 - §8.6.1 MiniCPM $D_{\mathrm{opt}}/N_{\mathrm{opt}} \approx 192$ 与 Llama 2 反推 70–100 见 MiniCPM 论文 §4.5 "Measuring the Scaling Law with WSD LRS"（同 
   [arXiv:2404.06395](https://arxiv.org/abs/2404.06395)）。
@@ -2073,7 +2073,5 @@ Muon 相关（2026-09-05 复核）：Keller Jordan, [`Muon: An optimizer for hid
 - [Epoch AI scaling topic](https://epoch.ai/topics/scaling)（compute / data / scaling 趋势综述）
 - [Emergent Mind Chinchilla scaling](https://www.emergentmind.com/topics/chinchilla-scaling)（Chinchilla 综合技术介绍，2026-04-06 更新）
 - [Simulations4All LLM scaling visualizer](https://simulations4all.com/simulations/llm-scaling-laws-visualizer)（Chinchilla compute-optimal 可视化）
-
-不可访问（2026-09-01）：mbrenndoerfer.com Chinchilla tutorial（HTTP 403，可能限流或下线）；aiwiki.ai scaling laws（HTTP 429 rate limit，无法复核）。这两条仅在公开维护者社区偶尔出现，缺它们不影响主线；如未来恢复可再加回。
 
 学习参考只用于讲义组织、预算直觉和可视化辅助；技术口径优先回到上方「官方来源」「本节事实声明的来源指向」两段列出的论文、技术报告和官方实践指南。

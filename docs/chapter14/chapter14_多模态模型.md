@@ -43,7 +43,7 @@ Transformer 的核心抽象是 token 序列，因此每种非文本模态都要�
 - **模板化 VLM**：LLaVA / LLaVA OneVision / Qwen-VL 系列用 vision encoder + projector + LM 模板（§14.3-§14.5）。
 - **统一自回归**：Chameleon 把图像变成离散 token，与文本 token 在同一 next-token objective 上预测（§14.6）。
 
-§14.7 讨论多模态训练稳定性（QK norm、z-loss、logit drift），§14.8 单列音频、视频与 omni 方向作为延伸阅读。理解任务和生成任务在 encoder / decoder / loss / sampling 上的不同取舍，也会贯穿这三类路线。
+§14.6 以 Chameleon 为例给出 QK norm、z-loss 与 logit drift 的处理，§14.7 把多模态训练收束成检查表（token budget、loss 权衡、位置编码与数据阶段），§14.8 单列音频、视频与 omni 方向作为延伸阅读。理解任务和生成任务在 encoder / decoder / loss / sampling 上的不同取舍，也会贯穿这三类路线。
 
 ## 14.2 CLIP 与 SigLIP：用图文对学习视觉语义
 
@@ -82,7 +82,7 @@ ViT-L/14 在 ImageNet zero-shot 上达到与在 1.28M ImageNet 图像上训练�
 *图 14.2-3 CLIP ranking 目标的训练效率*
 
 图 14.2-3 比较了直接从图像预测文本与 CLIP-style ranking 的训练效率。CLIP 论文 §2.3 以处理图像数衡量效率：达到同一 ImageNet zero-shot 准确率，按逐词生成 caption 训练的 63M 文本 Transformer 要比预测 bag-of-words 的基线多处理约 3 倍图像；
-把生成目标换成判断哪条文本与哪张图配对的对比目标后，所需图像数降到约四分之一。逐词生成要覆盖图文对中多样的措辞，论文把配对目标称为更简单的代理任务。
+以同一个 bag-of-words 基线为起点，把预测目标换成判断哪条文本与哪张图配对的对比目标后，所需图像数降到该基线的约四分之一（相对逐词生成约十二分之一）。逐词生成要覆盖图文对中多样的措辞，论文把配对目标称为更简单的代理任务。
 代价是模型主要学到文本能描述的视觉语义，细粒度布局、OCR 和像素级细节需要额外机制。
 
 ![图 14.2-4 SigLIP pairwise sigmoid 目标](images/14-2-4-siglip-objective.png)

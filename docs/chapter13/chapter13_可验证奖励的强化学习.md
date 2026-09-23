@@ -571,7 +571,7 @@ GRPO 的实现不需要复杂的 GAE 计算。
 def compute_pg_loss(
     policy_model: Union[DeepSpeedEngine, PreTrainedModel], # 当前要训练的语言模型
     batch: Dict[str, torch.Tensor], # 一个包含训练数据的字典
-    total_response_len: torch.Tensor, # 一个包含训练数据的字典
+    total_response_len: torch.Tensor, # 标量张量，值为本批有效 token 总数，loss 除以它做归一化
     TEMPERATURE: float, # 生成时的温度参数（影响 log-prob 计算）
     KL_COEFFICIENT: float, # 控制 KL 惩罚强度的超参数
 ) -> Tuple[torch.Tensor, Dict[str, float]]:
@@ -668,7 +668,7 @@ groups = [
 
 # 2. 初始化存储变量
 
-all_query_token_ids, all_responses_token_ids, all_samples, all_rewards = [], [], [], []
+all_query_token_ids, all_responses_token_ids, all_advantages = [], [], []
 stats = { "response_lengths": [], "rewards": [], "non_stop_rate": [], }
 
 # 3. 核心循环：对每个样本及其生成的回复组进行处理
@@ -706,12 +706,12 @@ for sample, group_indices in zip(samples, groups):
 
 # 将所有数据打包成一个字典 episodes 返回，供后续的 compute_pg_loss 函数使用
 episodes = {
-        "all_query_token_ids": all_query_token_ids,
-        "all_response_token_ids": all_responses_token_ids,
-        "all_advantages": all_advantages,
-    }
+    "all_query_token_ids": all_query_token_ids,
+    "all_response_token_ids": all_responses_token_ids,
+    "all_advantages": all_advantages,
+}
 
-    return episodes, stats
+return episodes, stats
 ```
 
 #### GRPO 的实际效果
@@ -829,7 +829,7 @@ R1 蒸馏把这两条路径产出的轨迹迁回非推理学生模型。
 
 *图 13.4-1 DeepSeek-R1 引发的关注*
 
-图 13.4-1 把 R1 发布前后一段时间里社交媒体与技术社区的关注度变化放在同一张图上，作为 R1 现象级的背景证据；技术细节与训练数据需要回到后面的小节单独看。
+图 13.4-1 是 R1 发布前后约一年的单序列关注度曲线：2024 年 12 月底之前长期贴近 0，2025 年 1 月 22 日 R1 技术报告提交后数日内冲到区间峰值 100，随后回落并低位延续到 2025 年 4 月，作为 R1 现象级的背景证据；技术细节与训练数据需要回到后面的小节单独看。
 
 R1 案例要点可以分成三条线：
 

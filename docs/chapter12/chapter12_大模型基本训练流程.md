@@ -338,7 +338,7 @@ R(x,y)
 \right)
 $$
 
-这一项等价于在 policy gradient 目标里加 $\beta \cdot D_{\mathrm{KL}}(\pi_\theta \| \pi_{\mathrm{ref}})$ 作为 reference regularization ——
+其中 $\beta$ 是 KL 惩罚强度。这一项等价于在 policy gradient 目标里加 $\beta \cdot D_{\mathrm{KL}}(\pi_\theta \| \pi_{\mathrm{ref}})$ 作为 reference regularization ——
 它让 $\pi_\theta$ 在优化 reward 的同时不偏离 SFT 模型 $\pi_{\mathrm{ref}}$ 太远，避免奖励模型被 exploit（reward hacking）。
 
 常见模型角色如下：
@@ -411,7 +411,7 @@ RLHF / DPO 数据的质量不止取决于标注一致性，还取决于标注者
 
 - **与闭源标注的规模差距**：Llama 2 仅 Meta 自采的 helpfulness + safety 偏好数据就有
   1,418,091 组比较（[arXiv:2307.09288](https://arxiv.org/abs/2307.09288) Table 6，含公开集在内共 2,919,326 组）。
-  开源 OASST1 的规模取决于口径：461,292 条 quality ratings 约为 Meta 自采比较数的三分之一，按 HF viewer 的 88,838 行对话树计则约为 1/16。
+  开源 OASST1 的规模取决于口径：461,292 条 quality ratings 约为 Meta 自采比较数的三分之一，按 HF viewer 的 88,838 行消息记录计则约为 1/16。
   复现对齐行为时需把"用 OASST1 训练出的模型代表的是开源标注池的偏好"这一前提写进训练 log。
 
 - **单数据集微调的评估口径**：仅用 OASST1 做 SFT 在 AlpacaEval 上的表现并不差。

@@ -55,7 +55,7 @@ $$
 
 公式里的 **6** 倍来自前向和反向的粗略 FLOPs 账：前向传播约为 $2 \times$ 参数量（乘法+加法），反向传播计算梯度约为前向的 2 倍，也就是 $4 \times$ 参数量。
 
-$N_{\text{param}}$ 取非 embedding 参数量；70B 级别模型的 embedding（含 input 与 output 两张词表，未做 weight tying）占比随词表大小变化，常见区间约 1%–3%，粗估时可忽略。
+$N_{\text{token}}$ 是训练数据的 token 总数，本例取 $15 \times 10^{12}$； $N_{\text{param}}$ 取非 embedding 参数量；70B 级别模型的 embedding（含 input 与 output 两张词表，未做 weight tying）占比随词表大小变化，常见区间约 1%–3%，粗估时可忽略。
 以 [LLaMA-3 70B config.json](https://huggingface.co/meta-llama/Meta-Llama-3-70B/blob/main/config.json) 为例：
 `vocab_size=128256`、`hidden_size=8192`、`tie_word_embeddings=false` 时两张 embedding 表合计 ≈ 2.10B / 70.6B ≈ 3%。
 
@@ -113,8 +113,10 @@ dense 为一半，约 989.5 teraFLOPS）、HBM 80 GB、3.35 TB/s；NVL 形态把
 
 #### 第三步：得出结果
 
+把总工作量记为 $F_{\text{total}}$（第一步的 $6.3 \times 10^{24}$ FLOPs）、1024 张卡的总算力记为 $P_{\text{total}}$（第二步的 $5.066 \times 10^{17}$ FLOP/s），训练时间 $T$ 以天计为：
+
 $$
-T = \frac{W_{\text{total}}}{P_{\text{total}}} = \frac{6.3 \times 10^{24}}{5.066 \times 10^{17} \times 86400} \approx 143.9 \text{ 天}
+T = \frac{F_{\text{total}}}{P_{\text{total}} \times 86400} = \frac{6.3 \times 10^{24}}{5.066 \times 10^{17} \times 86400} \approx 143.9 \text{ 天}
 $$
 
 也就是约 144 天。这是一个数量级估算：它忽略了数据加载、通信、checkpoint 保存、重启和集群故障，但能快速判断预算是否现实。
@@ -704,9 +706,9 @@ def cuda_if_available(index: int = 0) -> torch.device:
 
 下面用一组例子建立 FLOPs 与 FLOP/s 的直观认识：
 
-- GPT-3 (2020 年)：训练耗时约 $3.14 \times 10^{23}$ FLOPs [文章](https://lambda.ai/blog/demystifying-gpt-3)
+- GPT-3 (2020 年)：训练计算量约 $3.14 \times 10^{23}$ FLOPs [文章](https://lambda.ai/blog/demystifying-gpt-3)
 
-- GPT-4 (2023 年)：据推测训练耗时约 $2 \times 10^{25}$ FLOPs [文章](https://patmcguinness.substack.com/p/gpt-4-details-revealed)
+- GPT-4 (2023 年)：据推测训练计算量约 $2 \times 10^{25}$ FLOPs [文章](https://patmcguinness.substack.com/p/gpt-4-details-revealed)
 
 - 政策背景：美国曾有一项行政命令（[EO 14110](https://www.govinfo.gov/content/pkg/FR-2023-11-01/html/2023-24283.htm)），要求任何训练 FLOPs 超过 $1 \times 10^{26}$ 的基础模型必须向政府报告；该命令已于 2025 年 1 月被[总统行动](https://www.whitehouse.gov/presidential-actions/2025/01/removing-barriers-to-american-leadership-in-artificial-intelligence/)撤销
 
@@ -977,7 +979,7 @@ W \sim U\left[-\sqrt{\frac{6}{n_{\text{in}} + n_{\text{out}}}},\ \sqrt{\frac{6}{
 $$
 
 PyTorch 的 `nn.init.xavier_uniform_` 就按 $a = \text{gain} \times \sqrt{6 / (\text{fan-in} + \text{fan-out})}$ 取均匀分布边界。
-当 $n_{\text{in}} = n_{\text{out}}$（本节 `Linear(dim, dim)` 的情形）时两者只差一个常数因子 $\sqrt{3}$ ，所以按 $1/\sqrt{d_{\text{in}}}$ 缩放在数量级上等价。
+当 $n_{\text{in}} = n_{\text{out}}$（§2.5.2 `Linear(dim, dim)` 的情形）时两者只差一个常数因子 $\sqrt{3}$ ，所以按 $1/\sqrt{d_{\text{in}}}$ 缩放在数量级上等价。
 
 相关资料可见 [Xavier 初始化论文](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf) 和
 [Stack Exchange 讨论](https://ai.stackexchange.com/questions/30491/is-there-a-proper-initialization-technique-for-the-weight-matrices-in-multi-head)。
@@ -1527,7 +1529,7 @@ PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通�
 ### 官方来源
 
 - [NVIDIA H100 Tensor Core GPU 产品页](https://www.nvidia.com/en-sg/data-center/h100/)：H100 SXM FP16/BF16 Tensor Core 1,979 TFLOPS（含稀疏）、FP32 67 TFLOPS、显存带宽 3.35 TB/s，查阅日期 2026-09-03。
-- [NVIDIA H200 产品页](https://www.nvidia.com/en-us/data-center/h200/)：141 GB HBM3e、4.8 TB/s、BF16 Tensor Core 1,979 TFLOPS，查阅日期 2026-09-03。
+- [NVIDIA H200 产品页](https://www.nvidia.com/en-us/data-center/h200/)：141 GB HBM3e、4.8 TB/s、BF16 Tensor Core 1,979 TFLOPS（含稀疏），查阅日期 2026-09-23。
 - [NVIDIA HGX B200 产品页](https://www.nvidia.com/en-us/data-center/hgx/)：HGX B200 平台 BF16 Tensor Core 36 PFLOPS（含稀疏；dense 为一半，约 18 PFLOPS）/ FP32 600 TFLOPS / 1.4 TB 总显存，查阅日期 2026-09-03。
 - [Nemotron 3 Super, arXiv:2604.12374](https://arxiv.org/abs/2604.12374)：120B（active 12B）hybrid Mamba-Attention MoE，Nemotron 3 家族中首个以 NVFP4 预训练、首个采用 LatentMoE 的模型，预训练 25T token，查阅日期 2026-09-22。
 - [FP8-LM, arXiv:2310.18313](https://arxiv.org/abs/2310.18313)：Microsoft 提出的 FP8 大模型训练框架，查阅日期 2026-09-03。

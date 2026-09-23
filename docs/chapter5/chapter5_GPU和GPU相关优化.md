@@ -75,8 +75,8 @@ GPU 的历史背景只需要抓住一条主线：它最初为图形渲染中的�
 H200 在 H100 计算能力上把显存换成更大带宽的 HBM3e，B200 则把 HBM/L2 容量和 Blackwell 低精度路径再往前推了一代**。
 表内 SM 数、HBM 容量、HBM 带宽、L2 容量是每颗 GPU 的物理资源总量，与精度口径无关。
 
-若启用结构化稀疏（Structured Sparsity，俗称 2:4 sparsity），Tensor Core 路径理论峰值翻倍——A100/H100 公开 datasheet 在 "with sparsity" 一列单独列出 2× 系数
-（[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)）。Tensor Core 峰值引用默认取 dense 口径；
+若启用结构化稀疏（Structured Sparsity，俗称 2:4 sparsity），Tensor Core 路径理论峰值翻倍——A100 datasheet 把 dense 与稀疏值写在同一单元格（BF16 "312 TFLOPS | 624 TFLOPS*"，`*` 表示 with sparsity），
+H100 datasheet 的 Tensor Core 行则只列带 `*` 的稀疏值（BF16/FP16 1,979、FP8 3,958 TFLOP/s；[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)）。Tensor Core 峰值引用默认取 dense 口径；
 后文 §5.6 出现的 H100 BF16 dense ≈ 989.5 TFLOP/s、FP8 dense ≈ 1,979 TFLOP/s 即该口径下的整卡峰值。
 
 新一代硬件还引入了两个会影响 kernel 设计的特性：
@@ -893,7 +893,7 @@ FlashAttention V2 保留了单个线程块视角下 $Q$ 外层、 $K, V$ 内层�
 - **序列维并行**：V1 只在 batch 和 head 维度并行，同一序列的 $Q$ 块由单个线程块串行扫描；V2 把序列长度也加入调度，每个线程块只负责一个 $Q$ 行块。
   前向各块之间无需通信，反向对 $dQ$ 的跨块累加用 atomic add 完成（[FlashAttention-2 论文 §3.2](https://arxiv.org/abs/2307.08691)）。
 - **块内分工从 split-K 换成 split-Q**：V1 在单个线程块内沿 $K, V$ 维把工作切给多个 warp，各 warp 写入 shared memory、同步后再相加；V2 改为沿 $Q$ 行切分，每个 warp 独立计算输出的一部分，warp 之间无需通信。
-- **减少非 matmul FLOPs**：A100 上非矩阵乘运算的执行速率只有约 19.5 TFLOP/s，FP16 Tensor Core 矩阵乘是 312 TFLOP/s，执行相同 FLOPs 数量的非矩阵乘要慢约 16 倍；V2 让 $O_i$ 保持未归一化累积，只在循环最末乘一次归一化因子，把 exp 和 rescale 移出内循环热路径。
+- **减少非 matmul FLOPs**：A100 上非矩阵乘运算的执行速率只有约 19.5 TFLOP/s，FP16 Tensor Core 矩阵乘是 312 TFLOP/s，执行相同 FLOPs 数量的非矩阵乘要慢约 16 倍；V2 让 $O_i$ 保持未归一化累积，输出更新不再对两项逐块乘归一化因子，只在循环最末乘一次归一化因子，把这部分 rescale 移出内循环热路径；计算 $P_{ij}$ 所需的 exp 仍在内循环。
 
 
 ```text
@@ -933,9 +933,9 @@ for each Q block i in parallel:              // V2 的核心：Q 维度并行
 **V1 -> V2 性能提升的原因：**
 
 - **非矩阵乘开销被压掉**：非矩阵乘运算在 A100 上只有约 19.5 TFLOP/s 的执行速率，FP16 Tensor Core 矩阵乘是 312 TFLOP/s，执行相同 FLOPs 数量的非矩阵乘要慢约 16 倍（[FlashAttention-2 论文](https://arxiv.org/abs/2307.08691)）。
-  V2 把 exp、rescale 和归一化移出内循环——只在循环最末乘一次归一化因子完成输出归一化——让内循环以矩阵乘为主。
+  V2 把输出更新的逐块归一化 rescale 移出内循环——只在循环最末乘一次归一化因子完成输出归一化——让内循环以矩阵乘为主。
 - **并行度扩大且免通信**：V1 的并行只覆盖 batch 与 head，同一序列内的 $Q$ 块由一个线程块串行处理；V2 把序列维也铺开，前向各线程块互不依赖、无需通信，块内 warp 沿 $Q$ 行分工也不需要 shared memory 同步。
-- **Tensor Core 利用率提高**：重缩放与标量更新不再穿插在 matmul 之间，更多矩阵乘可以连续排布到不同 SM 上执行，Tensor Core 空转等待的时间随之缩短。
+- **Tensor Core 利用率提高**：逐块归一化 rescale 不再穿插在 matmul 之间，更多矩阵乘可以连续排布到不同 SM 上执行，Tensor Core 空转等待的时间随之缩短。
 
 > [!WARNING]
 > **SM 的整体占用率（occupancy）不等同于计算单元利用率（utilization）**。线程块填满 SM 后，若数据加载与计算之间仍在同步等待，Tensor Core 等执行单元照样空闲——只看 occupancy 会漏判这类 stall。FlashAttention V3 针对的正是这种等待：用异步执行与流水线把计算和数据传输重叠起来。
@@ -1017,8 +1017,8 @@ for each Q block i:
 
 #### H100 对 FP8 的低精度支持和混合精度
 
-H100 的第四代 Tensor Core 在 **FP8 精度下的理论吞吐量是 FP16 的两倍**（以 [NVIDIA H100 spec](https://www.nvidia.com/en-us/data-center/h100/)：dense BF16/FP16 约 989.5 TFLOP/s、dense FP8 约 1,979 TFLOP/s；
-启用结构化稀疏后 BF16/FP16 1,979 TFLOP/s、FP8 3,958 TFLOP/s——dense 与 sparse 都需要明确说明）。
+H100 的第四代 Tensor Core 在 **FP8 精度下的理论吞吐量是 FP16 的两倍**（[NVIDIA H100 spec](https://www.nvidia.com/en-us/data-center/h100/) 的 Tensor Core 行只列带 `*` 的 with-sparsity 峰值：BF16/FP16 1,979 TFLOP/s、FP8 3,958 TFLOP/s；
+dense 口径为稀疏峰值的一半，约 989.5 与 1,979 TFLOP/s——dense 与 sparse 都需要明确说明）。
 V3 原生支持 FP8 输入，但在注意力计算中必须解决**数值稳定性**问题，因为 softmax 对精度敏感。
 
 因此 V3 采用混合精度策略来同时利用低精度吞吐和高精度累加：
@@ -1094,10 +1094,10 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 ### 官方来源
 
 - [NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) — B200 / GB200 规格、L2 cache 126 MB（GB200 全封装）、HBM3e 软件可见 180 GB；2026-09-22 查阅。
-- [NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/) — H100 SXM5 BF16 / FP16 Tensor Core dense 989.5 TFLOP/s、FP8 dense 1,979 TFLOP/s、FP32 CUDA Core 67 TFLOP/s（SXM5）、HBM3 80 GB、HBM 带宽 3.35 TB/s；该页规格表现列 SXM=67、NVL=60 两个变体；2026-09-22 查阅，2026-09-23 复核。
+- [NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/) — H100 SXM5 FP32 CUDA Core 67 TFLOP/s、HBM3 80 GB、HBM 带宽 3.35 TB/s；该页 Tensor Core 行只列带 `*` 的 with-sparsity 峰值（BF16/FP16 1,979、FP8 3,958 TFLOP/s）；规格表分列 SXM=67、NVL=60 两个变体；2026-09-22 查阅，2026-09-23 复核。
 - [NVIDIA H100 Tensor Core GPU Architecture 白皮书 V1.04（final GPU / memory clocks 与 final TFLOPS）](https://dam-cdn.nvd.orangelogic.com/AssetLink/705n6ur546g0uk43w0117r17n8042d73.pdf)（由 [NVIDIA Hopper architecture resources 页](https://resources.nvidia.com/en-us-hopper-architecture) 挂出）— H100 SXM5 132 SM per GPU、PCIe 114 SM per GPU、满血 GH100 144 SM；每 SM 128 FP32 core（16,896 / 14,592 per GPU）；Peak FP32 final 66.9（SXM5）/ 51.2（PCIe）TFLOP/s；V100 / A100 / H100 对照表 Max Warps / SM 均为 64；Tensor Cores / SM 4、H100 SXM5 Tensor Cores / GPU 528；2026-09-23 查阅。
 - [NVIDIA CUDA C++ Programming Guide（PDF）](https://docs.nvidia.com/cuda/pdf/CUDA_C_Programming_Guide.pdf) — §8.2.3 Multiprocessor Level「The number of threads per block should be chosen as a multiple of the warp size to avoid wasting computing resources with under-populated warps as much as possible」；Table 27（13.4 版）compute capability 8.0 与 9.0 的 maximum resident warps per SM = 64；2026-09-23 查阅。
-- [NVIDIA A100 datasheet](https://www.nvidia.com/en-us/data-center/a100/) — A100 80GB 规格表：FP32 CUDA Core 19.5 TFLOP/s、TF32 156/312、FP16/BF16 312/624、INT8 624/1,248 TOPS（含 with sparsity 列）、HBM2e 80 GB、HBM 带宽 1,935/2,039 GB/s（PCIe/SXM）；2026-09-23 查阅。
+- [NVIDIA A100 datasheet](https://www.nvidia.com/en-us/data-center/a100/) — A100 80GB 规格表：FP32 CUDA Core 19.5 TFLOP/s、TF32 156/312、FP16/BF16 312/624、INT8 624/1,248 TOPS（dense 与 2× 稀疏值写在同一单元格，`*` = With sparsity 脚注）、HBM2e 80 GB、HBM 带宽 1,935/2,039 GB/s（PCIe/SXM）；2026-09-23 查阅。
 - [NVIDIA Ampere architecture in-depth blog](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/) — A100 SM 108、64 FP32 core/SM、6,912 FP32 CUDA core 总数、die 826 mm²、TSMC 7nm N7、Peak INT4 Tensor Core 1,248 / 2,496 TOPS、A100 L2 40 MB、L2 读带宽约为 V100 的 2.3×（分区 crossbar 结构），同批数字亦见 [NVIDIA Ampere architecture 白皮书 PDF](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/nvidia-ampere-architecture-whitepaper.pdf)；2026-09-22 查阅，2026-09-23 复核。
 - [NVIDIA Hopper tuning guide](https://docs.nvidia.com/cuda/hopper-tuning-guide/) — H100/H200 L2 cache 50 MB（自 A100 40 MB）、每 SM 64K 32-bit 寄存器（256 KB）、L1 + shared 256 KB（自 192 KB）、HBM 上限 80 GB；2026-09-23 查阅。
 - [NVIDIA H200 datasheet](https://www.nvidia.com/en-sg/data-center/h200/) — HBM3e 141 GB、带宽 4.8 TB/s、FP32 67 TFLOP/s（SXM）/ 60（NVL）；2026-09-23 查阅。

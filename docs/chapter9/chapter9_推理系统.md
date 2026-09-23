@@ -534,7 +534,7 @@ $$
 
 静态 batching 要等一批请求一起开始，并且常被最长请求拖住。`continuous batching` 使用 iteration-level scheduling：每个 generation step 都可以把新请求加入 batch，把完成请求移出 batch。
 
-![图 9.5-1 标准 $B \times S$ 张量](images/9-5-1-selective-batching.png)
+![图 9.5-1 标准 $B \times S$ 张量](images/9-5-1-standard-batching.png)
 
 *图 9.5-1 标准 $`B \times S`$ 张量*
 
@@ -798,7 +798,7 @@ speculative cascades 是产品质量约束下的风险路由，两者相似但�
 - [Sparse Transformer, arXiv:1904.10509](https://arxiv.org/abs/1904.10509) — sparse attention 早期工作；查阅日期 2026-09-04，状态「论文」。
 - [DistServe, arXiv:2401.09670](https://arxiv.org/abs/2401.09670) — OSDI'24，prefill / decode 分离的 goodput 优化 LLM serving；查阅日期 2026-09-23，状态「论文」。
 - [Splitwise, arXiv:2311.18677](https://arxiv.org/abs/2311.18677) — prompt computation 与 token generation 分置两套机器（prefill-decode 分离部署）；查阅日期 2026-09-23，状态「论文」。
-- 其余链接本次复核仍可访问。
+- 其余链接均可访问，查阅日期 2026-09-23。
 
 ### 本节事实声明的来源指向
 

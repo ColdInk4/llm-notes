@@ -51,7 +51,7 @@ self-attention 允许模型在处理序列数据时并行计算，从而提高�
 图 3.1-1 给出现代 decoder-only block 的标准骨架：左侧是输入到输出的纵向流（Token Embedding + Absolute Position Embeddings 相加 → Add & Dropout → N 个 Transformer Block → Norm → Linear → Softmax），
 右侧把单个 block 展开为 Causal Multi-Head Self-Attention、Add、Dropout、Position-Wise Feed-Forward、Norm 五个组件的串联加两条 residual。
 
-这套”attention + FFN + residual + norm”骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，差异有三：(1) 注意力改为 Causal Multi-Head Self-Attention（mask 掉未来位置），
+这套“attention + FFN + residual + norm”骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，差异有三：(1) 注意力改为 Causal Multi-Head Self-Attention（mask 掉未来位置），
 不再保留原始 encoder-decoder 之间的 cross-attention；(2) block 内 norm 位置从 Post-LN (Vaswani et al., 2017 §3.1) 改为 Pre-LN，成为后续 decoder-only LLM 的默认；(3) 位置编码方案与具体激活函数与原始 Transformer 不同。
 
 第 (1)(2) 点差异进入 §3.2 集中讨论的 norm 位置与注意力形式；第 (3) 点中位置编码进入 §3.2.4，激活函数进入 §3.2.3。
@@ -221,7 +221,7 @@ $$
 除 $\sqrt{d_k}$ 后将分布重新变成标准化，作用就有：
 1. **保持方差稳定**：无论 $d_k$ 多大，输入 $\text{softmax}$ 的值都在合理范围。
 2. **避免梯度消失**： $\text{softmax}$ 的梯度保持有效值，反向传播顺畅。
-3. **稳定训练**：使模型对维度选择不敏感，原始论文使用 $d_k = 64$ （单头）依然稳定。
+3. **稳定训练**：使模型对维度选择不敏感，原始论文 base 模型按 $h = 8$ 头取 $d_k = d_v = d_{\mathrm{model}}/h = 64$ 依然稳定。
 
 
 ### 3.1.3 层归一化（LayerNorm）与残差连接
@@ -951,7 +951,7 @@ OpenAI 的 Sparse Transformer（Child et al., 2019, [arXiv:1904.10509](https://a
 
 *图 3.2-20 sliding-window attention 只读取当前位置附近的窗口，堆叠多层后信息可以逐层向更远位置传播*
 
-最近 LLaMA 4、Gemma 3、Gemma 4、OLMo 3 和 Cohere Command A 等模型采用了局部与全局混合的思路：大多数层使用带 RoPE 的 sliding-window attention，只处理局部上下文；间隔若干层再放入 full attention 层，用于跨窗口信息交换。
+最近 LLaMA 4、Gemma 3、Gemma 4、OLMo 3 和 Cohere Command A 等模型采用了局部与全局混合的思路：大多数层带 RoPE、只处理局部上下文——Gemma 3、Gemma 4、OLMo 3、Cohere Command A 用 sliding-window attention，LLaMA 4 用 8192 token 分块的 chunked attention（同一块内可见、跨块不可见）；间隔若干层再放入 full attention 层，用于跨窗口信息交换。
 
 > [!NOTE]
 > **Gemma 4 的两项新设计**：(1) **partial rotary embedding（partial RoPE / P-RoPE）**——`Gemma4TextConfig` 给两类层配不同的 RoPE：
@@ -1341,7 +1341,7 @@ $$
 \mathcal L_{\text{total}} = \mathcal L_{\text{cross-entropy}} + \lambda \cdot \log^2 Z
 $$
 
-它的目的是让 softmax 归一化器保持在良好的区间内。当 $Z$ 接近 1（即 $\log Z$ 接近 0）时，可以认为 softmax 处于较稳定状态。PaLM 之后，Baichuan 2、DCLM、OLMo 2、OLMo 3 等模型也在输出 softmax 上加了 z-loss，
+它的目的是让 softmax 归一化器保持在良好的区间内。当 $Z$ 接近 1（即 $\log Z$ 接近 0）时，可以认为 softmax 处于较稳定状态。PaLM 之后，DCLM、OLMo 2、OLMo 3 等模型也在输出 softmax 上加了 z-loss，
 其中 OLMo 2 的架构表把 z-loss 权重列为 $10^{-5}$。z-loss 控制输出层 softmax 的归一化项，QK norm 和 soft-capping 则控制 attention softmax 的输入或范围。
 
 ### 3.4.2 解决注意力层的 softmax

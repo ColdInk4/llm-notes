@@ -123,7 +123,7 @@ router 常常需要比专家计算更保守的精度和正则化，例如 router
 
     DeepSeek-V3 论文 §2.1.2 给出的更新规则是过载 expert 的偏置每次减小 $\gamma$、欠载的每次增大 $\gamma$；写成更新式即 $\Delta b_i = -\gamma \cdot \mathrm{sign}(f_i - \bar{f})$， $f_i$ 为 expert $i$ 接收的 token 比例、 $\bar f$ 为平均比例。
 
-    机制细节与图示见 [图 4.1-2 基于 per-expert bias 的负载均衡](#图-4-1-2-基于-per-expert-bias-的负载均衡)。这条路线把均衡压力放在在线调度变量上，减少对语言模型主损失的直接干扰，仍保留序列级或设备级的辅助稳定项。
+    机制细节与图示见图 4.1-2 基于 per-expert bias 的负载均衡。这条路线把均衡压力放在在线调度变量上，减少对语言模型主损失的直接干扰，仍保留序列级或设备级的辅助稳定项。
 - **capacity factor / token dropping**：给每个 expert 设置容量上限，超额 token 被丢弃或走残差/备用路径。它能保护系统吞吐，却会让被丢弃 token 没有 expert 梯度，因此更适合作为系统兜底手段。
 
 per-expert balancing 和 per-device balancing 解决两个层级的问题。前者关心“每个 expert 是否都有足够 token 和梯度”，避免少数 experts 富者愈富、其他 experts 长期饥饿；
@@ -1249,7 +1249,7 @@ MoE 稳定性通常需要同时处理路由更新、激活异常值和损失尖�
 
     这条机制既削弱「富者愈富」正反馈（→ 极端塌缩），又保留路由决策的自由度。**收敛到完全均衡的解析条件目前没有公开推导**（ $f_i$ 受 batch 采样、router 演化、专家权重变化共同影响，是非平稳信号）。
 
-    DeepSeek-V3 论文 §2.1.2 给出的训练调度是 $\gamma = 0.001$ 用在前 14.3T tokens、最后 500B tokens 切换到 $\gamma = 0$（让 bias 在训练末段不再变化，固定路由选择）；
+    DeepSeek-V3 论文 §4.2 给出的训练调度是 $\gamma = 0.001$ 用在前 14.3T tokens、最后 500B tokens 切换到 $\gamma = 0$（让 bias 在训练末段不再变化，固定路由选择）；
 
     论文本身的常数来自经验扫描，工程上 $\gamma$ 过大容易震荡、 $\gamma$ 过小收敛太慢——属于「论文给常数 + 工程调」的典型模式。
 
