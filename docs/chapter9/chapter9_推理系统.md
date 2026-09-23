@@ -835,3 +835,4 @@ speculative cascades 是产品质量约束下的风险路由，两者相似但�
 - [LLaDA2.0, arXiv:2512.15745](https://arxiv.org/abs/2512.15745) — 16B-mini / 100B-flash MoE 扩散语言模型，block diffusion + WSD 调度。
 - [Step-3 / AFD, arXiv:2507.19427](https://arxiv.org/abs/2507.19427) — Attention-FFN Disaggregation，attention / FFN 分到两套 GPU 子系统。
 - [Faster Cascades via Speculative Decoding, arXiv:2405.19261](https://arxiv.org/abs/2405.19261) — speculative cascades 风险路由。
+- [Google Research Blog: Speculative cascades — a hybrid approach for smarter, faster LLM inference](https://research.google/blog/speculative-cascades-a-hybrid-approach-for-smarter-faster-llm-inference/) — 图 9.6-12（SpecCascades-4-Performance.png）出处；查阅日期 2026-09-23。

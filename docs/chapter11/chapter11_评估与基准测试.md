@@ -700,9 +700,14 @@ ARC-AGI-1:
 
 ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到交互环境：模型在环境中尝试操作、观察反馈并调整策略，覆盖了 ARC-AGI-1/2 未涉及的「规则未知环境下的探索与归纳」。这是 ARC-AGI 系列首次引入交互环境的新成员。
 
-**ARC-AGI-1 自 o1/o3 后已基本解决**：ARC-AGI-1 早期传统 LLM 几乎无法通过，但在 OpenAI o1、o3 引入 test-time compute / search 后分数迅速上升至接近饱和，ARC-AGI-2 也正在被快速解决。
+**ARC-AGI-1 自 o1/o3 后已基本解决**：ARC-AGI-1 早期传统 LLM 几乎无法通过，但在 OpenAI o1、o3 引入 test-time compute / search 后分数迅速上升至接近饱和。
 
-这条经验观察支撑的论断是：test-time compute 在模式归纳类任务上能补足「参数中未压缩的推理能力」——纯语言建模 + scaling 并不能直接产生模式归纳能力，但配合搜索与自适应步数就能。
+ARC-AGI-2 也正在被快速解决：2025 年 3 月发布时纯 LLM 得 0%、公开推理系统仅个位数，2025 年 12 月 Kaggle 冠军在私有集达 24.03%，
+2026 年 8 月 Gemini 3.7 Flash 在 semi-private 集达 84.6%
+（[ARC Prize 发布公告](https://arcprize.org/blog/announcing-arc-agi-2-and-arc-prize-2025)、
+[Gemini 3.7 Flash 结果页](https://arcprize.org/results/google-gemini-3-7-flash)，查阅日期 2026-09-23）。
+
+这一组经验观察支撑的论断是：test-time compute 在模式归纳类任务上能补足「参数中未压缩的推理能力」——纯语言建模 + scaling 并不能直接产生模式归纳能力，但配合搜索与自适应步数就能。
 
 这是 reasoning model 范式（CoT + search + test-time adaptation）改变纯推理任务解法空间的关键转折点，常作为 reasoning 模型价值的代表性证据。
 
@@ -1015,6 +1020,8 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - [Docent（Transluce）：用 LLM 审查 agent 执行轨迹](https://transluce.org/introducing-docent)（§11.10.2）
 - [ARC Prize 2025 Results and Analysis](https://arcprize.org/blog/arc-prize-2025-results-analysis)（§11.7.1）— 2025-12-05，ARC-AGI-2 私有集 Opus 4.5 (Thinking, 64k) 37.6%、Gemini 3 Pro refinement 54%、Kaggle 冠军 NVARC 24.03%
 - [ARC-AGI-2: A New Challenge for Frontier AI Reasoning Systems, arXiv:2505.11831](https://arxiv.org/abs/2505.11831)（§11.7.1）— 2025-05-14 受测模型 semi-private 得分均低于 5%（o3 3.0%）
+- [Announcing ARC-AGI-2 and ARC Prize 2025](https://arcprize.org/blog/announcing-arc-agi-2-and-arc-prize-2025)（§11.7）— 2025-03-24，发布时纯 LLM 0%、公开推理系统仅个位数
+- [ARC Prize: Google Gemini 3.7 Flash results](https://arcprize.org/results/google-gemini-3-7-flash)（§11.7）— 2026-08-13，ARC-AGI-2 semi-private 84.6%、<span>$</span>0.25/task
 - 查阅日期：2026-05-28 / 2026-09-05 / 2026-09-16 / 2026-09-22 / 2026-09-23。
 
 ### 本节事实声明的来源指向
@@ -1025,7 +1032,7 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - §11.4 知识类基准：MMLU GPT-3 X-Large 43.9% / Small 25.9% / Medium 24.9% / Large 26.0% 见 [arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1；MMLU-Pro 12,032 题 + 14 学科见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §3.1，来源组成 6,810 + 4,083 + 598 + 541 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) 附录 Table 5；GPT-4o MMLU 88.7% (CoT) / 87.2% (direct) 与 MMLU-Pro 72.6% 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §6.2 Table 3；GPQA 448 / 546 / 198 题数 + 61 PhD contractors + 65% / 74% 专家准确率 + 34.1% ± 2.3% 非专家准确率 + GPT-4 38.7% / 39.7% / 38.8% 见 [arXiv:2311.12022](https://arxiv.org/abs/2311.12022) §1 §3.1 §3.2 §4 Table 5；HLE 2,500 题 + 14% multimodal + 24% / 76% MCQ / EM + <span>$</span>500K 奖金见 [arXiv:2501.14249](https://arxiv.org/abs/2501.14249) §3。
 - §11.5 指令遵循基准：Chatbot Arena BT 公理 $p(A \succ B) = \sigma(\alpha_A - \alpha_B)$ 与 $\prod_{(i,j)} p(i \succ j)^{[i \succ j]}$ 见 [arXiv:2403.04132](https://arxiv.org/abs/2403.04132) §4；WildBench 1024 题（从 1M 中筛出）+ WB-Reward / WB-Score Pearson 相关系数 + 多 judge ensemble 见 [arXiv:2406.04770](https://arxiv.org/abs/2406.04770) §2.1 §3.1 §3.2 §4.2 Table 3；AlpacaEval 2.0 length-controlled win rate 见 [arXiv:2404.04475](https://arxiv.org/abs/2404.04475)；LLM-as-judge 四类偏差（position / verbosity / self-enhancement / limited capability）见 [arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3.3。
 - §11.6 智能体基准：SWE-bench 2,294 题 + 12 仓库见 [arXiv:2310.06770](https://arxiv.org/abs/2310.06770) 摘要 / §2.1；Terminal-Bench 2.0 数据集构造（93 contributors / 229 tasks / 89 tasks 入 2.0 / frontier < 65%）见 [arXiv:2601.11868](https://arxiv.org/abs/2601.11868) §2 / 摘要；Cybench 40 题 + FST 2 分钟到 24 小时 54 分钟见 [arXiv:2408.08926](https://arxiv.org/abs/2408.08926) §5 / Figure 3；MLE-bench 75 题 + o1-preview + AIDE pass@1 16.9% / pass@8 34.1% 见 [arXiv:2410.07095](https://arxiv.org/abs/2410.07095) Table 2 / §1。
-- §11.7 纯推理：ARC-AGI-2 在 2025-12 已到 Opus 4.5 37.6% / Gemini 3 Pro refinement 54% / Kaggle 冠军 24.03%，对照 2025-05 受测模型均低于 5%（o3 3.0%），分数见 [ARC Prize 2025 Results and Analysis](https://arcprize.org/blog/arc-prize-2025-results-analysis) 与 [arXiv:2505.11831](https://arxiv.org/abs/2505.11831)。
+- §11.7 纯推理：ARC-AGI-2 发布时纯 LLM 0%、公开推理系统仅个位数（[Announcing ARC-AGI-2 and ARC Prize 2025](https://arcprize.org/blog/announcing-arc-agi-2-and-arc-prize-2025)，2025-03-24）；2025-05 受测模型 semi-private 均低于 5%（o3 3.0%，[arXiv:2505.11831](https://arxiv.org/abs/2505.11831)）；2025-12 Opus 4.5 37.6% / Gemini 3 Pro refinement 54% / Kaggle 冠军 24.03%（[ARC Prize 2025 Results and Analysis](https://arcprize.org/blog/arc-prize-2025-results-analysis)）；2026-08-13 Gemini 3.7 Flash semi-private 84.6%（[ARC Prize: Google Gemini 3.7 Flash results](https://arcprize.org/results/google-gemini-3-7-flash)）。
 - §11.8 安全基准：HarmBench 510 行为类别见 [arXiv:2402.04249](https://arxiv.org/abs/2402.04249) §4.1；AIR-Bench 314 风险类别 + 5,694 提示见 [arXiv:2407.17436](https://arxiv.org/abs/2407.17436) 摘要 / §2.1。
 - §11.9 真实性：GDPval 44 职业 + 9 行业见 [arXiv:2510.04374](https://arxiv.org/abs/2510.04374) §2；MedHELM 121 临床任务 + 29 临床医生贡献见 [arXiv:2505.23802](https://arxiv.org/abs/2505.23802) §3。
 - §11.10 有效性：contamination 四条路线的公理起点见 [arXiv:2310.17623](https://arxiv.org/abs/2310.17623) §3 与 [arXiv:2410.08385](https://arxiv.org/abs/2410.08385) §1；τ-bench airline 子集 38% trivial 胜率见 [arXiv:2507.02825](https://arxiv.org/abs/2507.02825) §1 §5.2。

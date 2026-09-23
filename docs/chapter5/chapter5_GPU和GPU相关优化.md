@@ -555,7 +555,9 @@ MXFP8 这类格式不会让所有权重统一“一键切换”到同一种表�
 
 #### 低精度提速机制一：硬件因素
 
-浮点乘法器的电路规模与位宽呈超线性关系（每多 1 位指数或多 1 位尾数，乘法器部分积 / 加法树都会显著增长）；FP16 乘法器的晶体管数量大致只有 FP32 的 1/4 左右。这样就能在同样面积里放更多低精度的浮点运算器，而更多的计算单元意味着更高的峰值算力。
+浮点乘法器的电路规模与位宽呈超线性关系（每多 1 位指数或多 1 位尾数，乘法器部分积 / 加法树都会显著增长）；
+尾数乘法是其中主体：IEEE 754 的 FP16 / FP32 尾数分别为 11 位与 24 位，同一 350 nm CMOS 综合下 Wallace tree 与 radix-4 Booth 尾数乘法器的晶体管数比约 22%–24%（Array 结构 15%），FP16 大致只需 FP32 的四分之一（[Jiménez and Muñoz, Appl. Sci. 2025](https://doi.org/10.3390/app15094621) Table 3）。
+这样就能在同样面积里放更多低精度的浮点运算器，而更多的计算单元意味着更高的峰值算力。
 
 FP16 数据只占 FP32 一半的寄存器空间，同样 256 KB 寄存器文件可存**两倍数据**，同时 16 位数据总线带宽需求减半，同样带宽可传**两倍数据**，并且 FP16 乘法器延迟更低，频率可更高。
 
@@ -1109,6 +1111,7 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 - [Google Cloud TPU performance guide](https://docs.cloud.google.com/tpu/docs/performance-guide) — MXU 尺寸 v6e 之前为 128×128、feature 维度应取 128 的整倍数、total batch size 应取 64 的整倍数（每 TPU core 8）；2026-09-23 查阅。
 - [Wikipedia: Tensor Processing Unit](https://en.wikipedia.org/wiki/Tensor_Processing_Unit) — TPU 2015 年起在 Google 内部数据中心部署、2016 年 5 月在 Google I/O 首次公开；2026-09-22 查阅。
 - [JAX scaling book: roofline](https://jax-ml.github.io/scaling-book/roofline/) — H100 BF16 989.5 TFLOP/s、HBM 3.35 TB/s、roofline 转折点 ≈ 295 FLOPs/byte 的算术强度速查；2026-09-22 查阅。
+- [Jiménez and Muñoz, Very-Large-Scale Integration (VLSI) Implementation and Performance Comparison of Multiplier Topologies for Fixed- and Floating-Point Numbers, Applied Sciences 2025](https://doi.org/10.3390/app15094621) — Table 3，350 nm CMOS 综合的尾数乘法器晶体管数：11-bit（FP16 尾数）Array 14,776 / Wallace tree 4,950 / radix-4 Booth 6,180，24-bit（FP32 尾数）96,118 / 22,868 / 26,198；2026-09-23 查阅。
 
 ### 本节事实声明的来源指向
 

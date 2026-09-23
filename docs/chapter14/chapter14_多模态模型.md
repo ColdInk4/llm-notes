@@ -144,6 +144,8 @@ text decoder 升级为 Qwen-2（0.5B / 7B / 72B 三档），projector 升级为 
 OpenCLIP [model_profile.csv](https://github.com/mlfoundations/open_clip/blob/main/docs/model_profile.csv) 给出
 image_mparams = 1844.91M、text_mparams = 694.66M、双塔合计 mparams = 2539.57（≈ 2.54B），
 Qwen-VL 论文 Table 1 对该视觉编码器报 1.9B，语言侧 LLM 已普遍到数十亿到数百亿参数。
+该表为独立约整的粗粒度报数：分项 1.9 + 0.08 + 7.7 = 9.68B，表内 Total 写 9.6B，两者本身不相等；
+profiler 实测 1844.91M 与表内 1.9B 是同一图像塔的两种报数，差约 55M。
 
 这一规模差对应训练时的常见安排：视觉 encoder 在大规模图文对上已单独预训练，接入 VLM 时通常被冻结或低学习率微调，主要学习对象是 projector / adaptor 与 LLM——LLaVA 两阶段训练都冻结视觉 encoder。
 visual token 在 prefill / KV cache 中的占比由 §14.2 的分辨率与 patch 几何公式决定。
