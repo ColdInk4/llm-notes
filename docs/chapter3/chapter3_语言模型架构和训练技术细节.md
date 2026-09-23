@@ -975,9 +975,9 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 标准 full attention 让每个 query token 与所有历史 token 计算注意力。长上下文下，这个全连接范式成本很高，而许多任务真正需要高分辨率读取的历史位置只占一部分。DSA 因此采用“先筛选、后计算”的结构：先用轻量模块扫描历史 token，估计重要性分数；再让得分较高的位置进入精细注意力计算。
 核心组件是 indexer 和 top-k selector。
 
-![图 3.2-21 DSA](images/3-2-21-dsa-indexer.png)
+![图 3.2-21 DSA 结构](images/3-2-21-dsa-structure.png)
 
-*图 3.2-21 DSA 先用轻量 indexer 估计历史 token 重要性，再把 top-k 位置交给精细 attention*
+*图 3.2-21 DSA 用 Lightning Indexer 给历史 token 打分，Top-k Selector 筛出高分条目，与 Sliding Window 条目一起接入共享 KV 的 MQA*
 
 1. **Lightning Indexer**（闪电索引器）:
 
@@ -989,9 +989,9 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 这类方法可以作为长上下文适配路线，但是否能后训练接入已有模型，取决于目标模型的注意力分布、稀疏模块训练预算和服务端 kernel 支持。
 
-![图 3.2-22 DSA 实验](images/3-2-22-dsa-experiment.png)
+![图 3.2-22 NSA 实验](images/3-2-22-nsa-experiment.png)
 
-*图 3.2-22 DSA 实验同时报告质量和速度，用于判断稀疏读取是否真的带来端到端收益*
+*图 3.2-22 NSA 实验同时报告质量与速度：三类任务分数不低于 full attention，Decode / Forward / Backward 分别提速 11.6× / 9.0× / 6.0×*
 
 相关实验通常会同时报告质量与速度：稀疏注意力若能维持接近 full attention 的任务表现，同时在长序列的 decode、forward 和 backward 阶段减少计算，就具备工程吸引力。理论复杂度只是第一步，indexer 成本、top-k 选择开销和 kernel 实现同样会决定最终收益。
 
@@ -1008,17 +1008,9 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 （`index_topk` / `compress_ratios` / `index_n_heads` / `index_head_dim` / `sliding_window` 等）
 ，可以按三条线理解这个结构：CSA/DSA/HCA 负责压缩与稀疏选择长历史；滑动窗口分支和局部 RoPE 负责保留近邻上下文与位置关系；单 KV 头、共享 KV 与 grouped output projection 则共同指向更小的 KV cache、更低的 HBM 带宽压力和更可控的长上下文推理成本。
 
-![图 3.2-24 DeepSeek V4 attention](images/3-2-24-deepseek-v4-attention.png)
-
-*图 3.2-24 标出每条分支承担的上下文尺度：CSA 高分辨率稀疏块、HCA 低分辨率全局背景、sliding-window 处理近邻、shared KV 与 grouped output projection 共同降低 cache 体积*
-
 CSA 和 HCA 混合注意力架构以 MQA 风格的共享 KV 为基础。核心逻辑是分工：CSA 用较低压缩率和 indexer 保留高分辨率关键块，HCA 用高压缩率提供低成本全局背景，滑动窗口分支负责最近上下文的细粒度依赖。
 
 ###### 3.2.5.7.3.1 CSA：压缩与稀疏的平衡
-
-![图 3.2-25 CSA 结构](images/3-2-25-csa-structure.png)
-
-*图 3.2-25 CSA 先把连续 token 压成块级 KV 表征，再用稀疏选择保留高价值历史块*
 
 CSA 的设计哲学是在大幅降低计算量的同时，保留对关键块的高分辨率注意力。它分两步走：**先压缩，后稀疏选择**。
 
@@ -1044,9 +1036,9 @@ CSA 层执行流程可以概括为：先对 KV cache 做可学习的加权压缩
 
 ###### 3.2.5.7.3.2 HCA：极高压缩率的全局背景
 
-![图 3.2-26 HCA 结构](images/3-2-26-hca-structure.png)
+![图 3.2-24 HCA 结构](images/3-2-24-hca-structure.png)
 
-*图 3.2-26 HCA 用更高压缩率维护低成本全局背景，与 CSA 的稀疏高分辨率读取互补*
+*图 3.2-24 HCA 用更高压缩率维护低成本全局背景，与 CSA 的稀疏高分辨率读取互补*
 
 HCA 的目标是极低成本地维护一个覆盖十万级 token 的全局背景视野。它只做压缩，不做稀疏选择。
 
@@ -1223,7 +1215,7 @@ Bhojanapalli 等人在 [*Low-Rank Bottleneck in Multi-head Attention Models*, ar
 
 ![图 3.3-4 参数比例](images/3-3-4-parameter-ratio.png)
 
-*图 3.3-4 head 维度比例改变 attention 参数分配，实践中常从 1:1 附近起步再按模型族和硬件约束调整*
+*图 3.3-4 对 1:1 比例的反驳实验：同参数量下不同 head 配置的 perplexity 接近，实践中未见显著低秩瓶颈*
 
 ### 3.3.3 模型的宽深比
 
@@ -1468,3 +1460,4 @@ Continuous Batching 的工程取舍见[第 9 章 §9.5.1 Continuous Batching 与
 - `chapter3_语言模型架构和训练技术细节.md:L1101` — 「γ_t = exp(−Δ_t·exp(A_log)) 保留为遗忘门 α_t」——原因：该参数化超出已核 Gated DeltaNet §2.1/§3.1 主方程的范围，对应脚注未取全文核对；已试：`https://arxiv.org/html/2412.06464`（仅覆盖 §2.1/§3.1 状态更新式）。
 - `chapter3_语言模型架构和训练技术细节.md:L1164` — 「LLaMA-2 70B hidden_size=8192、intermediate_size=28672」——原因：仅镜像站配置可见，未取得 meta-llama 一手 config.json（权重仓库需授权）；已试：`无 URL`。
 - `chapter3_语言模型架构和训练技术细节.md:L1261` — 「Cohere Command 词汇量比较大（10 万到 25 万区间）」——原因：Cohere 一手 tokenizer/config 未取得，huggingface.co WebFetch 被 sandbox 拦截；已试：`无 URL`。
+- `chapter3_语言模型架构和训练技术细节.md:L1252` — 「（图 5 中分别是 50M 与 25M 两组）」——原因：WebFetch `arxiv.org/html/2001.08361` 返回截断，Figure 5 图注（40× aspect ratio、(6,4288) vs (48,1600) 3%）可见且与正文一致，但「50M 与 25M 两组」的分组参数量未出现在返回文本中；已试：`https://arxiv.org/html/2001.08361`。
