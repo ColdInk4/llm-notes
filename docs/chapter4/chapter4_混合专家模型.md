@@ -1515,9 +1515,3 @@ MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并
 - §4.3.2 seq-wise $\alpha = 0.0001$、bias 更新 $\gamma = 0.001$、MTP 深度 $D = 1$ 与 14.8T tokens（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §4.2、Table 1、Table 4）
 - §4.5 Switch 表口径（[arXiv:2101.03961](https://arxiv.org/abs/2101.03961) Table 9）
 - §4.4 Kimi K2 QK-Clip 阈值 $\tau = 100$ 与 15.5T 零 loss spike（[arXiv:2507.20534](https://arxiv.org/abs/2507.20534)）
-
-## 待核证清单
-
-本章以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
-
-- `chapter4_混合专家模型.md:L1394` — 「config.json 本身未列 shared_experts 字段」——原因：无可用 URL（raw config 返回 401，gated 仓库）；已试：`https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct/raw/main/config.json` 与 `https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct`（model card 未展示该键）

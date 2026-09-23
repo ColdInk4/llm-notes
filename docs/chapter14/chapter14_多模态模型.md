@@ -390,13 +390,13 @@ Chameleon 的视觉词表由 VQ-VAE 定义：512×512 图像编码为 1024 个�
 
 本章主体聚焦视觉 + 文本的多模态路线（CLIP / SigLIP / LLaVA / Qwen-VL / Chameleon）；完整的多模态系统还需要覆盖音频、视频及其他模态。音频与视频作为延伸方向小节列出：
 
-- **音频 + 文本**：[Qwen2-Audio](https://arxiv.org/abs/2407.10759)、AudioPaLM 等用 audio encoder 把音频表示注入语言模型，与 LLaVA 同型，encoder 输入从图像 patch 换成梅尔频谱帧；
-  Qwen2-Audio 以 128 通道梅尔频谱作为输入，audio encoder 从 Whisper-large-v3 初始化。
+- **音频 + 文本**：[Qwen2-Audio](https://arxiv.org/abs/2407.10759) 与 LLaVA 同型，encoder 输入从图像 patch 换成梅尔频谱帧：以 128 通道梅尔频谱作为输入，audio encoder 从 Whisper-large-v3 初始化，把音频表示注入语言模型。
+  [AudioPaLM](https://arxiv.org/abs/2306.12925) 把音频离散化后与文本统一建模：从现成 speech representation 模型（w2v-BERT / USM）提取 embedding 并离散成 audio token，与文本 token 拼成混合序列，输入从 PaLM 2 初始化的 decoder-only Transformer；文本模型的唯一改动是 embedding 矩阵扩展出 audio token 行。
 - **联合 audio-visual**：一些公开工作尝试视频生成时同步音频；[LTX-Video](https://arxiv.org/abs/2501.00103) 论文只覆盖视频生成，没有涉及音频。
 - **真正 omni（任意模态输入输出）**：Chameleon 由 Meta 在 2024 年发布（[arXiv:2405.09818](https://arxiv.org/abs/2405.09818)），论文本身已经把文本 + 图像的统一离散 token 路线做到 vision + text 的端到端训练；
   其训练第一阶段即联合了约 **2.9T 文本 token + 1.5T 文本/图像 token + 400B 文本/图像交错 token**。
   把这一思路扩展到任意模态属于后续研究的方向；vision + text 的统一自回归生成已在 Chameleon 论文中给出端到端结果。
-- **视频原生模型**：当前 LLaVA OneVision / Qwen3-VL 已支持视频，但单帧 encoder + 时间 attention 的拼接仍是主流；端到端 video token 化（如 VideoPoet）仍处于早期。
+- **视频原生模型**：当前 LLaVA OneVision / Qwen3-VL 已支持视频，但单帧 encoder + 时间 attention 的拼接仍是主流；端到端 video token 化（如 [VideoPoet](https://arxiv.org/abs/2312.14125)）仍处于早期。
 
 ## 本章总结与下章衔接
 
@@ -450,6 +450,8 @@ LLaVA / Qwen-VL / Chameleon 用 projector 或离散 token 把视觉 token 接到
 - [DeepStack](https://arxiv.org/abs/2406.04334)，查阅日期 `2026-09-22`，状态 `论文`。
 - [PaLI / WebLI 数据集](https://arxiv.org/abs/2209.06794)，查阅日期 `2026-09-22`，状态 `论文`。
 - [Qwen2-Audio](https://arxiv.org/abs/2407.10759)，查阅日期 `2026-09-22`，状态 `论文`。
+- [AudioPaLM](https://arxiv.org/abs/2306.12925)，查阅日期 `2026-09-23`，状态 `论文`（离散 audio token 与 embedding 扩展路线从 HTML 正文复核）。
+- [VideoPoet](https://arxiv.org/abs/2312.14125)，查阅日期 `2026-09-23`，状态 `论文`（proof of concept / understudied 自述从 HTML 正文复核）。
 - [LTX-Video](https://arxiv.org/abs/2501.00103)，查阅日期 `2026-09-22`，状态 `论文`。
 
 ### 本节事实声明的来源指向
@@ -465,11 +467,6 @@ LLaVA / Qwen-VL / Chameleon 用 projector 或离散 token 把视觉 token 接到
 - Chameleon 两阶段配比与稳定性处理指向 [arXiv:2405.09818](https://arxiv.org/abs/2405.09818) §2.2
 - DeepStack 注入方式与增益指向 [arXiv:2406.04334](https://arxiv.org/abs/2406.04334)
 - Qwen2-Audio 音频输入与 Whisper-large-v3 初始化指向 [arXiv:2407.10759](https://arxiv.org/abs/2407.10759)
+- AudioPaLM 的离散 audio token 与 embedding 扩展指向 [arXiv:2306.12925](https://arxiv.org/abs/2306.12925)
+- VideoPoet 端到端 video token 化的早期阶段自述指向 [arXiv:2312.14125](https://arxiv.org/abs/2312.14125)（"proof of concept"、"understudied approach"）
 - 本章末「本章总结与下章衔接」与 [推理行为与能力专题 §4 后训练：奖励信号如何改变搜索偏好](../topics/reasoning_behavior.md) 双向引用同一组证据
-
-## 待核证清单
-
-本章以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
-
-- `chapter14_多模态模型.md:L393` — 「AudioPaLM 等用 audio encoder 把音频表示注入语言模型」——原因：本会话无 WebSearch，未取到 AudioPaLM 一手页面核对其结构描述；已试：无 URL
-- `chapter14_多模态模型.md:L399` — 「端到端 video token 化（如 VideoPoet）仍处于早期」——原因：时效判断需要当期论文与榜单调研，本会话无 WebSearch；已试：无 URL

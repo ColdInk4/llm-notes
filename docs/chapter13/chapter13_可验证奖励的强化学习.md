@@ -1109,7 +1109,7 @@ Kimi RL 的目标是在参考答案上最大化期望奖励，同时约束模型
 
 $$
 \max_{\theta} \mathbb E_{(x,y^\ast) \sim \mathcal{D}} \left[ \mathbb E_{(y,z) \sim \pi_\theta} \left[ r(x, y, y^\ast) \right]
-- \tau \text{KL}(\pi_\theta(x) || \pi_{\theta_i}(x)) \right]
+-\tau \text{KL}(\pi_\theta(x) || \pi_{\theta_i}(x)) \right]
 $$
 
 Kimi 的目标借鉴了 DPO 的无奖励偏好优化思想，用当前策略与参考策略的差异构造“伪奖励”，再用平方损失去逼近它。
@@ -1128,14 +1128,14 @@ $$
 
 $$
 L(\theta) = \mathbb E_{(x,y^\ast) \sim \mathcal{D}} \left[ \mathbb E_{(y,z) \sim \pi_{\theta_i}} \left[ \left( r(x, y, y^\ast) - \tau \log Z
-- \tau \log \frac{\pi_\theta(y, z|x)}{\pi_{\theta_i}(y, z|x)} \right)^2 \right] \right]
+-\tau \log \frac{\pi_\theta(y, z|x)}{\pi_{\theta_i}(y, z|x)} \right)^2 \right] \right]
 $$
 
 最终用于更新模型参数 θ 的带正则化的基线策略梯度：
 
 $$
 \frac{1}{k} \sum_{j=1}^{k} \left( \nabla_\theta \log \pi_\theta(y_j, z_j | x) \left( r(x, y_j, y^\ast) - \bar{r} \right)
-- \frac{\tau}{2} \nabla_\theta \left( \log \frac{\pi_\theta(y_j, z_j | x)}{\pi_{\theta_i}(y_j, z_j | x)} \right)^2 \right)
+-\frac{\tau}{2} \nabla_\theta \left( \log \frac{\pi_\theta(y_j, z_j | x)}{\pi_{\theta_i}(y_j, z_j | x)} \right)^2 \right)
 $$
 
 Kimi 的优化目标可以概括为 reference-based reward model：借鉴 DPO 类型推导，在非参数假设下解出 reward，再用平方损失 surrogate 和带 baseline 的 policy gradient 做更新。这个目标没有 GRPO 同样的长度归一化偏差，但仍需要额外的长度控制来压缩 CoT 成本。

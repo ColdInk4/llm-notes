@@ -708,7 +708,7 @@ def cuda_if_available(index: int = 0) -> torch.device:
 
 - GPT-4 (2023 年)：据推测训练耗时约 $2 \times 10^{25}$ FLOPs [文章](https://patmcguinness.substack.com/p/gpt-4-details-revealed)
 
-- 政策背景：美国曾有一项行政命令，要求任何训练 FLOPs 超过 $1 \times 10^{26}$ 的基础模型必须向政府报告（该命令已于 2025 年被撤销）
+- 政策背景：美国曾有一项行政命令（[EO 14110](https://www.govinfo.gov/content/pkg/FR-2023-11-01/html/2023-24283.htm)），要求任何训练 FLOPs 超过 $1 \times 10^{26}$ 的基础模型必须向政府报告；该命令已于 2025 年 1 月被[总统行动](https://www.whitehouse.gov/presidential-actions/2025/01/removing-barriers-to-american-leadership-in-artificial-intelligence/)撤销
 
 - NVIDIA A100：BF16/FP16 Tensor Core 峰值性能为 312 TFLOP/s（即 $3.12 \times 10^{14}$ FLOP/s）
   [官方手册](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-nvidia-us-2188504-web.pdf)
@@ -963,7 +963,7 @@ output = x @ w # 输出向量
 当输入与权重都用 `torch.randn`（即 `x_j ~ N(0,1)`、`W_{ij} ~ N(0,1)`）独立采样时， $y_i = \sum_j W_{ij} x_j$ 的方差满足
 $\mathrm{Var}(y_i) = \sum_j \mathrm{Var}(W_{ij})\mathrm{Var}(x_j) = n$
 （[Goodfellow et al. *Deep Learning* §8.4 Parameter Initialization Strategies](https://www.deeplearningbook.org/contents/optimization.html)），
-所以 `output` 的标准差为 `` $`\sqrt{n} = \sqrt{\text{input_dim}}`$ ``。
+所以 `output` 的标准差为 $\sqrt{n} = \sqrt{\text{input_dim}}$。
 
 例如 `input_dim = 16384` 时 `output` 标准差约为 128，远大于 `x` 的标准差 1，会逐层放大导致梯度爆炸（gradient explosion），使训练过程变得极不稳定，甚至无法收敛。
 
@@ -1545,12 +1545,3 @@ PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通�
 - $F_{\text{total}} \approx 6 \times N_{\text{param}} \times N_{\text{token}}$ 公式最早出处：[Kaplan et al. 2020, *Scaling Laws for Neural Language Models*, arXiv:2001.08361](https://arxiv.org/abs/2001.08361) §2.1 "Parameter and Compute Scaling of Transformers" 一段写 "Accounting for the backwards pass (approximately twice the compute as the forwards pass), we then define the estimated non-embedding compute as $C \approx 6N$ floating point operators per training token"，总训练 compute 写成 $C \approx 6NBS$（ $N$ 非 embedding 参数量、 $B$ batch size、 $S$ step 数， $BS$ 即总 token 数 $N_{\text{token}}$； $C_{\min}$ 与 $B_{\text{crit}}$ 是该文 §1.3 另行定义的「达到给定 loss 所需最小 compute」与「critical batch size」符号）；§2.4.3 的 $6 \times N_{\text{param}} \times N_{\text{token}}$ 公式以此为最早出处，查阅日期 2026-09-22。
 - Chinchilla 沿用同一口径：[Hoffmann et al. 2022 (Chinchilla), *Training Compute-Optimal Large Language Models*, arXiv:2203.15556](https://arxiv.org/abs/2203.15556) §3.3 "Approach 3: Fitting a parametric loss function" 下 "Efficient frontier" 一段直接写 "minimizing the parametric loss $\hat{L}$ under the constraint $\mathrm{FLOPs}(N,D) \approx 6ND$ ([Kaplan et al., 2020](https://arxiv.org/abs/2001.08361))"，与 Kaplan 2020 的 $6NBS$ 口径一致（ $D = BS = N_{\text{token}}$），查阅日期 2026-09-22。
 - 反向 FLOPs 链式法则展开记号：[Austin et al., *How to Scale Your Model*, "All the Transformer Math You Need to Know"](https://jax-ml.github.io/scaling-book/transformers)：Jacob Austin, Sholto Douglas, Roy Frostig, Anselm Levskaya, Charlie Chen, Sharad Vikram, Federico Lebron, Peter Choy, Vinay Ramasesh, Albert Webson, Reiner Pope（Reiner Pope 现已离开 Google DeepMind 加入 MatX），Google DeepMind，2025-02-04 发布；页内 "Forward and reverse FLOPs" 一节把每层训练 FLOPs 写成前向 $2NPM$ + 反向 $4NPM = 6NPM$（ $N$ batch 维度、 $P$ 输入维度、 $M$ 输出维度），其中反向拆为 $dL/dB$ 的 $2NPM$ 与 $dL/dA$ 的 $2NPM$，§2.4.3 按层链式法则展开采用的记号即来自该页，查阅日期 2026-09-14。
-
-## 待核证清单
-
-本章以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
-
-- `chapter2_pytorch与资源核算.md:L60` — 「config.json vocab_size=128256 等字段字面值」——原因：HF gated 页面 fetch 返回 401；
-  已试：`https://huggingface.co/meta-llama/Meta-Llama-3-70B/blob/main/config.json`、
-  `https://huggingface.co/meta-llama/Meta-Llama-3-70B/raw/main/config.json`。
-- `chapter2_pytorch与资源核算.md:L711` — 「1×10^26 行政命令已于 2025 年被撤销」——原因：笔记未附一手 URL；已试：无 URL。

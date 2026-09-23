@@ -237,7 +237,7 @@ Shadow library 在数据清单中只作为负面参照登记，不进入训练�
 
 2025 年 8 月 26 日，Anthropic 同意支付 15 亿美元（约 48.2 万部作品）达成和解，是当时美国公开记录中金额最高的版权和解；2025 年 9 月 25 日法院作出 preliminary approval。
 
-**Anthropic 版权诉讼和解（2026 年进展）。** Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官承继，案号由 3:24-cv-05417-WHA reassign 为 3:24-cv-05417-AMO（法官姓名首字母后缀随承办法官变化，案件主体不变）。
+**Anthropic 版权诉讼和解（2026 年进展）。** Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官承继，案号由 3:24-cv-05417-WHA reassign 为 4:24-cv-05417-AMO（N.D. Cal. 案号的分区前缀与法官姓名首字母后缀都随承办法官变化，案件主体不变）。
 2026 年 5 月 14 日后者举行 75 分钟 fairness hearing，对律师费明细、lead-plaintiff 服务费、开支分摊与未及时 opt-out 通知提出补充材料要求；
 
 2026 年 7 月 20 日 Judge Martínez-Olguín 作出 final approval，确认 <span>$</span>1.5B、482,460 部 eligible works（
@@ -719,7 +719,8 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 - [Lee et al., arXiv:2107.06499](https://arxiv.org/abs/2107.06499)
 - [UniMax, arXiv:2304.09151](https://arxiv.org/abs/2304.09151)
 - [RegMix, arXiv:2407.01492](https://arxiv.org/abs/2407.01492)
-- [Bartz v. Anthropic PBC, Case No. 3:24-cv-05417-WHA（Alsup 法官）→ Case No. 3:24-cv-05417-AMO（Martínez-Olguín 法官，2025 年 12 月 reassign 后） (N.D. Cal.) 公开报道与和解页面](https://www.anthropiccopyrightsettlement.com/)
+- [Bartz v. Anthropic PBC, Case No. 3:24-cv-05417-WHA（Alsup 法官）→ Case No. 4:24-cv-05417-AMO（Martínez-Olguín 法官，2025 年 12 月 reassign 后） (N.D. Cal.) 公开报道与和解页面](https://www.anthropiccopyrightsettlement.com/)
+- [Bartz v. Anthropic PBC, CourtListener docket, Case No. 4:24-cv-05417-AMO](https://www.courtlistener.com/docket/69058235/bartz-v-anthropic-pbc) — 案件标题 4:24-cv-05417、Assigned To: Araceli Martinez-Olguin（查阅日期 2026-09-23）
 - [Carlini et al., arXiv:2302.10149](https://arxiv.org/abs/2302.10149)
 - [Wallace et al., arXiv:2010.12563](https://arxiv.org/abs/2010.12563)
 - [毒样本规模无关性论文, arXiv:2510.07192](https://arxiv.org/abs/2510.07192)
@@ -746,13 +747,7 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 - OpenThoughts §4.1 的 27 code / 21 math / 14 science 来源与 §4.4 的 1× / 4× / 16× 采样 ablation
   （math 域 exact dedup + 4× 最佳、16× 次佳，最终 pipeline 全域 16× 答案 + math / science exact dedup + code 不去重）
 - DeepSeek-V3 abstract 与正文报告 14.8T tokens
+- C4 论文 §2.2 — April 2019 Common Crawl 过滤后的原始 C4 约 750 GB（原文 "about 750 GB"）
 - Bartz v. Anthropic PBC — 2025-06-23 fair use summary judgment；2025-08-26 settlement <span>$</span>1.5B；2025-09-25 preliminary approval；
-  2025-12 Alsup 退休后 reassign 为 Martínez-Olguín（Case No. 3:24-cv-05417-AMO）；2026-05-14 fairness hearing；2026-07-20 final approval；
+  2025-12 Alsup 退休后 reassign 为 Martínez-Olguín（Case No. 4:24-cv-05417-AMO）；2026-05-14 fairness hearing；2026-07-20 final approval；
   482,460 eligible works / 447,576 filed claims / opt-outs 约 350 位作者覆盖约 1,802 部作品 / claims rate 92.77% / 约 <span>$</span>3,000/部
-
-## 待核证清单
-
-本章以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
-
-- `chapter10_数据工程.md:L120` — 「原始 C4 约 750 GB」——原因：论文页与 HF 页 fetch 截断、未见容量数字；已试：`https://arxiv.org/abs/1910.10683`、`https://huggingface.co/datasets/allenai/c4`。
-- `chapter10_数据工程.md:L240` — 「reassign 为 3:24-cv-05417-AMO」——原因：官方页面仅见裸案号 3:24-cv-5417，AMO 后缀与案号位数待交叉核对；已试：`https://www.anthropiccopyrightsettlement.com/`。

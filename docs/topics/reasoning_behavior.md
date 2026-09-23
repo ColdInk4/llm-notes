@@ -415,12 +415,3 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 ### 本节事实声明的来源指向
 
 - [第 13 章 §13.4.1 R1-Zero：纯 GRPO 起点](../chapter13/chapter13_可验证奖励的强化学习.md) 与 [第 13 章 §13.3.1 GRPO：去掉了价值函数的 PPO](../chapter13/chapter13_可验证奖励的强化学习.md) / [第 13 章 §13.3.2 GRPO 的两类偏差：问题难度与响应长度](../chapter13/chapter13_可验证奖励的强化学习.md) 与本专题 [§4 后训练：奖励信号如何改变搜索偏好](#后训练奖励信号如何改变搜索偏好) 中的 RLVR 副作用部分共享同一组证据（"RL 不必然增加新能力，更可能重排基座模型的轨迹概率"），对应一手论文 [Does Reinforcement Learning Really Incentivize Reasoning Capacity in LLMs Beyond the Base Model? (arXiv:2504.13837)](https://arxiv.org/abs/2504.13837) 与 [On the Interplay of Pre-Training, Mid-Training, and RL on Reasoning Language Models (arXiv:2512.07783)](https://arxiv.org/abs/2512.07783)；[第 14 章 本章总结与下章衔接](../chapter14/chapter14_多模态模型.md) 在章末把多模态 agent trace 与 RLVR 验证指向本专题；其余外部论文按 arXiv 提交日期记录于[参考资料](#参考资料)。
-
-## 待核证清单
-
-本文件以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
-
-- `reasoning_behavior.md:L199` — 「隐藏层单元的激活模式开始对应国籍、代际、家族分支」——原因：
-  Nature 1986 PDF 无文本层（pdftotext 仅得版权行），Nature 页面与 Crossref / Semantic Scholar 接口只有标题、作者，
-  摘要被出版方 elide，正文引文不可得；已试：
-  `https://www.cs.toronto.edu/~hinton/absps/naturebp.pdf`、`https://api.semanticscholar.org/graph/v1/paper/DOI:10.1038/323533a0?fields=title,abstract,year,authors`。

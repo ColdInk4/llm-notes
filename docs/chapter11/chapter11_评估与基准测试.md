@@ -1013,23 +1013,20 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - [OpenRouter Rankings](https://openrouter.ai/rankings)（§11.1.1 / §11.1.2）
 - [nanoGPT speedrun (Modded NanoGPT)](https://github.com/KellerJordan/modded-nanogpt)（§11.11）
 - [Docent（Transluce）：用 LLM 审查 agent 执行轨迹](https://transluce.org/introducing-docent)（§11.10.2）
-- 查阅日期：2026-05-28 / 2026-09-05 / 2026-09-16 / 2026-09-22。
+- [ARC Prize 2025 Results and Analysis](https://arcprize.org/blog/arc-prize-2025-results-analysis)（§11.7.1）— 2025-12-05，ARC-AGI-2 私有集 Opus 4.5 (Thinking, 64k) 37.6%、Gemini 3 Pro refinement 54%、Kaggle 冠军 NVARC 24.03%
+- [ARC-AGI-2: A New Challenge for Frontier AI Reasoning Systems, arXiv:2505.11831](https://arxiv.org/abs/2505.11831)（§11.7.1）— 2025-05-14 受测模型 semi-private 得分均低于 5%（o3 3.0%）
+- 查阅日期：2026-05-28 / 2026-09-05 / 2026-09-16 / 2026-09-22 / 2026-09-23。
 
 ### 本节事实声明的来源指向
 
 本章事实声明均按论文 § 编号 + 段首句定位：
 
 - §11.3 perplexity 公理起点：language model as distribution $p(x)$ 与 $\mathrm{PPL}=e^L$ 定义见 lecture_12.py L60-L106；Jozefowicz 等 2016 1BW 困惑度 51.3 → 30.0 见 [arXiv:1602.02410](https://arxiv.org/abs/1602.02410) Table 1 / §5。
-- §11.4 知识类基准：MMLU GPT-3 X-Large 43.9% / Small 25.9% / Medium 24.9% / Large 26.0% 见 [arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1；MMLU-Pro 12,032 题 + 14 学科见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §3.1，来源组成 6,810 + 4,083 + 598 + 541 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) 附录 Table 5；GPT-4o MMLU 88.7% (CoT) / 87.2% (direct) 与 MMLU-Pro 72.6% 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §6.2 Table 3；GPQA 448 / 546 / 198 题数 + 61 PhD contractors + 65% / 74% 专家准确率 + 34.1% ± 2.3% 非专家准确率 + GPT-4 38.7% / 39.7% / 38.8% 见 [arXiv:2311.12022](https://arxiv.org/abs/2311.12022) §1 §3.1 §3.2 §4 Table 5；HLE 2,500 题 + 14% multimodal + 24% / 76% MCQ / EM + $500K 奖金见 [arXiv:2501.14249](https://arxiv.org/abs/2501.14249) §3。
+- §11.4 知识类基准：MMLU GPT-3 X-Large 43.9% / Small 25.9% / Medium 24.9% / Large 26.0% 见 [arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1；MMLU-Pro 12,032 题 + 14 学科见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §3.1，来源组成 6,810 + 4,083 + 598 + 541 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) 附录 Table 5；GPT-4o MMLU 88.7% (CoT) / 87.2% (direct) 与 MMLU-Pro 72.6% 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §6.2 Table 3；GPQA 448 / 546 / 198 题数 + 61 PhD contractors + 65% / 74% 专家准确率 + 34.1% ± 2.3% 非专家准确率 + GPT-4 38.7% / 39.7% / 38.8% 见 [arXiv:2311.12022](https://arxiv.org/abs/2311.12022) §1 §3.1 §3.2 §4 Table 5；HLE 2,500 题 + 14% multimodal + 24% / 76% MCQ / EM + <span>$</span>500K 奖金见 [arXiv:2501.14249](https://arxiv.org/abs/2501.14249) §3。
 - §11.5 指令遵循基准：Chatbot Arena BT 公理 $p(A \succ B) = \sigma(\alpha_A - \alpha_B)$ 与 $\prod_{(i,j)} p(i \succ j)^{[i \succ j]}$ 见 [arXiv:2403.04132](https://arxiv.org/abs/2403.04132) §4；WildBench 1024 题（从 1M 中筛出）+ WB-Reward / WB-Score Pearson 相关系数 + 多 judge ensemble 见 [arXiv:2406.04770](https://arxiv.org/abs/2406.04770) §2.1 §3.1 §3.2 §4.2 Table 3；AlpacaEval 2.0 length-controlled win rate 见 [arXiv:2404.04475](https://arxiv.org/abs/2404.04475)；LLM-as-judge 四类偏差（position / verbosity / self-enhancement / limited capability）见 [arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3.3。
 - §11.6 智能体基准：SWE-bench 2,294 题 + 12 仓库见 [arXiv:2310.06770](https://arxiv.org/abs/2310.06770) 摘要 / §2.1；Terminal-Bench 2.0 数据集构造（93 contributors / 229 tasks / 89 tasks 入 2.0 / frontier < 65%）见 [arXiv:2601.11868](https://arxiv.org/abs/2601.11868) §2 / 摘要；Cybench 40 题 + FST 2 分钟到 24 小时 54 分钟见 [arXiv:2408.08926](https://arxiv.org/abs/2408.08926) §5 / Figure 3；MLE-bench 75 题 + o1-preview + AIDE pass@1 16.9% / pass@8 34.1% 见 [arXiv:2410.07095](https://arxiv.org/abs/2410.07095) Table 2 / §1。
+- §11.7 纯推理：ARC-AGI-2 在 2025-12 已到 Opus 4.5 37.6% / Gemini 3 Pro refinement 54% / Kaggle 冠军 24.03%，对照 2025-05 受测模型均低于 5%（o3 3.0%），分数见 [ARC Prize 2025 Results and Analysis](https://arcprize.org/blog/arc-prize-2025-results-analysis) 与 [arXiv:2505.11831](https://arxiv.org/abs/2505.11831)。
 - §11.8 安全基准：HarmBench 510 行为类别见 [arXiv:2402.04249](https://arxiv.org/abs/2402.04249) §4.1；AIR-Bench 314 风险类别 + 5,694 提示见 [arXiv:2407.17436](https://arxiv.org/abs/2407.17436) 摘要 / §2.1。
 - §11.9 真实性：GDPval 44 职业 + 9 行业见 [arXiv:2510.04374](https://arxiv.org/abs/2510.04374) §2；MedHELM 121 临床任务 + 29 临床医生贡献见 [arXiv:2505.23802](https://arxiv.org/abs/2505.23802) §3。
 - §11.10 有效性：contamination 四条路线的公理起点见 [arXiv:2310.17623](https://arxiv.org/abs/2310.17623) §3 与 [arXiv:2410.08385](https://arxiv.org/abs/2410.08385) §1；τ-bench airline 子集 38% trivial 胜率见 [arXiv:2507.02825](https://arxiv.org/abs/2507.02825) §1 §5.2。
 - §11.11 rules of the game：method vs model/system 的 ImageNet 时代 vs foundation-model 时代边界见 lecture_12.py L379-L390；nanoGPT speedrun 范式见 lecture_12.py L384-L386。
-
-## 待核证清单
-
-本章以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
-
-- `chapter11_评估与基准测试.md:L705` — 「ARC-AGI-2 也正在被快速解决」——原因：ARC Prize 官方榜单为 JavaScript 渲染，静态抓取取不到 ARC-AGI-2 当前分数，无法给出「快速解决」的量化证据；已试：`https://arcprize.org/leaderboard`、`https://arcprize.org/arc-agi`（均返回无分数壳页面），`https://openai.com/index/o3-and-gpt-4o-alpha/`（仅含 2024-12 预测「o3 将把 ARC-AGI-2 压到 30% 以下」）。

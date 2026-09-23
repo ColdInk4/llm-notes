@@ -193,7 +193,7 @@ GPU 程序通常按 **grid -> block -> warp -> thread** 的层级组织。grid �
 
 一个 **warp** 是 32 个连续编号线程组成的固定小组，是 SM 调度指令的基本单位。warp 内线程以 SIMT 方式执行：指令相同，输入数据不同。若同一 warp 内部分线程走 `if` 分支、部分线程走 `else` 分支，硬件会用 mask 分阶段执行两条路径，形成 **warp divergence**，有效利用率下降。
 
-SM 上同时可驻留最多 **64 个 warp**（典型值，A100/H100 SM 一致），由 4 个 warp 调度器从共享的 warp 池中取指；
+SM 上同时可驻留最多 **64 个 warp**（典型值，A100/H100 SM 一致；[NVIDIA H100 架构白皮书](https://dam-cdn.nvd.orangelogic.com/AssetLink/705n6ur546g0uk43w0117r17n8042d73.pdf) 对照表列 V100 / A100 / H100 的 Max Warps / SM 均为 64），由 4 个 warp 调度器从共享的 warp 池中取指；
 每个周期 4 个调度器各发射 1 条指令给不同 warp，使 SM 能在数据依赖或访存等待时切换 warp 隐藏延迟。warp 内 32 个线程在 **SIMT 单元**上同步执行（NVIDIA 文档用 SIMT 描述 warp 调度模型，硬件执行时内部仍按 SIMD 风格分发到一组 lane 上）。
 
 #### Block（线程块）
@@ -390,12 +390,12 @@ TPU 的 MXU（Matrix Multiply Unit）通常是 $128 \times 128$ 的 systolic arr
 配套规格为单芯片 BF16 峰值 **459 TFLOP/s**、HBM **95 GiB**、带宽 **2765 GB/s**、整 pod **8960** 颗芯片（[Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p)）。
 页内原文 "Each TensorCore has four Matrix Multiply Units (MXU), a vector unit, and a scalar unit" 与规格表 "Number of TensorCores per chip 2" 直接给出 2 × (4 + 1 + 1) = 12。
 
-这与"一颗 H100 = 132 SM，每 SM 4 个 Tensor Core（矩阵乘法单元），合计 528 个 Tensor Core" 的多而小路线形成对照：TPU 走"少而大"，GPU 走"多而小"。看到"TFLOP/s"时先确认它是单 MXU、单芯片还是整 pod 的口径。
+这与"一颗 H100 = 132 SM，每 SM 4 个 Tensor Core（矩阵乘法单元），合计 528 个 Tensor Core"（[NVIDIA H100 架构白皮书](https://dam-cdn.nvd.orangelogic.com/AssetLink/705n6ur546g0uk43w0117r17n8042d73.pdf)：132 SM per GPU、Tensor Cores / SM = 4、Tensor Cores / GPU = 528） 的多而小路线形成对照：TPU 走"少而大"，GPU 走"多而小"。看到"TFLOP/s"时先确认它是单 MXU、单芯片还是整 pod 的口径。
 
 MXU 的形状同时给出了几条对齐建议。 $128 \times 128$ 的 systolic array 对齐 128 维时效率最高，不足时 MXU 会被 padding 填满，浪费算力；
 [Google Cloud TPU performance guide](https://docs.cloud.google.com/tpu/docs/performance-guide) 写明 feature 维度应取 128 的整倍数、total batch size 应取 64 的整倍数（每 TPU core 8），两者都是该指南给出的效率建议。
 
-GPU 一侧对应的是 warp size = 32（线程按 32 个一组编成 warp 调度；CUDA 指南建议 block 线程数取 32 的倍数，以避免尾部 under-populated warp 浪费算力）与 SM warp 驻留上限（典型 64 warp）。
+GPU 一侧对应的是 warp size = 32（线程按 32 个一组编成 warp 调度；CUDA 指南建议 block 线程数取 32 的倍数，以避免尾部 under-populated warp 浪费算力，见 [CUDA C++ Programming Guide §8.2.3](https://docs.nvidia.com/cuda/pdf/CUDA_C_Programming_Guide.pdf)）与 SM warp 驻留上限（典型 64 warp）。
 这两组数字分别由 SIMT 调度模型与 systolic array 几何形状决定，不能直接换算。
 
 ### 5.4.3 TPU 网络拓扑与 pod 视角
@@ -525,13 +525,13 @@ GPU 采用 SIMT（单指令多线程）执行架构，**同一线程束（Warp�
 | **BF16** | 16 位 | $3.4 \times 10^{38}$ | AI 训练首选 | **16×**（A100 Tensor Core 312 TFLOP/s vs A100 FP32 CUDA 19.5 TFLOP/s） |
 | **INT8** | 8 位 | 2⁸ ≈ 256 | 量化推理 | **32×**（A100 Tensor Core 624 TOPS vs A100 FP32 CUDA 19.5 TFLOP/s） |
 | **INT4** | 4 位 | 2⁴ = 16 | 极致推理 | **64×**（A100 Tensor Core 1,248 TOPS vs A100 FP32 CUDA 19.5 TFLOP/s） |
-| **FP8** | 8 位 | 动态范围 | Hopper/Blackwell | **约 30×**（H100 Tensor Core FP8 dense 1,979 TFLOP/s vs H100 SXM FP32 67 TFLOP/s；H100 自身对照口径，FP32 走 CUDA Core 路径；51 TFLOP/s 是 H100 PCIe 版 FP32 峰值，SXM5 实际 = 67 TFLOP/s，见 [NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)） |
+| **FP8** | 8 位 | 动态范围 | Hopper/Blackwell | **约 30×**（H100 Tensor Core FP8 dense 1,979 TFLOP/s vs H100 SXM FP32 67 TFLOP/s；H100 自身对照口径，FP32 走 CUDA Core 路径；51 TFLOP/s 是 H100 PCIe 版 FP32 峰值（[NVIDIA H100 架构白皮书](https://dam-cdn.nvd.orangelogic.com/AssetLink/705n6ur546g0uk43w0117r17n8042d73.pdf) final 规格 51.2 TFLOP/s），SXM5 实际 = 67 TFLOP/s，见 [NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)） |
 
 > [!WARNING]
 > 表中 TF32 / FP16 / BF16 / INT8 / INT4 行均按 A100 上 Tensor Core dense 峰值 ÷ A100 FP32 CUDA Core 19.5 TFLOP/s 得出；
 > FP8 行单独按 H100 SXM Tensor Core FP8 dense 1,979 TFLOP/s ÷ H100 SXM FP32 67 TFLOP/s 得出，
 > 二者分子分母都来自 H100 SXM 同款 GPU 的不同执行单元（FP32 走 CUDA Core、FP8 走 Tensor Core），口径与前六行（A100 vs A100）不同。FP8 在 A100 上不可用。
-> 51 TFLOP/s 是 H100 PCIe 版 FP32 峰值，H100 SXM/SXM5 实际为 67 TFLOP/s（[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)，该页现列 SXM=67、NVL=60 两个变体）。
+> 51 TFLOP/s 是 H100 PCIe 版 FP32 峰值（[NVIDIA H100 架构白皮书](https://dam-cdn.nvd.orangelogic.com/AssetLink/705n6ur546g0uk43w0117r17n8042d73.pdf) final 规格 51.2 TFLOP/s），H100 SXM/SXM5 实际为 67 TFLOP/s（[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)，该页现列 SXM=67、NVL=60 两个变体）。
 > 上述「加速倍数」均为理论比值；实际训练可达加速取决于 kernel 实现、是否启用 FP32 master weight、累加器精度和数值稳定性。
 > 混合精度（FP32 master copy + FP16/BF16 计算）端到端常见 2-3× 加速，与峰值比 16× 之间留有显著差距。
 
@@ -1089,6 +1089,8 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 
 - [NVIDIA Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/) — B200 / GB200 规格、L2 cache 126 MB（GB200 全封装）、HBM3e 软件可见 180 GB；2026-09-22 查阅。
 - [NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/) — H100 SXM5 BF16 / FP16 Tensor Core dense 989.5 TFLOP/s、FP8 dense 1,979 TFLOP/s、FP32 CUDA Core 67 TFLOP/s（SXM5）、HBM3 80 GB、HBM 带宽 3.35 TB/s；该页规格表现列 SXM=67、NVL=60 两个变体；2026-09-22 查阅，2026-09-23 复核。
+- [NVIDIA H100 Tensor Core GPU Architecture 白皮书 V1.04（final GPU / memory clocks 与 final TFLOPS）](https://dam-cdn.nvd.orangelogic.com/AssetLink/705n6ur546g0uk43w0117r17n8042d73.pdf)（由 [NVIDIA Hopper architecture resources 页](https://resources.nvidia.com/en-us-hopper-architecture) 挂出）— H100 SXM5 132 SM per GPU、PCIe 114 SM per GPU、满血 GH100 144 SM；每 SM 128 FP32 core（16,896 / 14,592 per GPU）；Peak FP32 final 66.9（SXM5）/ 51.2（PCIe）TFLOP/s；V100 / A100 / H100 对照表 Max Warps / SM 均为 64；Tensor Cores / SM 4、H100 SXM5 Tensor Cores / GPU 528；2026-09-23 查阅。
+- [NVIDIA CUDA C++ Programming Guide（PDF）](https://docs.nvidia.com/cuda/pdf/CUDA_C_Programming_Guide.pdf) — §8.2.3 Multiprocessor Level「The number of threads per block should be chosen as a multiple of the warp size to avoid wasting computing resources with under-populated warps as much as possible」；Table 27（13.4 版）compute capability 8.0 与 9.0 的 maximum resident warps per SM = 64；2026-09-23 查阅。
 - [NVIDIA A100 datasheet](https://www.nvidia.com/en-us/data-center/a100/) — A100 80GB 规格表：FP32 CUDA Core 19.5 TFLOP/s、TF32 156/312、FP16/BF16 312/624、INT8 624/1,248 TOPS（含 with sparsity 列）、HBM2e 80 GB、HBM 带宽 1,935/2,039 GB/s（PCIe/SXM）；2026-09-23 查阅。
 - [NVIDIA Ampere architecture in-depth blog](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/) — A100 SM 108、64 FP32 core/SM、6,912 FP32 CUDA core 总数、die 826 mm²、TSMC 7nm N7、Peak INT4 Tensor Core 1,248 / 2,496 TOPS、A100 L2 40 MB、L2 读带宽约为 V100 的 2.3×（分区 crossbar 结构），同批数字亦见 [NVIDIA Ampere architecture 白皮书 PDF](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/nvidia-ampere-architecture-whitepaper.pdf)；2026-09-22 查阅，2026-09-23 复核。
 - [NVIDIA Hopper tuning guide](https://docs.nvidia.com/cuda/hopper-tuning-guide/) — H100/H200 L2 cache 50 MB（自 A100 40 MB）、每 SM 64K 32-bit 寄存器（256 KB）、L1 + shared 256 KB（自 192 KB）、HBM 上限 80 GB；2026-09-23 查阅。
@@ -1102,7 +1104,7 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 
 ### 本节事实声明的来源指向
 
-- §5.1.3 硬件表（A100/H100/H200/B200 在 SM 数、HBM 容量与带宽、L2 cache 的量级差异）：NVIDIA Blackwell tuning guide §1.4.2.2 + NVIDIA H100 / A100 / H200 datasheets；A100 108 SM 与 B200 全封装 ≈148 SM 见 [NVIDIA Ampere architecture in-depth blog](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/) 与 Chips and Cheese GB100 die shot + TechInsights GB100 teardown；GB200 NVL72 反推 186 GB/GPU 的总 HBM3e 13.4 TB / 72 GPU 见 [第 2 章 §2.4 计算效率](../chapter2/chapter2_pytorch与资源核算.md) 与 [第 7 章 §7.1.4 GPU、TPU 和数据中心拓扑](../chapter7/chapter7_分布式训练.md)。
+- §5.1.3 硬件表（A100/H100/H200/B200 在 SM 数、HBM 容量与带宽、L2 cache 的量级差异）：NVIDIA Blackwell tuning guide §1.4.2.2 + NVIDIA H100 / A100 / H200 datasheets；A100 108 SM 与 B200 全封装 ≈148 SM 见 [NVIDIA Ampere architecture in-depth blog](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/) 与 Chips and Cheese GB100 die shot + TechInsights GB100 teardown；H100 132 SM per GPU 与每 SM 128 FP32 core 见 [NVIDIA H100 Tensor Core GPU Architecture 白皮书](https://dam-cdn.nvd.orangelogic.com/AssetLink/705n6ur546g0uk43w0117r17n8042d73.pdf)；GB200 NVL72 反推 186 GB/GPU 的总 HBM3e 13.4 TB / 72 GPU 见 [第 2 章 §2.4 计算效率](../chapter2/chapter2_pytorch与资源核算.md) 与 [第 7 章 §7.1.4 GPU、TPU 和数据中心拓扑](../chapter7/chapter7_分布式训练.md)。
 - §5.1.4 / §5.3.1 / §5.3.2 Tensor Core 吞吐（FP64 至 INT8 行）与 A100 内存层次：NVIDIA A100 datasheet specs table；INT4 行（1,248 / 2,496 TOPS）与 SM 108、6,912 core、die 826 mm²、7nm N7、L2 40 MB 见 [NVIDIA Ampere architecture in-depth blog](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/) / [NVIDIA Ampere architecture 白皮书 PDF](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/nvidia-ampere-architecture-whitepaper.pdf)；A100 L2 读带宽「约为 V100 的 2.3×」来自该 blog，具体「5,120 Bytes/clk」为 NSight Compute L2 fabric 指标反推的峰值估算，NVIDIA 白皮书原文未给出此字节/时钟数字。
 - §5.3.1 全局内存延迟表（Global memory = 290 cycles；L2 = 200；L1 = 33；Shared Memory ld/st = 23/19）— 来自课件图 5.3-1 的 Table IV（The Memory Accesses Latencies）。
 - §5.4.2 TPU v5p TensorCore / MXU / 459 TFLOP/s / HBM 95 GiB / 2,765 GB/s / 8,960 chips per pod — [Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p)。
@@ -1120,14 +1122,6 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 本章以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，留待后续复核核销。
 
 - `chapter5_GPU和GPU相关优化.md:L67` — 「B200 启用 SM ≈ 148、每 SM 128 FP32、18,944 core」
-  ——原因：Blackwell tuning guide 页面无 SM 字段，die shot / teardown 数字需交叉验证；已试：`https://docs.nvidia.com/cuda/blackwell-tuning-guide/`。
-- `chapter5_GPU和GPU相关优化.md:L67、L391` — 「H100 / H200 = 132 SM」
-  ——原因：Hopper tuning guide 与 H100 datasheet 页均未列 SM 数；已试：`https://docs.nvidia.com/cuda/hopper-tuning-guide/`、`https://www.nvidia.com/en-sg/data-center/h100/`。
-- `chapter5_GPU和GPU相关优化.md:L526、L532` — 「51 TFLOP/s 是 H100 PCIe 版 FP32 峰值」
-  ——原因：H100 页现列 SXM=67、NVL=60 两变体，PCIe 51 无当页可引；已试：`https://www.nvidia.com/en-sg/data-center/h100/`。
-- `chapter5_GPU和GPU相关优化.md:L196` — 「SM 上同时可驻留最多 64 个 warp」
-  ——原因：课件图仅确认 4 个 warp 调度器，本章无一手 URL；已试：无 URL。
-- `chapter5_GPU和GPU相关优化.md:L396` — 「CUDA 指南建议 block 线程数取 32 的倍数」
-  ——原因：本章无一手 URL；已试：无 URL。
-- `chapter5_GPU和GPU相关优化.md:L1097、L1111` — 「OCP MX 规范定义 32 元素块 + E8M0 scale」
-  ——原因：OCP 规范页 WebFetch 403、GitHub raw 404，主 agent 独立复核受阻（断言为存量内容，非本轮新引入）；已试：`https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf`。
+  ——原因：NVIDIA 官方页面与 PDF 均未列 B200 / GB100 的 SM 数（148 × 128 = 18,944 算术自洽；第三方出处为 Chips and Cheese GB100 die shot + TechInsights GB100 teardown）；已试：`https://docs.nvidia.com/cuda/blackwell-tuning-guide/`（HTML + archive 13.0.0 PDF）、`https://www.nvidia.com/en-us/data-center/technologies/blackwell-architecture/`、`https://resources.nvidia.com/en-us-blackwell-architecture`（Blackwell Architecture Technical Brief + Blackwell Ultra datasheet）、`https://www.nvidia.com/en-us/data-center/dgx-b200/` 及其规格页 19 个 AssetLink PDF、`https://www.nvidia.com/en-us/data-center/gb200-nvl72/` 关联 PDF、`https://www.nvidia.com/en-us/data-center/b200/`（404）、`https://www.nvidia.com/en-us/data-center/hgx-b200/`（404）、`https://developer.nvidia.com/cuda-gpus`（只列 compute capability 10.0）、Bing / DuckDuckGo 站内检索（未返回可读结果）。
+- `chapter5_GPU和GPU相关优化.md:L67` — 「H200 = 132 SM」（同条的「H100 = 132 SM」与 L393「132 SM × 4 Tensor Core = 528」已由 H100 架构白皮书定案）
+  ——原因：H200 官方 datasheet、产品页、SC23 新闻稿、HGX H100 与 H200 datasheet、CUDA cuda-gpus 均不列 SM 数；H200 官方 FP32 67 TFLOP/s 与 H100 SXM（白皮书 final 66.9 TFLOP/s）相同、same power profile as the H100、同 compute capability 9.0，间接一致但缺直接一手句；已试：`https://www.nvidia.com/en-sg/data-center/h200/`、`https://www.nvidia.com/en-us/data-center/h200/`、`https://nvidianews.nvidia.com/news/nvidia-supercharges-hopper-the-worlds-leading-ai-computing-platform`、`https://docs.nvidia.com/cuda-gpus`、`https://docs.nvidia.com/cuda/hopper-tuning-guide/`。

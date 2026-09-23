@@ -2,7 +2,7 @@
 
 本文件适用于整个 `llm-notes` 仓库。所有维护者和自动化 coding agent 在修改前都应先阅读这里的说明，并以 `STYLE.md` 的写作与排版约定为准。
 
-AGENTS.md 是**流程规范**：回答前复核、修改前必读、审计循环、联网求证门槛、commit 约定。STYLE.md 是**写作规范**：Markdown 排版、提示块用法、术语口径、来源记录格式。两份文档在以下五处必须保持一致：(1) 禁用句式清单；(2) 提示块 5 种 alert 语义；(3) 章节末来源记录的 2 段结构（官方 / 事实声明指向；不设「课程来源」子段）；(4) GitHub 渲染安全规则（8 种公式渲染失败模式与自检 rg）；(5) 第一性原理三条硬约束与逻辑审计 logic_finding 字段口径。修改 `AGENTS.md` 后须 `cp AGENTS.md CLAUDE.md` 一并提交。
+AGENTS.md 是**流程规范**：回答前复核、修改前必读、审计循环、联网求证门槛、commit 约定。STYLE.md 是**写作规范**：Markdown 排版、提示块用法、术语口径、来源记录格式。两份文档在以下五处必须保持一致：(1) 禁用句式清单；(2) 提示块 5 种 alert 语义；(3) 章节末来源记录的 2 段结构（官方 / 事实声明指向；不设「课程来源」子段）；(4) GitHub 渲染安全规则（9 种公式渲染失败模式与自检 rg）；(5) 第一性原理三条硬约束与逻辑审计 logic_finding 字段口径。修改 `AGENTS.md` 后须 `cp AGENTS.md CLAUDE.md` 一并提交。
 
 ## 回答前复核
 
@@ -62,11 +62,12 @@ rg -n -A1 "^> \[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]" docs/ | rg "本节(介�
 
 ### 4. GitHub 渲染安全 rg（与 STYLE.md「公式与排版」+「HTML」同步）
 
-修改公式或含 `$` 的正文后，跑以下检测（8 种失败模式），命中即按 STYLE.md 规则修复：
+修改公式或含 `$` 的正文后，跑以下检测（9 种失败模式），命中即按 STYLE.md 规则修复：
 
 ```bash
-# 模式1：行内开 $ 紧贴非空白字符（汉字 / 全角标点 / 字母），GitHub 整个公式不渲染
-rg -n '[^\s*$\\`]\$[A-Za-z\\(]' <modified-markdown-files>
+# 模式1：行内开 $ 紧贴非空白字符（汉字 / 全角标点 / 字母 / 数字 / dollar-backtick 反引号），GitHub 整个公式不渲染
+#         （after-类须含 0-9 与 `——实证 ch3「，$1/b$」、ch8「；$10^{21}$」开 $ 后随数字，旧 pattern 漏抓）
+rg -n '[^\s*$\\`]\$[A-Za-z0-9\\(`]' <modified-markdown-files>
 # 模式3：} 或 | 紧贴 _ 的公式——行内会切碎；display 块内凑齐开、关一对同样切碎整块
 # （单向 flanking 无配对者的历史命中经核查可幸存，非本次引入可不动）
 rg -n '\}_[A-Za-z{]|\|_[A-Za-z]' <modified-markdown-files>
@@ -93,11 +94,27 @@ for p in sys.argv[1:]:
 PY
 # 模式8：\operatorname 不在 GitHub 客户端 MathJax 宏白名单
 rg -n '\\operatorname' <modified-markdown-files>
+# 模式9：display 块内行首 "- "（减号+空格）被 CommonMark 解析为列表项、打断 $$ 块（+ / * 与数字. 行首同理）
+python3 - <modified-markdown-files> <<'PY'
+import re, pathlib, sys
+for p in sys.argv[1:]:
+    lines = pathlib.Path(p).read_text().split('\n')
+    in_dd = False
+    for i, ln in enumerate(lines, 1):
+        s = ln.strip()
+        if s == '$$':
+            in_dd = not in_dd
+            continue
+        if s.startswith('$$') and s.endswith('$$') and len(s) > 2:
+            continue
+        if in_dd and re.match(r'^\s*([-+*]\s|\d+\.\s)', ln):
+            print(f"{p}:{i}")
+PY
 ```
 
-模式 2（斜体 `*…*` 图注内的裸 `$expr$`）rg 扫不到，目检图注。用 curl 抓 GitHub 页面数裸 `$` 时，排除 `aria-label="Permalink:` 属性——标题内公式的 permalink 会带字面 `$`，属页面模板自动生成的不可见属性，公式本身渲染正常，不算失败。
+模式 2（斜体 `*…*` 图注内的裸 `$expr$`）rg 扫不到，目检图注；dollar-backtick 外层双反引号包裹（`` `` $`expr`$ `` `` 变 code span、`$` 恒字面）用 `rg -n '``\s*\$`' <modified-markdown-files>` 检测——斜体图注与普通正文都只写裸 `$`expr`$` / `$expr$`，不加外层。用 curl 抓 GitHub 页面数裸 `$` 时，排除 `aria-label="Permalink:` 属性与 `<span>$</span>` 金额 span——permalink 的字面 `$` 属页面模板自动生成的不可见属性、金额 span 是模式 4 的合法修复，均不算失败；最终判定以剥掉 `<math>` / `<math-renderer>` 标签后文本节点中的字面 `$` 为准。
 
-命中处理：模式 1 在开 `$` 前补半角空格；模式 2 改官方 `` `` $`expr`$ `` `` 形式；模式 3 改写为单参数命令省花括号形式（`$\hat{R}_t$` → `$\hat R_t$`）；模式 4 包 `<span>$</span>`；模式 5 星号改 `\ast`（`$h^*$` → `$h^\ast$`、 `$\|W_l\|_*$` → `$\|W_l\|_\ast$`）；模式 6 单反斜杠 `\_` 改双反斜杠 `\\_`，或改用 dollar-backtick 形式——双反斜杠命中后按段落做 CommonMark 强调配对检查（标点前缀 `_` 的两种开者形态 `\\_` 反斜杠、`'_{` 撇号都可开强调，同段 `_{` 型下标可闭强调，配对则 `<em>` 切碎两条公式），存在配对时 `\\_` 优先改写为连字符形式（`fan-in`、`fan-out`），`'_{` prime 下标把 prime 后移为 `$g_{i,t}'$`（`_` 变 close-only，LaTeX 渲染不变）；模式 7 裸 `<` 改 `\lt`（`x_{<t}` → `x_{\lt t}`）；模式 8 改 `\mathrm{...}`。修改图注时注意：斜体内公式必失败，粗体内公式可渲染。
+命中处理：模式 1 在开 `$` 前补半角空格；模式 2 斜体图注内改裸 dollar-backtick（`$`expr`$`，不加外层双反引号），普通正文直接 `$expr$`、已有的外层包裹删掉外层；模式 3 改写为单参数命令省花括号形式（`$\hat{R}_t$` → `$\hat R_t$`）；模式 4 包 `<span>$</span>`；模式 5 星号改 `\ast`（`$h^*$` → `$h^\ast$`、 `$\|W_l\|_*$` → `$\|W_l\|_\ast$`）；模式 6 单反斜杠 `\_` 改双反斜杠 `\\_`，或改用 dollar-backtick 形式——双反斜杠命中后按段落做 CommonMark 强调配对检查（标点前缀 `_` 的两种开者形态 `\\_` 反斜杠、`'_{` 撇号都可开强调，同段 `_{` 型下标可闭强调，配对则 `<em>` 切碎两条公式），存在配对时 `\\_` 优先改写为连字符形式（`fan-in`、`fan-out`），`'_{` prime 下标把 prime 后移为 `$g_{i,t}'$`（`_` 变 close-only，LaTeX 渲染不变）；模式 7 裸 `<` 改 `\lt`（`x_{<t}` → `x_{\lt t}`）；模式 8 改 `\mathrm{...}`；模式 9 删行首减号后的空格（`- \tau` → `-\tau`）或把减号移到上一行行尾。修改图注时注意：斜体内公式必失败，粗体内公式可渲染。
 
 ## 审计与维护方法论
 
@@ -387,7 +404,7 @@ logic_finding 只报 `refuted + tentative`，与 verdict 三档对齐。fix 阶�
 | 引用与求证经验（章节归属 / 人物名 / arXiv ID） | STYLE.md「术语表」「来源与日期」 | sub-agent 在命名 / 引用 / 章节号层面遵守同一标准 |
 | 图意核对 / 删图判定 | STYLE.md「图意核对」「图片」 | 4 个检查项 + 两图视觉内容一致即可删 |
 | 修改后自检 1（禁用句式 rg）与第 7 层 | STYLE.md「跨章引用格式」 | rg pattern 抓「第 N 章 §X.Y」与「chapterN」缩写 |
-| 修改后自检 4（GitHub 渲染安全 rg） | STYLE.md「公式与排版」渲染条目 +「HTML」金额 span 例外 | 8 种渲染失败模式（开 `$` 紧贴 / 斜体图注 / `}_`·`|_` 切碎 / 字面金额 / math 内裸 `^*`·`_*` / math 内 `\_` 单反斜杠 / display 内裸 `<` / `\operatorname` 宏禁用）的 rg 与修复规则一一对应；图注用 `` `` $`expr`$ `` ``、金额用 `<span>$</span>`、星号用 `\ast`、下划线用 `\\_`（标点前缀 `_` 含 `\\_` 与 prime `'_{` 两种开者，同段 `_{` 配对时 `\\_` 改连字符 `fan-in`、prime 后移 `g_{i,t}'`）、小于号用 `\lt`、函数名用 `\mathrm` |
+| 修改后自检 4（GitHub 渲染安全 rg） | STYLE.md「公式与排版」渲染条目 +「HTML」金额 span 例外 | 9 种渲染失败模式（开 `$` 紧贴含数字与反引号开头 / 斜体图注与 dollar-backtick 外层包裹 / `}_`·`|_` 切碎 / 字面金额 / math 内裸 `^*`·`_*` / math 内 `\_` 单反斜杠 / display 内裸 `<` / `\operatorname` 宏禁用 / display 行首 `- ` 列表项打断）的 rg 与修复规则一一对应；图注用裸 `$`expr`$`（不加外层双反引号）、金额用 `<span>$</span>`、星号用 `\ast`、下划线用 `\\_`（标点前缀 `_` 含 `\\_` 与 prime `'_{` 两种开者，同段 `_{` 配对时 `\\_` 改连字符 `fan-in`、prime 后移 `g_{i,t}'`）、小于号用 `\lt`、函数名用 `\mathrm`、display 行首减号去后随空格 |
 | 逻辑审计 finding schema（logic_finding） | STYLE.md「第一性原理方法论（Aristotle 框架）」三条硬约束 | `claim` / `axiom_source` / `gap` 必填字段与「公理起点明确 / 推导链完整 / 经验 vs 推导清楚区分」一一对应；`rg` 只作句式兜底，不承担逻辑审计 |
 | 章节末「来源与更新记录」段外部来源 URL 完整链接 | STYLE.md「章节末『来源与更新记录』约定」新增 hard rule | 来源段每条 arXiv ID / HF ID / 官方 URL / DOI / 案件号都挂完整 markdown 链接，格式与正文一致；裸 ID 仅当紧邻前一行已挂同一链接时可省；混用裸 ID 与完整 URL 视为不一致 |
 

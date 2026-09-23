@@ -1687,7 +1687,7 @@ MoE 侧，固定 active parameters 后，拟合出的最优 LR / batch 在各 sp
 
 图中外推区的三个点展示 Cautious AdamC 的失败形态。博客正文（attempt 1）原文写「the 1e22 held-out run missed the forecast by 2.5%, and the 1e23 run diverged」。
 
-故 $10^{22}$ 处标注 `2.5% miss`， $10^{23}$ 处标注 *Run Diverged*；$10^{21}$ attempt 1 数字未给（attempt 2 给 +0.5% 不属于 attempt 1 描述）。
+故 $10^{22}$ 处标注 `2.5% miss`， $10^{23}$ 处标注 *Run Diverged*； $10^{21}$ attempt 1 数字未给（attempt 2 给 +0.5% 不属于 attempt 1 描述）。
 
 caption 将这组设置概括为 *Cautious AdamC + Sqrt batch-size scaling of learning rates*，并指出需要重新设计参数化、缩放或 optimizer 才能修复外推。
 
@@ -1992,7 +1992,7 @@ Muon 相关（2026-09-05 复核）：Keller Jordan, [`Muon: An optimizer for hid
 ### 本节事实声明的来源指向
 
 - §8.4.2 Kaplan 拟合 $N_{\mathrm{opt}} \propto C_{\min}^{0.73}$ 、 $D_{\mathrm{opt}} \propto C_{\min}^{0.27}$ 见 [Kaplan et al. 2020 §6.1 + 附录 Table 6](https://arxiv.org/abs/2001.08361)。
-- §8.3.3 effective data 公式与 Figure 1 右图 8.67B / 6.34B IsoFLOP 星点、Figure 3 100M unique tokens IsoLoss contours、Figure 4 三档 IsoFLOP 预算（$9.3 \times 10^{20}$、$2.1 \times 10^{21}$、$9.3 \times 10^{21}$）及 Appendix F "Do Excess Parameters Hurt, Plateau or Help?" 见 [Muennighoff et al., arXiv:2305.16264](https://arxiv.org/abs/2305.16264)。
+- §8.3.3 effective data 公式与 Figure 1 右图 8.67B / 6.34B IsoFLOP 星点、Figure 3 100M unique tokens IsoLoss contours、Figure 4 三档 IsoFLOP 预算（ $9.3 \times 10^{20}$、 $2.1 \times 10^{21}$、 $9.3 \times 10^{21}$）及 Appendix F "Do Excess Parameters Hurt, Plateau or Help?" 见 [Muennighoff et al., arXiv:2305.16264](https://arxiv.org/abs/2305.16264)。
 - §8.3.3 data selection 与 quality-quantity tradeoff（图 8.3-10 DataComp A–F bucket 实验）见 [Goyal et al., arXiv:2404.07177](https://arxiv.org/abs/2404.07177)。
 - §8.4.2 内部 Method 3 underfit 复核（数据 forensics 重拟合）见 [Besiroglu et al., arXiv:2404.10102](https://arxiv.org/abs/2404.10102)。
 - §8.4.3 tokens-per-parameter 表（GPT-3 ≈ 2、Chinchilla ≈ 20、LLaMA 65B ≈ 22、Llama 2 70B ≈ 29、Mistral 7B 官方未披露、Llama 3 70B ≈ 215）来源：CS336 2026 Lecture 9 slide "Important note – train-optimal is likely not what you want"（抽文 `lecture_09.txt` L502–L512）。Mistral 7B 训练 token 数官方未公开；论文 [arXiv:2310.06825](https://arxiv.org/abs/2310.06825) PDF 全文 abstract 与正文均未披露训练 token 数（仅描述模型架构与 fine-tuning），Mistral AI 公告 [blog](https://mistral.ai/news/announcing-mistral-7b/) 提及「超过 1T」，UCStrategies 2026 估约 8T，多家二手估计分歧；笔记采用「官方未披露 + 多家估计分歧」口径，不强行给定单一数字。

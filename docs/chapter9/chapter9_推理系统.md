@@ -536,7 +536,7 @@ $$
 
 ![图 9.5-1 标准 $B \times S$ 张量](images/9-5-1-selective-batching.png)
 
-*图 9.5-1 标准 `` $`B \times S`$ `` 张量*
+*图 9.5-1 标准 $`B \times S`$ 张量*
 
 图 9.5-1 展示的是标准 batching 把序列堆叠成 $B \times S \times H$ 张量的形态：纵向是 batch，横向是 sequence，所有 sequence 假设等长。不同长度的请求很难直接放进这种整齐张量，因此 serving engine 需要在 attention 与非 attention 算子上采取不同打包方式。
 
@@ -609,7 +609,7 @@ SGLang 的 `RadixAttention` 可以看成另一类 prefix / KV cache 复用策略
 PagedAttention 更强调显存分页和碎片管理，RadixAttention 更强调 prefix cache 命中和调度；两者都服务于同一个 dynamic serving 问题：不断变化的一群请求怎样共享权重、共享前缀、少浪费 KV cache，并保持合理 latency。
 
 > [!NOTE]
-> Disaggregated Serving 思路在 Step-3（[arXiv:2507.19427](https://arxiv.org/abs/2507.19427)）之前由 DistServe / Splitwise 等工作给出 prefill-decode 分离部署方案：
+> Disaggregated Serving 思路在 Step-3（[arXiv:2507.19427](https://arxiv.org/abs/2507.19427)）之前由 [DistServe, arXiv:2401.09670](https://arxiv.org/abs/2401.09670) / [Splitwise, arXiv:2311.18677](https://arxiv.org/abs/2311.18677) 等工作给出 prefill-decode 分离部署方案：
 > 让擅长高吞吐矩阵乘的硬件专门承担 prefill，让单 token latency 敏感的硬件专门承担 decode。代价是 prefill 阶段写入的 KV cache 必须跨 prefill → decode 边界搬运或重算，跨单元网络与调度策略因此成为新的系统瓶颈。
 >
 > Step-3 进一步做的是 **Attention-FFN Disaggregation (AFD)**——按 attention 层与 FFN 层这条维度把模型解耦到两套专用 GPU 子系统上，prefill/decode disaggregation 假设已在外部完成。这两条线都以拆分换部署灵活性，但拆分维度不同：
@@ -796,6 +796,8 @@ speculative cascades 是产品质量约束下的风险路由，两者相似但�
   引用回连到 [第 3 章](../chapter3/chapter3_语言模型架构和训练技术细节.md) 与 [第 8 章](../chapter8/chapter8_Scaling_Laws.md)；查阅日期 2026-09-04，状态「论文」。
 - [Native Sparse Attention, arXiv:2502.11089](https://arxiv.org/abs/2502.11089) — compression / selection / sliding window 三分支结构与 gate 机制 Equation 5；查阅日期 2026-09-04，状态「论文」。
 - [Sparse Transformer, arXiv:1904.10509](https://arxiv.org/abs/1904.10509) — sparse attention 早期工作；查阅日期 2026-09-04，状态「论文」。
+- [DistServe, arXiv:2401.09670](https://arxiv.org/abs/2401.09670) — OSDI'24，prefill / decode 分离的 goodput 优化 LLM serving；查阅日期 2026-09-23，状态「论文」。
+- [Splitwise, arXiv:2311.18677](https://arxiv.org/abs/2311.18677) — prompt computation 与 token generation 分置两套机器（prefill-decode 分离部署）；查阅日期 2026-09-23，状态「论文」。
 - 其余链接本次复核仍可访问。
 
 ### 本节事实声明的来源指向
@@ -833,10 +835,3 @@ speculative cascades 是产品质量约束下的风险路由，两者相似但�
 - [LLaDA2.0, arXiv:2512.15745](https://arxiv.org/abs/2512.15745) — 16B-mini / 100B-flash MoE 扩散语言模型，block diffusion + WSD 调度。
 - [Step-3 / AFD, arXiv:2507.19427](https://arxiv.org/abs/2507.19427) — Attention-FFN Disaggregation，attention / FFN 分到两套 GPU 子系统。
 - [Faster Cascades via Speculative Decoding, arXiv:2405.19261](https://arxiv.org/abs/2405.19261) — speculative cascades 风险路由。
-
-## 待核证清单
-
-本章以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
-
-- `chapter9_推理系统.md:L612` — 「DistServe / Splitwise 等 prefill-decode 分离部署方案」——原因：本会话无 WebSearch，笔记未附这两项工作的一手链接，方案描述没有一手页面支撑；已试：无 URL。
-- `chapter9_推理系统.md:L556` — 「内部碎片填充位置近似均匀时平均约半个 block」——原因：vLLM 论文只给出「within one block」上界，均匀填充的期望估计没有一手页面直接支撑；已试：`https://arxiv.org/html/2309.06180`。

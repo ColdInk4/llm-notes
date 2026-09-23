@@ -819,7 +819,7 @@ prefill 一次并行处理全部 $b \times n$ 个 token，注意力的算术强�
 
 $$O\left(\left(\frac{n}{d} + \frac{1}{b}\right)^{-1}\right)$$
 
-这个量级并不好。倒数里的 $n/d$ 项来自 K/V cache 的访存 $bn^2d$，$1/b$ 项来自投影访存 $nd^2$；两者都压不下去时，只能靠大 batch、短序列 $n$ 或大模型维度 $d$ 来换。缩小每步要搬动的 K/V 维度，就是 MQA / GQA / MLA / CLA 这组共享策略的共同出发点。
+这个量级并不好。倒数里的 $n/d$ 项来自 K/V cache 的访存 $bn^2d$， $1/b$ 项来自投影访存 $nd^2$；两者都压不下去时，只能靠大 batch、短序列 $n$ 或大模型维度 $d$ 来换。缩小每步要搬动的 K/V 维度，就是 MQA / GQA / MLA / CLA 这组共享策略的共同出发点。
 
 实测差距可以直接量出来：GPT-2 在 Tesla T4 上生成 1000 个新 token，开启 cache 用时 11.885 ± 0.272 s，关闭 cache 用时 56.197 ± 1.855 s，约 4.7 倍；Hugging Face transformers 的 `generate` 默认开启 `use_cache`。
 
@@ -1159,8 +1159,8 @@ $$
 
 ![图 3.3-1 d_ff&d_model](images/3-3-1-ffn-model-dim-ratio.png)
 
-*图 3.3-1 截图中的 $d_{\text{ff}}/d_{\text{model}}$ 对照表；其中 "Qwen 14B = 2.67" 一项实际对应 Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`），
-原版 Qwen-14B 的 `intermediate_size = 27392`、 $d_{\text{ff}}/d_{\text{model}} \approx 5.35$ ，
+*图 3.3-1 截图中的 $`d_{\text{ff}}/d_{\text{model}}`$ 对照表；其中 "Qwen 14B = 2.67" 一项实际对应 Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`），
+原版 Qwen-14B 的 `intermediate_size = 27392`、 $`d_{\text{ff}}/d_{\text{model}} \approx 5.35`$ ，
 §3.3.1 正文按代际列出原版与各代际具体值*
 
 以 PaLM 为例，它虽然是 SwiGLU 模型，但把 $d_{\text{ff}}$ 直接设为 $4d_{\text{model}}$，没有做 2/3 缩放。LLaMA-2 70B 与 Mistral-7B v0.1 落在 3.5 倍附近：
@@ -1217,7 +1217,7 @@ Wang & Komatsuzaki 2021 / GPT-J 风格），并非 head 输出按并行相加；
 
 ![图 3.3-3 attention head ratio](images/3-3-3-head-dim-ratio.png)
 
-*图 3.3-3 截图，多数模型让 head 数量乘以 head dim 接近 model dim；其中 PaLM 行 head dim 标注为 258、ratio 1.48 与 PaLM 540B 实际值（head dim 256、 $48 \times 256 / 18432 \approx 0.67$ ，论文 Table 1）不一致，
+*图 3.3-3 截图，多数模型让 head 数量乘以 head dim 接近 model dim；其中 PaLM 行 head dim 标注为 258、ratio 1.48 与 PaLM 540B 实际值（head dim 256、 $`48 \times 256 / 18432 \approx 0.67`$ ，论文 Table 1）不一致，
 §3.3.2 正文给出正确数字*
 
 Bhojanapalli 等人在 [*Low-Rank Bottleneck in Multi-head Attention Models*, arXiv:2002.07028](https://arxiv.org/abs/2002.07028) 中提出，如果 head dim 过小而头数继续增加，attention 矩阵会落入低秩瓶颈，限制表达能力。
@@ -1464,13 +1464,3 @@ Continuous Batching 的工程取舍见[第 9 章 §9.5.1 Continuous Batching 与
 ### 本节事实声明的来源指向
 
 - 架构消融与超参数：Narang et al. Table 1（step/s 与 final loss）、Kaplan et al. Figure 5（FFN ratio / aspect ratio / head dim 扫描）、PaLM Table 1 与训练设置、ST-MoE（router z-loss 与 Mesh TensorFlow z-loss 的关系）、OLMo 2 Table 3 稳定性配方、Methods of improving LLM training stability Table 4 困惑度对比、Bhojanapalli et al.（Low-Rank Bottleneck in Multi-head Attention Models）。
-
-## 待核证清单
-
-本章以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
-
-- `chapter3_语言模型架构和训练技术细节.md:L592` — 「GeGLU 出现在 T5 v1.1、mT5、LaMDA、Phi-3」——原因：LaMDA 激活函数未取到一手配置或论文正文（arXiv:2201.08239 未 WebFetch），图 3.2-1 的 LaMDA 单元格为空白；已试：`无 URL`。
-- `chapter3_语言模型架构和训练技术细节.md:L1101` — 「γ_t = exp(−Δ_t·exp(A_log)) 保留为遗忘门 α_t」——原因：该参数化超出已核 Gated DeltaNet §2.1/§3.1 主方程的范围，对应脚注未取全文核对；已试：`https://arxiv.org/html/2412.06464`（仅覆盖 §2.1/§3.1 状态更新式）。
-- `chapter3_语言模型架构和训练技术细节.md:L1164` — 「LLaMA-2 70B hidden_size=8192、intermediate_size=28672」——原因：仅镜像站配置可见，未取得 meta-llama 一手 config.json（权重仓库需授权）；已试：`无 URL`。
-- `chapter3_语言模型架构和训练技术细节.md:L1261` — 「Cohere Command 词汇量比较大（10 万到 25 万区间）」——原因：Cohere 一手 tokenizer/config 未取得，huggingface.co WebFetch 被 sandbox 拦截；已试：`无 URL`。
-- `chapter3_语言模型架构和训练技术细节.md:L1252` — 「（图 5 中分别是 50M 与 25M 两组）」——原因：WebFetch `arxiv.org/html/2001.08361` 返回截断，Figure 5 图注（40× aspect ratio、(6,4288) vs (48,1600) 3%）可见且与正文一致，但「50M 与 25M 两组」的分组参数量未出现在返回文本中；已试：`https://arxiv.org/html/2001.08361`。
