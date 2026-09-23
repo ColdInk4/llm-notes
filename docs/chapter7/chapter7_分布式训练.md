@@ -23,7 +23,8 @@
 
 本章先定义 collective 和最小 `torch.distributed` 代码，再把这些原语组合成 ZeRO/FSDP、TP/PP/SP/EP/CP 和混合并行策略。代码示例使用第 2 章的设备 helper：`cuda_if_available(rank)` 表示有 CUDA 时使用第 `rank` 张 GPU，否则回退到 CPU。
 
-认识链从单卡资源约束开始：给定参数、activation、batch 和拓扑，先写出每个 rank 持有的状态与必须交换的张量，再由 collective 语义推导通信量、同步点和可重叠区间。每种并行策略都应在相同模型与 global batch 下记录显存、step time、链路带宽和数值一致性；这些测量决定“放得下”与“跑得快”是否同时成立，也限定策略能迁移到哪种拓扑。
+认识链从单卡资源约束开始：给定参数、activation、batch 和拓扑，先写出每个 rank 持有的状态与必须交换的张量，再由 collective 语义推导通信量、同步点和可重叠区间。每种并行策略都应在相同模型与 global batch 下记录显存、step time、链路带宽和数值一致性；
+这些测量决定“放得下”与“跑得快”是否同时成立，也限定策略能迁移到哪种拓扑。
 
 ## 7.0 并行策略的统一视角：沿维度切分
 
@@ -41,7 +42,9 @@
 > [!TIP]
 > 选择并行策略时先问：要省的是参数显存、优化器显存、activation 显存、通信带宽，还是单步 wall-clock？不同答案对应完全不同的切分方向。
 
-参数显存与优化器状态在不同精度假设下有不同基线：[第 2 章 §2.5.6 资源核算](../chapter2/chapter2_pytorch与资源核算.md) 给 **12-14 字节 / 参数**（BF16 + FP32 Adam 一二阶矩，梯度精度可选 BF16 或 FP32，不含 FP32 master weights）；§7.5 / §7.6 按 ZeRO 论文（[arXiv:1910.02054](https://arxiv.org/abs/1910.02054)）使用 **16 字节 / 参数**（FP16 参数 + FP16 梯度 + FP32 master weights 4 + FP32 Adam 一二阶矩 8），把状态分片推到 ZeRO / FSDP。activation 与 sequence 的切分在 §7.9 推到 SP / CP。
+参数显存与优化器状态在不同精度假设下有不同基线：[第 2 章 §2.5.6 资源核算](../chapter2/chapter2_pytorch与资源核算.md) 给 **12-14 字节 / 参数**（BF16 + FP32 Adam 一二阶矩，梯度精度可选 BF16 或 FP32，不含 FP32 master weights）；
+§7.5 / §7.6 按 ZeRO 论文（[arXiv:1910.02054](https://arxiv.org/abs/1910.02054)）使用 **16 字节 / 参数**（FP16 参数 + FP16 梯度 + FP32 master weights 4 + FP32 Adam 一二阶矩 8），把状态分片推到 ZeRO / FSDP。
+activation 与 sequence 的切分在 §7.9 推到 SP / CP。
 
 ## 7.1 为什么需要分布式训练与硬件层级
 
@@ -59,7 +62,9 @@
 
 *图 7.1-2 模型的尺寸变化*
 
-理想情况下，我们希望多卡扩展同时带来近似线性的内存扩展和近似线性的训练吞吐扩展；现实里这两个目标常常互相牵制，因为越强的分片通常意味着越多的通信。
+理想情况下，我们希望多卡扩展同时带来近似线性的内存扩展和近似线性的训练吞吐扩展；现实里这两个目标常常互相牵制：分片把状态显存换成跨 rank 的通信字节，分片越细，每步要搬的字节越多。
+本章后面两处账本给出这个兑换比例——ZeRO-1/2 的通信量约为 2 倍参数量、ZeRO-3 约为 3 倍参数量（§7.6.2 ZeRO 三阶段小结），TP 在每个 Transformer block 内都要做一次 activation 大小的 collective（§7.8 张量并行）——显存与通信的兑换关系由具体公式给出，
+扩展目标之间的牵制也随分片粒度按这些公式放大。
 
 ### 7.1.2 多 GPU、多机并行架构
 
@@ -69,7 +74,11 @@
 
 *图 7.1-3 multi-GPU, multi-machine parallelism*
 
-图 7.1-3 展示的是一个关键分层：节点内 GPU 通过 NVLink / NVSwitch 等高速互联通信，节点间则要经过 HCA、InfiniBand、以太网或更上层交换网络。机内带宽通常远高于跨机网络，因此很多训练栈会把高频同步的 TP/SP/EP 放在单节点或高速域内，把对延迟更宽容的 DP/PP 放到跨节点层级。并行策略需要从拓扑反推哪些 collective 可以高频使用。
+图 7.1-3 展示的是一个关键分层：节点内 GPU 通过 NVLink / NVSwitch 等高速互联通信，节点间则要经过 HCA、InfiniBand、以太网或更上层交换网络。
+机内带宽通常远高于跨机网络，把哪个 collective 放在哪一层，按“每次通信的字节量 × 通信频率”折算对链路带宽的需求：TP 每层都要交换 activation 大小的张量（账本见 §7.8 张量并行），SP、EP 同样是每层级别的高频全量交换；
+PP 每个 micro-batch 只做一次沿流水线的 activation 传递（账本见 §7.7 流水线并行），DP 常用 gradient accumulation 把梯度归约摊到多个 micro-batch 上。
+
+因此很多训练栈会把高频同步的 TP/SP/EP 放在单节点或高速域内，把单次传输间隔更宽容的 DP/PP 放到跨节点层级。并行策略需要从拓扑反推哪些 collective 可以高频使用。
 
 因此在讨论并行策略前，先要把 collective communication 这组“积木”讲清楚。
 
@@ -79,11 +88,14 @@
 
 *图 7.1-4 GPU node overview*
 
-这里讨论的是典型的多 GPU 集群视角：多个节点，每个节点挂若干 GPU，每个 GPU 内部再由多个 SM 执行计算。图中的绿色部分可以理解为内存与互联组件，它们共同决定了哪些并行策略能高频通信、哪些只能低频使用。
+这里讨论的是典型的多 GPU 集群视角：多个节点，每个节点挂若干 GPU，每个 GPU 内部再由多个 SM 执行计算。图中的绿色部分是内存层级组件（SM 内的 L1/shared、GPU 内的 L2 与 HBM），粉色部分是互联组件（GPU 经 NVLink 接入 NVSwitch，节点再经 InfiniBand/Ethernet 上联）；
+内存层级决定数据搬运的距离，互联带宽决定哪些并行策略能高频通信、哪些只能低频使用。
 
-核心思路是：计算发生在 SM 内部的算术逻辑单元（ALU）上，但输入和输出可能位于很远的内存层级。理想情况是数据已经在 L1 / shared memory 中，次优情况是从 HBM 读取；到了多 GPU / 多节点训练，所需数据还可能在另一张 GPU、另一台机器，甚至另一个机柜里。因此分布式训练要尽量减少必须发生的传输，并让这些传输足够大块、足够能和计算重叠。
+核心思路是：计算发生在 SM 内部的算术逻辑单元（ALU）上，但输入和输出可能位于很远的内存层级。理想情况是数据已经在 L1 / shared memory 中，次优情况是从 HBM 读取；到了多 GPU / 多节点训练，所需数据还可能在另一张 GPU、另一台机器，甚至另一个机柜里。
+因此分布式训练要尽量减少必须发生的传输，并让这些传输足够大块、足够能和计算重叠。
 
-目标是**保持高算术强度**，让 GPU 尽量持续执行计算。由于数据传输通常慢得多，通信很容易成为瓶颈。前面学习 GPU 内部优化时，核心思想是减少 HBM 往返，把数据载入 L1 / shared memory，在片上完成更多计算后再谨慎写回 HBM；到了多 GPU / 多节点训练，同样的原则会扩展成：减少跨 GPU 传输，或把传输组织成更高效的 collective。
+目标是**保持高算术强度**，让 GPU 尽量持续执行计算。由于数据传输通常慢得多，通信很容易成为瓶颈。前面学习 GPU 内部优化时，核心思想是减少 HBM 往返，把数据载入 L1 / shared memory，在片上完成更多计算后再谨慎写回 HBM；
+到了多 GPU / 多节点训练，同样的原则会扩展成：减少跨 GPU 传输，或把传输组织成更高效的 collective。
 
 从快到慢看，可以先记住这条粗略层级：单 GPU 的 L1 / shared memory，单 GPU 的 HBM，同节点 GPU 间的 NVLink / NVSwitch，跨节点网络。越往后越应该减少通信频率，或把通信做成更大的 collective。
 
@@ -95,13 +107,15 @@
 
 *图 7.1-5 TPU/GPU communication design*
 
-TPU 和 GPU 的通信设计体现了两种不同取向。TPU 的经典路线更像 **toroidal mesh**：每个 chip 主要和相邻 chip 通信，形成规则网格，边界再首尾相连。GPU 训练集群则更接近分层交换网络：单节点内有 NVLink / NVSwitch，高速跨节点用 InfiniBand 或 RoCE，更大 cluster 再通过 leaf / spine / fat-tree 这类上层网络连接。
+TPU 和 GPU 的通信设计体现了两种不同取向。TPU 的经典路线更像 **toroidal mesh**：每个 chip 主要和相邻 chip 通信，形成规则网格，边界再首尾相连。
+GPU 训练集群则更接近分层交换网络：单节点内有 NVLink / NVSwitch，高速跨节点用 InfiniBand 或 RoCE，更大 cluster 再通过 leaf / spine / fat-tree 这类上层网络连接。
 
 ![图 7.1-6 mesh/tree topology tradeoff](images/7-1-6-mesh-tree-topology-tradeoff.png)
 
 *图 7.1-6 mesh/tree topology tradeoff*
 
-可以把 mesh 理解成规则网格：每个 chip 只连上下左右或前后相邻 chip；torus 则是在 mesh 的基础上把网格边界“首尾相连”。这种结构便宜、可扩展，并且适合规则通信，例如 tensor parallel 中的 all-reduce、reduce-scatter 或 all-gather。tree / all-to-all 取向则更适合不规则通信，例如 MoE expert parallel 里 token 按 router 结果飞到不同 experts。
+可以把 mesh 理解成规则网格：每个 chip 只连上下左右或前后相邻 chip；torus 则是在 mesh 的基础上把网格边界“首尾相连”。这种结构便宜、可扩展，并且适合规则通信，例如 tensor parallel 中的 all-reduce、reduce-scatter 或 all-gather。
+tree / all-to-all 取向则更适合不规则通信，例如 MoE expert parallel 里 token 按 router 结果飞到不同 experts。
 
 > [!NOTE]
 > 数据中心网络常被组织成多层树：底层 leaf switch 直接连接服务器或 GPU 节点，上层 spine switch 再连接多个 leaf switch 或 pod。
@@ -112,13 +126,16 @@ TPU 和 GPU 的通信设计体现了两种不同取向。TPU 的经典路线更�
 
 *图 7.1-7 TPU8i/TPU8t networking*
 
-拓扑路线也会随 workload 演进。TPU 路线里 TPU8i 偏 tree-style，更贴近 expert parallel 这类较规则的路由通信；TPU8t 通过 Virgo switched network 支持更大规模和更不规则的通信。GPU 路线则通过 NVLink、NVSwitch、RoCE 和更大的 NVLink domain 缩短跨设备通信路径。
+拓扑路线也会随 workload 演进。TPU 路线里 TPU8i 偏 tree-style，更贴近 expert parallel 这类较规则的路由通信；TPU8t 通过 Virgo switched network 支持更大规模和更不规则的通信。
+GPU 路线则通过 NVLink、NVSwitch、RoCE 和更大的 NVLink domain 缩短跨设备通信路径。
 
 因此，讨论分布式训练时要同时看 GPU 数量和连接方式：同一节点内是否有 NVLink / NVSwitch，跨节点是 InfiniBand 还是 RoCE，是否存在更大的高速通信域。这些拓扑会直接决定 TP、SP、CP、EP 这类高频通信能不能承受。
 
 如果看 Hopper/H100，每张卡 18 条 NVLink4 link，合计 900 GB/s（[NVIDIA NVLink 规格表](https://www.nvidia.com/en-us/data-center/nvlink/) 第四代 NVLink：每 GPU 18 link / 900 GB/s），折算每 link 50 GB/s。
 
-B200/Blackwell 视角下还会看到**单张 Blackwell GPU HBM 约 8 TB/s**（[GB200 NVL72](https://www.nvidia.com/en-us/data-center/gb200-nvl72/) spec sheet：整机架 72 GPU 合计 13.4 TB HBM3E；GB200 superchip 标称的 372 GB、16 TB/s 是一个 Grace CPU 配 2 张 Blackwell GPU 的合计值）和更大的 NVLink 域（[HGX B200 数据表](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/hgx/hgx-b200-datasheet.pdf)）。
+B200/Blackwell 视角下还会看到**单张 Blackwell GPU HBM 约 8 TB/s**（[GB200 NVL72](https://www.nvidia.com/en-us/data-center/gb200-nvl72/) spec sheet：整机架 72 GPU 合计 13.4 TB HBM3E；
+GB200 superchip 标称的 372 GB、16 TB/s 是一个 Grace CPU 配 2 张 Blackwell GPU 的合计值）
+和更大的 NVLink 域（[HGX B200 数据表](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/hgx/hgx-b200-datasheet.pdf)）。
 
 这些数字的意义在于建立量级感：**跨卡通信虽然快了很多，但仍慢于片上 SRAM/L1/L2 访问，因此并行策略必须和拓扑一起设计。**
 
@@ -161,7 +178,8 @@ PyTorch 里的 `torch.distributed` 是更高一层的接口。写训练代码时
 
 这类输出有两个固定现象：多进程打印顺序不保证按 rank 排列；`torch.empty` 预分配缓冲区在 collective 之前可能显示旧值或未初始化值。判断 collective 语义，要看调用完成后每个 rank 拿到的结果。
 
-stdout 里的三组结果正好对应三个语义：all-reduce 后每个 rank 都得到完整 `[6, 10, 14, 18]`；reduce-scatter 后 rank 0/1/2/3 分别只拿到 `6/10/14/18` 这一片；再接 all-gather 后，每个 rank 又恢复完整 `[6, 10, 14, 18]`。这组结果把 `all-reduce = reduce-scatter + all-gather` 的关系落到了具体张量上。
+stdout 里的三组结果正好对应三个语义：all-reduce 后每个 rank 都得到完整 `[6, 10, 14, 18]`；reduce-scatter 后 rank 0/1/2/3 分别只拿到 `6/10/14/18` 这一片；再接 all-gather 后，每个 rank 又恢复完整 `[6, 10, 14, 18]`。
+这组结果把 `all-reduce = reduce-scatter + all-gather` 的关系落到了具体张量上。
 
 ### 7.2.2 Collective 语义概览
 
@@ -169,7 +187,8 @@ stdout 里的三组结果正好对应三个语义：all-reduce 后每个 rank �
 
 *图 7.2-2 collective 操作*
 
-Collective 是跨多个 rank 的通信模板：程序只声明“这些 rank 要按什么模式交换张量”，具体点对点传输、拓扑和调度由通信库处理。训练系统会反复使用 `all-gather`、`reduce-scatter`、`all-reduce` 来做梯度同步、参数重组和状态分片；`broadcast`、`scatter`、`gather` 更适合作为理解这些复合原语的基础；`all-to-all` 则在 MoE routing 里成为关键通信模式。
+Collective 是跨多个 rank 的通信模板：程序只声明“这些 rank 要按什么模式交换张量”，具体点对点传输、拓扑和调度由通信库处理。训练系统会反复使用 `all-gather`、`reduce-scatter`、`all-reduce` 来做梯度同步、参数重组和状态分片；
+`broadcast`、`scatter`、`gather` 更适合作为理解这些复合原语的基础；`all-to-all` 则在 MoE routing 里成为关键通信模式。
 
 #### 1. all-reduce
 
@@ -353,9 +372,11 @@ Rank 1 [after all-reduce]: tensor([ 6., 10., 14., 18.], device='cuda:1')
 Rank 2 [after all-reduce]: tensor([ 6., 10., 14., 18.], device='cuda:2')
 ```
 
-rank 0 显示 `[0, 1, 2, 3]`，rank 1 显示 `[1, 2, 3, 4]`，以此类推。由于多个进程异步打印，输出顺序可能是乱序的；这不影响 collective 语义。随后调用 `dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM, async_op=False)`，对同下标元素做跨 rank 求和。这里没有启用异步通信；真实训练中可以用异步方式尝试重叠通信和计算。
+rank 0 显示 `[0, 1, 2, 3]`，rank 1 显示 `[1, 2, 3, 4]`，以此类推。由于多个进程异步打印，输出顺序可能是乱序的；这不影响 collective 语义。
+随后调用 `dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM, async_op=False)`，对同下标元素做跨 rank 求和。这里没有启用异步通信；真实训练中可以用异步方式尝试重叠通信和计算。
 
-在 all-reduce 之后，每个 rank 都得到同一个完整结果 `[6, 10, 14, 18]`。这里的 6 来自位置 0 上的跨 rank 求和：`0 + 1 + 2 + 3`；10 来自位置 1：`1 + 2 + 3 + 4`，后面同理。这个 API 对外暴露的是“所有 rank 共同归约后再复制回每个 rank”的语义；底层可以用 ring、tree 或硬件 collective 实现。
+在 all-reduce 之后，每个 rank 都得到同一个完整结果 `[6, 10, 14, 18]`。这里的 6 来自位置 0 上的跨 rank 求和：`0 + 1 + 2 + 3`；10 来自位置 1：`1 + 2 + 3 + 4`，后面同理。这个 API 对外暴露的是“所有 rank 共同归约后再复制回每个 rank”的语义；
+底层可以用 ring、tree 或硬件 collective 实现。
 
 公开 stdout 里还会看到所有 rank 最终都打印出同一结果，这正是 all-reduce 和 reduce 的差别：reduce 只把聚合结果放在目标 rank，all-reduce 则让每个 rank 都拿到完整聚合结果。训练中的 DDP 梯度同步依赖的就是这个“所有副本都看到同一份梯度”的语义。
 
@@ -400,7 +421,8 @@ Rank 3 [after reduce-scatter]: input = tensor([3., 4., 5., 6.], device='cuda:3')
 Rank 2 [after reduce-scatter]: input = tensor([2., 3., 4., 5.], device='cuda:2'), output = tensor([14.], device='cuda:2')
 ```
 
-在 reduce-scatter 之前，输入是输出摘录中的前四行，输出张量只是预分配缓冲区，未初始化值不重要。执行 reduce-scatter 后，系统先对同下标元素做 element-wise reduce，再把 reduce 后的完整结果按 shard 分给不同 rank：第一列结果放到 rank 0，第二列结果放到 rank 1，依此类推。它和 all-reduce 的核心 reduce 语义相同，只是最终结果没有复制给所有 rank。
+在 reduce-scatter 之前，输入是输出摘录中的前四行，输出张量只是预分配缓冲区，未初始化值不重要。执行 reduce-scatter 后，系统先对同下标元素做 element-wise reduce，再把 reduce 后的完整结果按 shard 分给不同 rank：第一列结果放到 rank 0，第二列结果放到 rank 1，依此类推。
+它和 all-reduce 的核心 reduce 语义相同，只是最终结果没有复制给所有 rank。
 
 #### 3. all-gather
 
@@ -436,12 +458,18 @@ Rank 3 [after all-gather]: input = tensor([18.], device='cuda:3'), output = tens
 
 ## 7.3 通信性能与 benchmark
 
-这一节用一段最小 benchmark 看 collective 在真实运行中花多少时间，并把 benchmark 按 [nccl-tests](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md) `bus bandwidth` 口径算出的"有效带宽"换算公式拆开：先讲 $\text{algorithm bandwidth} = S/t$、再讲 bus-bw 修正系数，从而建立"为什么不能直接用字节数除以耗时"的工程直觉。
+这一节用一段最小 benchmark 看 collective 在真实运行中花多少时间，并把 benchmark 按 [nccl-tests](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md) `bus bandwidth` 口径算出的"有效带宽"换算公式拆开：
+先讲 $\text{algorithm bandwidth} = S/t$、再讲 bus-bw 修正系数，从而建立"为什么不能直接用字节数除以耗时"的工程直觉。
 
 
 理解 collective 的语义之后，还要看它在真实运行中花多少时间。一个小 benchmark 就可以展示通信耗时和有效带宽的基本观察方式。
 
-benchmark 输出里的 GB/s 由 benchmark 脚本自己按固定公式算出，NCCL 并不回报这个数字，它也不等于“张量大小除以耗时”。脚本沿用 [nccl-tests 的 bus bandwidth 口径](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md)：先算 algorithm bandwidth $S/t$ ，再乘一个只和 collective 类型与 rank 数有关的修正系数——all-reduce 是 $2(p-1)/p$ ，reduce-scatter 和 all-gather 是 $(p-1)/p$ 。这个系数按点对点数据传输次数计数得到：all-reduce 共需 $2(p-1)$ 次数据传输，nccl-tests 写明该口径与实际算法无关，ring、tree 或其他点对点实现都适用。它的价值是比较同一集群、同一 collective、同一消息大小下的趋势；某一次数字不能直接当成硬件上限。
+benchmark 输出里的 GB/s 由脚本自己按固定公式算出，NCCL 并不回报这个数字，它也不等于“张量大小除以耗时”。
+脚本沿用 [nccl-tests 的 bus bandwidth 口径](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md)：先算 algorithm bandwidth $S/t$ ，
+再乘一个只和 collective 类型与 rank 数有关的修正系数——all-reduce 是 $2(p-1)/p$ ，reduce-scatter 和 all-gather 是 $(p-1)/p$ 。
+这个系数按点对点数据传输次数计数得到：all-reduce 共需 $2(p-1)$ 次数据传输，nccl-tests 写明该口径与算法无关，ring、tree 等点对点实现都适用。
+
+这个口径的价值是比较同一集群、同一 collective、同一消息大小下的趋势；某一次数字不能直接当成硬件上限。
 
 通信实验的可识别条件是固定消息大小、dtype、rank 拓扑和 collective 算法，只改变 world size 或节点布局。先按传输计数口径推导理论 $S/t$ 与 bus-bw，再用同步后的实测时间检验趋势；若偏差随消息大小或拓扑改变，应回到 latency、协议切换和链路带宽分别定位。
 
@@ -506,10 +534,13 @@ def all_reduce(rank: int, world_size: int, num_elements: int):
 
 现在测量带宽，即每秒实际传输的总 GB 数。计算方法需要考虑实际传输的数据量：`size_bytes = tensor.element_size() * tensor.numel()`，也就是张量元素数量乘以每个元素的大小。这里用的是 float32，因此每个元素占 4 字节。
 
-这里有个细节：实际发送/接收的字节数是多少？每个 rank 上的张量大小为 `size_bytes`，需要和其他 `world_size - 1` 个 rank 交换信息。简化估算里乘以 2，是为了强调 all-reduce 可以分成“发送输入参与 reduce”和“接收完整结果”两个阶段。因此这里用 `world_size` 乘以实际经过时间来估算聚合吞吐。
+这里有个细节：实际发送/接收的字节数是多少？每个 rank 上的张量大小为 `size_bytes`，需要和其他 `world_size - 1` 个 rank 交换信息。简化估算里乘以 2，是为了强调 all-reduce 可以分成“发送输入参与 reduce”和“接收完整结果”两个阶段。
+因此这里用 `world_size` 乘以实际经过时间来估算聚合吞吐。
 
 > [!WARNING]
-> 这里的 `size_bytes * 2 * (world_size - 1)` 是简化通信量估算，把每个对端都按一去一回各 $S$ 字节记账，用来强调 all-reduce 包含“发送输入”和“分发结果”两类通信。按 nccl-tests 的传输计数口径，all-reduce 全程每个 rank 实际发送量为 $2 \cdot \frac{p-1}{p} \cdot S$ （reduce-scatter 与 all-gather 两阶段各 $\frac{p-1}{p} \cdot S$ ），其中 $S$ 对应代码里的 `size_bytes`；该口径与实际算法无关，ring、tree 或其他点对点实现都适用。NCCL 选定的算法、拓扑和消息大小仍会改变同一公式在不同集群上给出的有效带宽读数。
+> 这里的 `size_bytes * 2 * (world_size - 1)` 是简化通信量估算，把每个对端都按一去一回各 $S$ 字节记账，用来强调 all-reduce 包含“发送输入”和“分发结果”两类通信。
+> 按 nccl-tests 的传输计数口径，all-reduce 全程每个 rank 实际发送量为 $2 \cdot \frac{p-1}{p} \cdot S$ （reduce-scatter 与 all-gather 两阶段各 $\frac{p-1}{p} \cdot S$ ），其中 $S$ 对应代码里的 `size_bytes`；
+> 该口径与实际算法无关，ring、tree 或其他点对点实现都适用。NCCL 选定的算法、拓扑和消息大小仍会改变同一公式在不同集群上给出的有效带宽读数。
 
 ```text
 [all_reduce] Rank 1: all_reduce measured bandwidth = 390 GB/s
@@ -518,7 +549,8 @@ def all_reduce(rank: int, world_size: int, num_elements: int):
 [all_reduce] Rank 3: all_reduce measured bandwidth = 425 GB/s
 ```
 
-这个公开 trace 里 all-reduce 的估算带宽大约是 **366-426 GB/s**。它适合用来理解“collective 有效带宽”和“硬件标称带宽”的差异：张量大小、设备数量、拓扑、NCCL 路由、是否跨节点、计时同步方式都会影响结果。随着硬件背景转向 B200 / 更大 NVLink 域，stdout 本身仍应被理解为一次运行材料中的测量，不能当作 B200 或 H100 的通用性能常数。
+这个公开 trace 里 all-reduce 的估算带宽大约是 **366-426 GB/s**。它适合用来理解“collective 有效带宽”和“硬件标称带宽”的差异：张量大小、设备数量、拓扑、NCCL 路由、是否跨节点、计时同步方式都会影响结果。
+随着硬件背景转向 B200 / 更大 NVLink 域，stdout 本身仍应被理解为一次运行材料中的测量，不能当作 B200 或 H100 的通用性能常数。
 
 ```python
 def reduce_scatter(rank: int, world_size: int, num_elements: int):
@@ -553,7 +585,8 @@ def reduce_scatter(rank: int, world_size: int, num_elements: int):
 
 reduce-scatter benchmark 的结构类似：创建形状为 `world_size × num_elements` 的输入，每个 rank 都持有这个矩阵。先预热，再计时执行 reduce-scatter，最后同步并计算耗时。
 
-再看 reduce-scatter 的带宽计算。reduce-scatter 可以理解为“先 reduce，再把结果切片分散到各 rank”。示例代码用每个 rank 的完整输入矩阵大小作为 `data_bytes`，再乘以 `world_size - 1` 估算需要发送给其他 rank 的逻辑数据量；和 all-reduce 相比，这里不再额外乘发送/接收两阶段的 2 倍系数。
+再看 reduce-scatter 的带宽计算。reduce-scatter 可以理解为“先 reduce，再把结果切片分散到各 rank”。示例代码用每个 rank 的完整输入矩阵大小作为 `data_bytes`，再乘以 `world_size - 1` 估算需要发送给其他 rank 的逻辑数据量；
+和 all-reduce 相比，这里不再额外乘发送/接收两阶段的 2 倍系数。
 
 ```text
 [reduce_scatter] Rank 0: reduce_scatter(world_size=4, num_elements=104857600) took 2.61ms
@@ -572,13 +605,15 @@ reduce-scatter 只留下每个 rank 对应的 shard，而 all-reduce 最终让�
 
 **NCCL 内部实现复杂，很难精确推演性能表现，所以需要基准测试**。需要明确的是，我们假设输入数据已存在于设备上，因此未计入数据准备时间，只计算执行 reduce-scatter 所需的操作。
 
-通过对比可见，reduce-scatter 和 all-gather 各自都不含简化估算里的 2 倍系数；两者叠加才对应 all-reduce 的两阶段通信。这些公式只是用于读懂同一份 benchmark 的有效带宽口径；真实性能由 NCCL 算法、拓扑和实测决定。
+把前面给出的修正系数并排对照：all-reduce 的 bus bandwidth 系数是 $2(p-1)/p$ ，reduce-scatter 和 all-gather 各是 $(p-1)/p$ 。前者的系数 2 正好是后两者之和，因此两个原语叠加才对应 all-reduce 的两阶段通信，单独任一原语的简化估算里都不出现这个 2 倍系数。
+这些公式用于读懂同一份 benchmark 的有效带宽口径；真实性能由 NCCL 算法、拓扑和实测决定。
 
 ## 7.4 最小并行代码实践
 
 这一节用同一个深度 MLP 把 DP / TP / PP 三种切分落到可运行代码上：DP 切 batch、TP 切 hidden、PP 切 layer。代码不追求训练出好模型，只为把"切哪一维"对应到"在哪些位置必须交换张量"看清。
 
-我们将通过一个深度 MLP 的简易实现演示每种策略。代码只是最小工作负载，但 MLP 矩阵乘在语言模型里通常占很大计算量，因此足以说明 DP、TP、PP 的切分和通信差异。
+我们将通过一个深度 MLP 的简易实现演示每种策略。代码只是最小工作负载；选它的依据是计算量账本——讲义原话是 "MLPs are the compute bottleneck in Transformers, so this is representative"，Transformer 的参数矩阵乘大头落在 MLP 这类投影矩阵上。
+三种策略演示的差异全在“切哪一维、边界上交换什么”：DP 在反向后归约梯度，TP 在层内交换 activation，PP 在层间传递 activation，这三件事在深度 MLP 里都完整存在。因此最小 MLP 足以说明 DP、TP、PP 的切分和通信差异。
 
 首先从数据并行开始。数据并行、张量并行和流水线并行可以理解为对数据、宽度和深度的不同划分方式。
 
@@ -648,7 +683,8 @@ def data_parallelism_main(rank: int, world_size: int, data: torch.Tensor, num_la
 
 下一步是初始化优化器。整个函数会在所有 rank 上异步运行，四个进程分别以编号 0/1/2/3 执行相同代码。每个训练步都先做前向传播，计算示例 loss，再反向传播得到本地梯度。
 
-这几乎就是标准 SGD 的实现，关键区别是 DDP 在反向传播后插入梯度同步：对每个参数调用 `dist.all_reduce(tensor=param.grad, op=dist.ReduceOp.AVG, async_op=False)`，把所有 rank 的梯度取平均。可以把它理解成在普通训练循环里加了一句：“更新参数前，先把各 rank 的梯度对齐。”
+这几乎就是标准 SGD 的实现，关键区别是 DDP 在反向传播后插入梯度同步：对每个参数调用 `dist.all_reduce(tensor=param.grad, op=dist.ReduceOp.AVG, async_op=False)`，把所有 rank 的梯度取平均。
+可以把它理解成在普通训练循环里加了一句：“更新参数前，先把各 rank 的梯度对齐。”
 
 完成梯度同步后，照常更新参数。从 SGD 的视角看，训练循环几乎没有变化；从系统视角看，关键变化是所有 rank 在 optimizer step 前共享了同一份平均梯度。
 
@@ -789,7 +825,8 @@ def pipeline_parallelism_main(rank: int, world_size: int, data: torch.Tensor, nu
 [pipeline_parallelism] Rank 0: sending 32x1024[-0.1654...] to rank 1
 ```
 
-这就是 PP 的最小前向实现。它概念上简单，但距离生产级还很远：当前 `send` / `recv` 是 blocking 的，没有实现通信与计算重叠；这里只演示前向传播，没有安排反向传播。最后一个阶段拿到的是每个 micro-batch 经过全部层后的输出 activation；如果继续做训练，loss 和反向传播会从最后阶段开始，activation gradient 再沿相反方向逐阶段传回。
+这就是 PP 的最小前向实现。它概念上简单，但距离生产级还很远：当前 `send` / `recv` 是 blocking 的，没有实现通信与计算重叠；这里只演示前向传播，没有安排反向传播。最后一个阶段拿到的是每个 micro-batch 经过全部层后的输出 activation；
+如果继续做训练，loss 和反向传播会从最后阶段开始，activation gradient 再沿相反方向逐阶段传回。
 
 > [!NOTE]
 > 这个 toy code 的价值是看清“按层切分后传 activation”。真实 PP 系统还要处理非阻塞收发、micro-batch 调度、1F1B、interleaving、zero-bubble、activation 释放和重计算；§7.7 流水线并行从调度角度处理其中的 micro-batch 调度、激活释放、重计算与 zero-bubble。
@@ -798,7 +835,11 @@ def pipeline_parallelism_main(rank: int, world_size: int, data: torch.Tensor, nu
 
 7.4 用最小代码展示了三种切分方向：DP 切 batch，TP 切 hidden / width，PP 切 layer / depth。这些切分方向最终要落回训练系统的资源账本：哪些状态被复制，哪些状态被分片，哪些通信可以和计算重叠，哪些瓶颈仍然会留下来。
 
-先看数据并行和它的分片版本。朴素 DDP 复制完整模型和优化器状态，只沿 batch 维分片数据；ZeRO / FSDP 则继续把 optimizer states、gradients、parameters 逐步分片。ZeRO 原始论文：Rajbhandari et al., *ZeRO: Memory Optimizations Toward Training Trillion Parameter Models*, [arXiv:1910.02054](https://arxiv.org/abs/1910.02054)（2020）；PyTorch FSDP 文档：[pytorch.org/docs/stable/fsdp.html](https://pytorch.org/docs/stable/fsdp.html)。之后再讨论模型并行和 activation memory，因为模型做大、序列拉长后，光处理参数状态还不够。
+先看数据并行和它的分片版本。朴素 DDP 复制完整模型和优化器状态，只沿 batch 维分片数据；ZeRO / FSDP 则继续把 optimizer states、gradients、parameters 逐步分片。
+ZeRO 原始论文：Rajbhandari et al., *ZeRO: Memory Optimizations Toward Training Trillion Parameter Models*, [arXiv:1910.02054](https://arxiv.org/abs/1910.02054)（2020）；
+PyTorch FSDP 文档：[pytorch.org/docs/stable/fsdp.html](https://pytorch.org/docs/stable/fsdp.html)。
+
+数据并行及其分片版本处理的是参数状态；模型做大、序列拉长后，光处理参数状态还不够，模型并行和 activation memory 接替成为瓶颈。
 
 ## 7.5 数据并行（DDP）
 
@@ -830,13 +871,15 @@ $$
 
 *图 7.5-1 朴素数据并行：模型复制与数据切分*
 
-在朴素数据并行里，每个 rank 都完整保存一份参数、梯度和优化器状态（图 7.5-1：模型复制到各 GPU，数据集切分给各 rank）。内存账本按一组教学假设计算：参数 2 B/param、梯度 2 B/param、优化器状态 $K=12$ B/param（FP32 master weights 4 + Adam 一阶矩 4 + 二阶矩 4），因此 baseline 是 **16 B/param**，与图 7.6-1 baseline 行的 $(2+2+K)\Psi$ 一致。
+在朴素数据并行里，每个 rank 都完整保存一份参数、梯度和优化器状态（图 7.5-1：模型复制到各 GPU，数据集切分给各 rank）。
+内存账本按一组教学假设计算：参数 2 B/param、梯度 2 B/param、优化器状态 $K=12$ B/param（FP32 master weights 4 + Adam 一阶矩 4 + 二阶矩 4），因此 baseline 是 **16 B/param**，与图 7.6-1 baseline 行的 $(2+2+K)\Psi$ 一致。
 
 图 7.6-9 的 “Pure BF16 training with Kahan summation” 账本使用 **12 B/param** 作为另一个精度/优化器假设；常数会随训练设置变化，核心问题始终是哪些状态在每个 rank 上复制，哪些状态可以分片。
 
 ## 7.6 ZeRO / FSDP
 
-朴素 DP 复制参数、梯度和优化器状态，扩卡只能加算力、不能扩展单卡模型容量。这一节沿"逐步把复制状态换成分片状态"的路线展开 ZeRO 三个阶段：先分片 optimizer state（ZeRO-1），再分片梯度（ZeRO-2），最后连参数也按需 all-gather（FSDP / ZeRO-3）；并把每阶段的内存收益写到同一张表里（通信代价另在正文里给出：ZeRO-1/2 约 $2\Psi$，ZeRO-3 约 $3\Psi$）。
+朴素 DP 复制参数、梯度和优化器状态，扩卡只能加算力、不能扩展单卡模型容量。这一节沿"逐步把复制状态换成分片状态"的路线展开 ZeRO 三个阶段：先分片 optimizer state（ZeRO-1），再分片梯度（ZeRO-2），最后连参数也按需 all-gather（FSDP / ZeRO-3）；
+并把每阶段的内存收益写到同一张表里（通信代价另在正文里给出：ZeRO-1/2 约 $2\Psi$，ZeRO-3 约 $3\Psi$）。
 
 ### 7.6.1 ZeRO 解决 DP（数据并行）的内存开销问题
 
@@ -846,7 +889,8 @@ $$
 
 图中蓝色是 parameters，橙色是 gradients，绿色是 optimizer states。左侧的 `P_os`、`P_os+g`、`P_os+g+p` 分别表示只分片 optimizer states、再分片 gradients、再分片 parameters。
 
-通过图示可以直观看到，optimizer states 往往是内存账本里的大项。ZeRO 保持模型计算路径基本不变，把昂贵状态拆到不同 rank 上，并利用 reduce-scatter / all-gather 与 all-reduce 的通信等价关系维持正确更新。
+按 §7.5 朴素 DP 的 16 B/param 账本逐项比较：optimizer states 占 $K=12$ B/param，参数只占 2 B/param，梯度只占 2 B/param，所以 optimizer states 是三者里最大的一项，图 7.6-1 里绿色块宽于蓝色和橙色。
+这解释了 ZeRO 为什么先分片 optimizer states（`P_os`），再依次处理梯度和参数。ZeRO 保持模型计算路径基本不变，把昂贵状态拆到不同 rank 上，并利用 reduce-scatter / all-gather 与 all-reduce 的通信等价关系维持正确更新。
 
 以数十亿到数百亿参数模型为例，若每个 rank 都复制完整参数、梯度和优化器状态，总显存会随 GPU 数量线性重复，扩卡只能加算力，不能扩展每个模型副本可用的状态容量。
 
@@ -854,9 +898,14 @@ $$
 
 *图 7.6-2 优化器状态分片*
 
-参数和梯度跨设备复制是朴素数据并行的默认做法，但 optimizer states 不需要在每个 rank 上完整复制。按 ZeRO 论文的 7.5B / $N_d = 64$ 案例，只分片 optimizer states 时，每卡内存占用可从 **120 GB 降至 31.4 GB**；同时分片 optimizer states 和 gradients 后可降至 **16.6 GB**；optimizer states、gradients、parameters 三者全部分片后，可降至 **1.88 GB**。这些数字说明 ZeRO 的三个阶段是在逐步减少“每个 rank 都复制一份”的状态。
+参数和梯度跨设备复制是朴素数据并行的默认做法，但 optimizer states 不需要在每个 rank 上完整复制。按 ZeRO 论文的 7.5B / $N_d = 64$ 案例，只分片 optimizer states 时，每卡内存占用可从 **120 GB 降至 31.4 GB**；
+同时分片 optimizer states 和 gradients 后可降至 **16.6 GB**；optimizer states、gradients、parameters 三者全部分片后，可降至 **1.88 GB**。这些数字说明 ZeRO 的三个阶段是在逐步减少“每个 rank 都复制一份”的状态。
 
-> 这组数字来自 ZeRO 论文 Figure 1 的案例设定：模型规模 $\Psi = 7.5\mathrm{B}$、DP degree $N_d = 64$、优化器状态倍率 $K = 12$，对应 fp16 混合精度 Adam（fp16 参数 2Ψ + fp16 梯度 2Ψ + fp32 master weights 与 Adam 一二阶矩 12Ψ = 16Ψ baseline）。Figure 1 给出四档数字：**120 GB → 31.4 GB → 16.6 GB → 1.88 GB**，分别对应 baseline DP / ZeRO-1 (optimizer states 分片) / ZeRO-2 (+ gradients 分片) / ZeRO-3 (+ parameters 分片)；论文 Table 1 按 DP degree 列出同一组数字（ $N_d = 64$ 行为 31.4 / 16.6 / 1.88， $N_d = 1$ 行为 120）。详见 [Rajbhandari et al., ZeRO, arXiv:1910.02054](https://arxiv.org/abs/1910.02054)。
+> 这组数字来自 ZeRO 论文 Figure 1 的案例设定：模型规模 $\Psi = 7.5\mathrm{B}$、DP degree $N_d = 64$、优化器状态倍率 $K = 12$，
+> 对应 fp16 混合精度 Adam（fp16 参数 2Ψ + fp16 梯度 2Ψ + fp32 master weights 与 Adam 一二阶矩 12Ψ = 16Ψ baseline）。
+>
+> 在这组设定下 Figure 1 给出四档数字：**120 GB → 31.4 GB → 16.6 GB → 1.88 GB**，分别对应 baseline DP / ZeRO-1 (optimizer states 分片) / ZeRO-2 (+ gradients 分片) / ZeRO-3 (+ parameters 分片)；
+> 论文 Table 1 按 DP degree 列出同一组数字（ $N_d = 64$ 行为 31.4 / 16.6 / 1.88， $N_d = 1$ 行为 120）。详见 [Rajbhandari et al., ZeRO, arXiv:1910.02054](https://arxiv.org/abs/1910.02054)。
 
 ![图 7.6-3 ZeRO 工作阶段 1](images/7-6-3-zero-stage1.png)
 
@@ -864,19 +913,22 @@ $$
 
 **第一步**：假设每个 GPU 获取不同的数据点。假设有 GPU 0 到 GPU 3，每个 GPU 处理单个样本，并基于自有样本计算完整梯度。
 
-**第二步**：执行**梯度 reduce-scatter** 操作，收集每个 GPU 持有的梯度。假设 GPU 0 负责前四分之一参数。通过 reduce-scatter，GPU 0 可以获得其他 GPU 针对其负责参数子集的梯度信息。这样它就汇集了来自 GPU 1/2/3 的梯度信息，全部归约到 GPU 0 中。现在 GPU 0 拥有更新自身参数所需的所有信息，持有对应第一部分参数的优化器状态，也拥有该部分完整的聚合梯度。
+**第二步**：执行**梯度 reduce-scatter** 操作，收集每个 GPU 持有的梯度。假设 GPU 0 负责前四分之一参数。通过 reduce-scatter，GPU 0 可以获得其他 GPU 针对其负责参数子集的梯度信息。这样它就汇集了来自 GPU 1/2/3 的梯度信息，全部归约到 GPU 0 中。
+现在 GPU 0 拥有更新自身参数所需的所有信息，持有对应第一部分参数的优化器状态，也拥有该部分完整的聚合梯度。
 
 **第三步**：使用梯度和状态对这部分参数执行梯度更新。
 
 **第四步**：GPU 0 已经得到该参数 shard 的更新版本，最后通过 all-gather 把各 rank 更新好的参数 shard 重新拼回每个设备上的完整参数。
 
-这里的关键是我们正在进行 reduce-scatter 和 all-gather。reduce-scatter 加上 all-gather 的成本与 all-reduce 相同。我们之前在所有梯度上进行 all-reduce，以确保每个人的梯度同步，那会产生约 2 倍参数量的通信。我们可以在 reduce-scatter 和 all-gather 两个步骤之间进行一些计算，获得相同通信成本下更多的计算重叠机会。
+这里的关键是我们正在进行 reduce-scatter 和 all-gather。reduce-scatter 加上 all-gather 的成本与 all-reduce 相同。我们之前在所有梯度上进行 all-reduce，以确保每个人的梯度同步，那会产生约 2 倍参数量的通信。
+我们可以在 reduce-scatter 和 all-gather 两个步骤之间进行一些计算，获得相同通信成本下更多的计算重叠机会。
 
 ![图 7.6-4 ZeRO 工作阶段 2](images/7-6-4-zero-stage2.png)
 
 *图 7.6-4 ZeRO 工作阶段 2*
 
-ZeRO stage 2 在 stage 1 的基础上继续分片 gradients，但 parameters 仍然在每个 rank 上保持完整副本。这样做降低的是梯度和 optimizer states 的峰值显存：反向传播逐层产出 `dW_l` 后，可以立刻对这一层梯度做 reduce-scatter，把对应 shard 交给负责该参数分片的 rank，并释放本地完整梯度。
+ZeRO stage 2 在 stage 1 的基础上继续分片 gradients，但 parameters 仍然在每个 rank 上保持完整副本。
+这样做降低的是梯度和 optimizer states 的峰值显存：反向传播逐层产出 `dW_l` 后，可以立刻对这一层梯度做 reduce-scatter，把对应 shard 交给负责该参数分片的 rank，并释放本地完整梯度。
 
 因此图 7.6-4 的内存账本是“完整参数 + 分片梯度 + 分片优化器状态”。它没有像 ZeRO stage 3 那样按需 all-gather parameters，所以计算路径仍接近普通数据并行；收益来自避免在每个 rank 上长期保留完整梯度和完整 optimizer states。
 
@@ -915,16 +967,21 @@ FSDP / ZeRO-3 的关键问题是：参数不常驻完整副本后，如何在需
 
 上图把每个 FSDP block 画成一段很短的流水线：先 `LOAD-MODEL-SHARD`，再 `ALL-GATHER` 把当前层需要的完整权重临时拼出来，接着做 `FORWARD (LOCAL)`，然后立刻 `FREE FULL WEIGHTS`。
 
-反向时同样先 `ALL-GATHER` 这一层的权重，做 `BACKWARD (LOCAL)`，把梯度通过 `REDUCE-SCATTER` 分回各个 shard，最后再 `FREE FULL WEIGHTS`。本地只保留分片后的状态并执行 `UPDATE WEIGHTS (LOCAL)`；图里上下两条轨道表示计算与通信尽量重叠，弯箭头表示前向产生的激活要保留到反向阶段使用。
+反向时同样先 `ALL-GATHER` 这一层的权重，做 `BACKWARD (LOCAL)`，把梯度通过 `REDUCE-SCATTER` 分回各个 shard，最后再 `FREE FULL WEIGHTS`。本地只保留分片后的状态并执行 `UPDATE WEIGHTS (LOCAL)`；
+上下两条轨道是两个 rank 各自跑同一条执行链，轨道之间的 `GATHER WEIGHTS (ALL_GATHER)` 与 `SYNC GRADS (REDUCE_SCATTER)` 虚线箭头标出跨 rank 的权重拼装和梯度归约，弯箭头表示前向产生的激活要保留到反向阶段使用。
 
 > [!NOTE]
-> 这里的 `ALL-GATHER` 是所有 rank 一起参与的一次 collective：每个 rank 都会临时拿到这一层的完整参数，用来在本地计算自己的 batch shard；它不是 `world_size` 次独立的全量 gather。FSDP 也不会自动把 `activation` 分发到别的 rank，activation 仍由各 rank 为本地数据保留。
+> 这里的 `ALL-GATHER` 是所有 rank 一起参与的一次 collective：每个 rank 都会临时拿到这一层的完整参数，用来在本地计算自己的 batch shard；它不是 `world_size` 次独立的全量 gather。
+> FSDP 也不会自动把 `activation` 分发到别的 rank，activation 仍由各 rank 为本地数据保留。
 
-若暂不考虑 activation，这种模式非常理想：当前层的参数只在需要时临时 all-gather，算完就释放，因此常驻参数显存很低。反向传播也遵循同样逻辑：每次在某层开始 backward 前按需 all-gather 该层参数，梯度算完后立刻 reduce-scatter，把梯度分回对应 shard，再释放完整参数。最终既可释放不需要的梯度数据，也能释放参数，得到完整更新的模型。
+若暂不考虑 activation，这种模式非常理想：当前层的参数只在需要时临时 all-gather，算完就释放，因此常驻参数显存很低。反向传播也遵循同样逻辑：每次在某层开始 backward 前按需 all-gather 该层参数，梯度算完后立刻 reduce-scatter，把梯度分回对应 shard，再释放完整参数。
+最终既可释放不需要的梯度数据，也能释放参数，得到完整更新的模型。
 
-这里需要关注三种核心操作：**两次 all-gather 和一次 reduce-scatter**。一次 all-gather 用于前向按需重组参数，另一次 all-gather 用于反向所需参数，reduce-scatter 用于把梯度归约并分发回对应 shard。从概念上看，这比 ZeRO 第二阶段多了参数按需重组，因此总通信成本从约 2 倍参数量增加到约 3 倍参数量，还需要承担通信等待带来的额外开销。
+这里需要关注三种核心操作：**两次 all-gather 和一次 reduce-scatter**。一次 all-gather 用于前向按需重组参数，另一次 all-gather 用于反向所需参数，reduce-scatter 用于把梯度归约并分发回对应 shard。
+从概念上看，这比 ZeRO 第二阶段多了参数按需重组，因此总通信成本从约 2 倍参数量增加到约 3 倍参数量，还需要承担通信等待带来的额外开销。
 
-如果每次计算前都同步等待参数传完，ZeRO-3 会很慢；实际系统会通过预取和通信/计算重叠降低等待时间。直觉上，当前层在算的时候，下一层的 all-gather 已经可以在通信流上提前发起。
+如果每次计算前都同步等待参数传完，ZeRO-3 会很慢：一层的墙钟时间变成 all-gather 等待与本地计算之和。实际系统把通信放到独立的通信流上与计算流并行（图 7.6-8 的 `GPU Comm. Stream` 与 `GPU Comp. Stream` 两行），当前层在计算流上执行时，下一层的 all-gather 已经在通信流上提前发起；
+只要下一层的权重在该层计算结束前收齐，本层墙钟时间就从「等待 + 计算」收敛到两者的最大值。
 
 ![图 7.6-8 FSDP / ZeRO-3 工作流程](images/7-6-8-fsdp-zero3-timeline.png)
 
@@ -935,7 +992,8 @@ FSDP / ZeRO-3 的关键问题是：参数不常驻完整副本后，如何在需
 图里给的 $(W_1 \cdot W_0 + W_2 \cdot W_0) x$ 是一个小例子，用来说明同一份参数可以在前向里被复用，所以通信可以提前发起、计算可以继续推进。
 
 > [!NOTE]
-> 图里的 `AGi` 和 `Free i` 是一一对应的：`AGi` 表示把第 `i` 个 FSDP unit 的临时完整参数 all-gather 出来，`Free i` 表示把这份临时完整参数缓冲区释放掉。因为同一层在前向和反向各要用一次，所以同一个 `AG2` 会在前向出现一次、在反向再出现一次；它们对应两次不同的临时生命周期，不能视为一次 gather 的复用。
+> 图里的 `AGi` 和 `Free i` 是一一对应的：`AGi` 表示把第 `i` 个 FSDP unit 的临时完整参数 all-gather 出来，`Free i` 表示把这份临时完整参数缓冲区释放掉。因为同一层在前向和反向各要用一次，所以同一个 `AG2` 会在前向出现一次、在反向再出现一次；
+> 它们对应两次不同的临时生命周期，不能视为一次 gather 的复用。
 > 图中的 `CPU` 轨道更像调度层，模型计算仍在 GPU 计算流上完成；调度层提前把下一次 all-gather 发起来，让通信尽量被后面的计算覆盖。
 
 顺着这个时间线，可以把 FSDP 的执行概括成一个模板：
@@ -945,9 +1003,12 @@ FSDP / ZeRO-3 的关键问题是：参数不常驻完整副本后，如何在需
 
 图里的 `AG2` 出现两次，对应 unit 2 在前向和反向的两次独立生命周期。图中的黄色块就是对应的 `Free i`：释放的是这次临时 all-gather 出来的完整参数副本，原始 shard 仍然保留。
 
-从系统实现上看，下一层的 all-gather 可以在上一层计算时提前发起，于是 `AGi`、`FWDi`、`Free i` 会和 `AG(i+1)` 交错进行，形成一种很短的流水线。这样做的目的就是把通信尽量藏到计算后面。ZeRO 论文 §7.2.2 推导出 ZeRO-3（ $P_{os+g+p}$ ）的总通信量是 $3\Psi$（ $\Psi$ 是参数规模），为 baseline DP 的 1.5 倍；论文 §1 在列举 ZeRO-DP 三个阶段时把这一代价称作 "a modest 50% increase in communication volume"，换来的是与 $N_d$ 成正比的显存缩减。
+从系统实现上看，下一层的 all-gather 可以在上一层计算时提前发起，于是 `AGi`、`FWDi`、`Free i` 会和 `AG(i+1)` 交错进行，形成一种很短的流水线。这样做的目的就是把通信尽量藏到计算后面。
+ZeRO 论文 §7.2.2 推导出 ZeRO-3（ $P_{os+g+p}$ ）的总通信量是 $3\Psi$（ $\Psi$ 是参数规模），为 baseline DP 的 1.5 倍；
+论文 §1 在列举 ZeRO-DP 三个阶段时把这一代价称作 "a modest 50% increase in communication volume"，换来的是与 $N_d$ 成正比的显存缩减。
 
-反向传播阶段仍然要付通信成本，因为每个 FSDP unit 需要 all-gather 参数、计算 backward、再 reduce-scatter 梯度。和 ZeRO-1/2 近似 2 倍参数量通信相比，ZeRO-3 / FSDP 多了一次参数 all-gather，因此常用的教学账本会把它记成约 **3 倍参数量通信**。实际 wall time 取决于预取、重叠程度、网络带宽、层计算量和 bucket 策略；通信隐藏得越好，额外等待越小。
+反向传播阶段仍然要付通信成本，因为每个 FSDP unit 需要 all-gather 参数、计算 backward、再 reduce-scatter 梯度。和 ZeRO-1/2 近似 2 倍参数量通信相比，ZeRO-3 / FSDP 多了一次参数 all-gather，因此常用的教学账本会把它记成约 **3 倍参数量通信**。
+实际 wall time 取决于预取、重叠程度、网络带宽、层计算量和 bucket 策略；通信隐藏得越好，额外等待越小。
 
 参数预取仍需要临时缓冲区，读取当前层权重也会产生一定开销；更重要的是，前面还没有处理 activation memory。前向保留下来的 activation 会在反向前持续占用显存，因此 ZeRO-3 / FSDP 能大幅缓解参数、梯度和优化器状态内存，但不直接消除 activation memory。
 
@@ -965,7 +1026,8 @@ ZeRO 的意义是在不要求模型结构改写的前提下，把 DDP 的复制�
 
 *图 7.6-9 ZeRO 实践：模型能否放下*
 
-图 7.6-9 换一个精度假设回答“模型能否放下”：纯 BF16 训练（配 Kahan summation）时 master weights 之外都用 BF16，账本降到 **12 B/param**（参数 2 + 梯度 2 + 优化器状态 8，其中优化器状态 8 = FP32 master weights 4 + BF16 Adam 一阶矩 2 + BF16 Adam 二阶矩 2）。在一台 8×A100 80G 上，每卡 80 GB 预算除以各阶段的每参数字节数，得到可放下的最大模型规模：
+图 7.6-9 换一个精度假设回答“模型能否放下”：纯 BF16 训练（配 Kahan summation）时 master weights 之外都用 BF16，账本降到 **12 B/param**（参数 2 + 梯度 2 + 优化器状态 8，
+其中优化器状态 8 = FP32 master weights 4 + BF16 Adam 一阶矩 2 + BF16 Adam 二阶矩 2）。在一台 8×A100 80G 上，每卡 80 GB 预算除以各阶段的每参数字节数，得到可放下的最大模型规模：
 
 | 阶段 | 每参数字节数 | 最大模型规模 |
 | --- | --- | ---: |
@@ -980,7 +1042,8 @@ ZeRO 的意义是在不要求模型结构改写的前提下，把 DDP 的复制�
 
 *图 7.6-10 数据并行的计算扩展问题*
 
-数据并行的扩展会受到**全局 batch** 的约束：它相当于把 batch 切给更多 GPU 来换吞吐，但 batch 一旦接近 critical batch size，再继续堆 DP 往往只是在增加同步，却不能按比例提升样本效率。更重要的是，纯 DP/ZeRO 对 activation 显存帮助有限，因此模型做大、序列拉长后，仍需要引入 TP、PP、sequence parallelism 或 context parallelism 这类模型与 activation 维度策略。
+数据并行的扩展会受到**全局 batch** 的约束：它相当于把 batch 切给更多 GPU 来换吞吐，但 batch 一旦接近 critical batch size，再继续堆 DP 往往只是在增加同步，却不能按比例提升样本效率。
+更重要的是，纯 DP/ZeRO 对 activation 显存帮助有限，因此模型做大、序列拉长后，仍需要引入 TP、PP、sequence parallelism 或 context parallelism 这类模型与 activation 维度策略。
 
 另一类做法是把模型计算本身切开，让不同设备负责不同层段或不同矩阵切片。这样可以在不继续放大全局 batch 的情况下扩展显存容量。
 
@@ -990,7 +1053,8 @@ ZeRO 的意义是在不要求模型结构改写的前提下，把 DDP 的复制�
 
 ## 7.7 流水线并行（Pipeline Parallelism，PP）
 
-朴素按层切分会留下大量空闲窗口：前一阶段没发出 activation，下一阶段只能等。这一节从"为什么朴素 layer-wise 浪费算力"出发，把 pipeline 切到 micro-batch 这一刀，再把 bubble 占比写成 $(n_\mathrm{stages}-1) / n_\mathrm{micro}$；最后看 zero-bubble 这类用通信与调度进一步压缩空闲窗口的进阶做法。
+朴素按层切分会留下大量空闲窗口：前一阶段没发出 activation，下一阶段只能等。这一节从"为什么朴素 layer-wise 浪费算力"出发，把 pipeline 切到 micro-batch 这一刀，再把 bubble 占比写成 $(n_\mathrm{stages}-1) / n_\mathrm{micro}$；
+最后看 zero-bubble 这类用通信与调度进一步压缩空闲窗口的进阶做法。
 
 DP 和 ZeRO/FSDP 先从 batch 和模型状态下手：DP 沿 batch 维复制模型，ZeRO/FSDP 把参数、梯度和优化器状态分片。但全局 batch 不能无限放大，且 activation memory 仍可能成为主瓶颈。模型并行开始切模型本身，最常见的另一条路线是沿深度切的流水线并行（PP），与下面 §7.8 张量并行（TP）形成对照。
 
@@ -1012,7 +1076,8 @@ DP 和 ZeRO/FSDP 先从 batch 和模型状态下手：DP 沿 batch 维复制模�
 
 流水线并行的核心补救方法是把一个 batch 切成多个 **micro-batch**。第一个 micro-batch 通过第 1 个阶段后，就把 activation 传给第 2 个阶段；与此同时，第 1 个阶段继续处理第二个 micro-batch。这样不同阶段可以同时处理不同 micro-batch，空闲时间被摊薄。
 
-图中用 $n_{stages}$ 表示流水线阶段数，用 $n_{micro}$ 表示 micro-batch 数量。填满和排空流水线都会带来等待，pipeline bubble 的空闲开销量级由 $n_{stages} - 1$ 决定；micro-batch 越多，这部分开销越容易被平摊。一个常用粗略估算会把 bubble time 相对 useful compute 写成
+图中用 $n_{stages}$ 表示流水线阶段数，用 $n_{micro}$ 表示 micro-batch 数量。填满和排空流水线都会带来等待，pipeline bubble 的空闲开销量级由 $n_{stages} - 1$ 决定；micro-batch 越多，这部分开销越容易被平摊。
+一个常用粗略估算会把 bubble time 相对 useful compute 写成
 
 $$
 \frac{n_{stages} - 1}{n_{micro}}
@@ -1024,9 +1089,11 @@ $$
 \frac{n_{stages} - 1}{n_{micro} + n_{stages} - 1}
 $$
 
-两种写法服务的直觉相同：阶段越多，填充/排空流水线带来的空闲窗口越大；micro-batch 数量越多，pipeline bubble 越容易被摊薄。这也解释了 batch 为什么是资源：同一份全局 batch 既可以分给 DP 扩吞吐，也可以切成更多 micro-batch 来提高 PP 利用率；但 batch 受 critical batch size 约束，不能无限放大。
+两种写法服务的直觉相同：阶段越多，填充/排空流水线带来的空闲窗口越大；micro-batch 数量越多，pipeline bubble 越容易被摊薄。这也解释了 batch 为什么是资源：同一份全局 batch 既可以分给 DP 扩吞吐，也可以切成更多 micro-batch 来提高 PP 利用率；
+但 batch 受 critical batch size 约束，不能无限放大。
 
-流水线并行仍然常用，是因为它的通信模式很适合跨慢链路：相邻阶段之间主要传 activation，通信量约和 $\mathrm{bsh}$ 同阶，其中 $b$ 是 micro-batch 大小， $s$ 是序列长度， $h$ 是 hidden size。相比 TP/FSDP 里频繁的 collective，PP 的点对点通信更容易放到节点间或更慢的网络层级；但它并非拓扑无关，带宽、延迟和调度策略仍会直接影响 bubble 和吞吐。
+流水线并行仍然常用，是因为它的通信模式很适合跨慢链路：相邻阶段之间主要传 activation，通信量约和 $\mathrm{bsh}$ 同阶，其中 $b$ 是 micro-batch 大小， $s$ 是序列长度， $h$ 是 hidden size。相比 TP/FSDP 里频繁的 collective，PP 的点对点通信更容易放到节点间或更慢的网络层级；
+但它并非拓扑无关，带宽、延迟和调度策略仍会直接影响 bubble 和吞吐。
 
 > [!TIP]
 > PP 的定位可以这样记：它擅长解决“模型太深或太大，单个高速域放不下”的问题；代价是要用足够多 micro-batch 来隐藏 pipeline bubble。TP 更适合放在节点内高速互联，PP 更能容忍跨节点慢链路。
@@ -1057,7 +1124,8 @@ zero-bubble pipeline 直接利用 backward 的依赖结构。反向传播里有�
 
 ## 7.8 张量并行（Tensor Parallelism，TP）
 
-TP 沿矩阵乘法的宽度切分：把大矩阵切成子块在不同 rank 上算，再在边界处合并。与 PP 比，TP 没有 pipeline bubble，但每个 Transformer block 都会产生 activation-sized collective。这一节从 columnwise / rowwise 的对偶结构出发，写出每层通信量级 $8bsh (n_\mathrm{devices}-1) / n_\mathrm{devices}$，并解释为什么 TP 通常被限制在 NVLink 域内。
+TP 沿矩阵乘法的宽度切分：把大矩阵切成子块在不同 rank 上算，再在边界处合并。与 PP 比，TP 没有 pipeline bubble，但每个 Transformer block 都会产生 activation-sized collective。
+这一节从 columnwise / rowwise 的对偶结构出发，写出每层通信量级 $8bsh (n_\mathrm{devices}-1) / n_\mathrm{devices}$，并解释为什么 TP 通常被限制在 NVLink 域内。
 
 流水线并行沿网络深度切分，张量并行则沿矩阵乘法的宽度切分。LLM 的大部分参数和 FLOPs 都集中在 attention projection 和 MLP projection 这些矩阵乘法里，因此把大矩阵拆成多个子矩阵是很自然的模型并行方式。
 
@@ -1065,13 +1133,15 @@ TP 沿矩阵乘法的宽度切分：把大矩阵切成子块在不同 rank 上�
 
 *图 7.8-1 宽度维度模型并行*
 
-对矩阵乘法 $X \cdot A = Y$ 来说，可以把矩阵切成多个子块，在不同设备上计算局部结果，再在需要的位置合并。它和 [第 6 章 §6.5 Matmul tiling、PTX 和工具选择](../chapter6/chapter6_GPU高性能编程.md) 的 tiling 有相同直觉：把一个大矩阵乘拆成更小的并行工作单元，只是这里的工作单元分布在不同 GPU 上。
+对矩阵乘法 $X \cdot A = Y$ 来说，可以把矩阵切成多个子块，在不同设备上计算局部结果，再在需要的位置合并。
+它和 [第 6 章 §6.5 Matmul tiling、PTX 和工具选择](../chapter6/chapter6_GPU高性能编程.md) 的 tiling 有相同直觉：把一个大矩阵乘拆成更小的并行工作单元，只是这里的工作单元分布在不同 GPU 上。
 
 ![图 7.8-2 MLP 示例](images/7-8-2-mlp-example.png)
 
 *图 7.8-2 MLP 示例*
 
-图 7.8-2 用两层 MLP 展示 columnwise / rowwise 成对出现的原因。左侧先把 $A$ 按列切成 $A_1, A_2$ ，两个 rank 都看到同一个输入 $X$ ，分别算出 $X A_1$ 和 $X A_2$ ，于是中间激活 $Y$ 被切成两个 shard。右侧再把 $B$ 按行切成 $B_1, B_2$ ，各 rank 计算自己的局部贡献，最后通过 all-reduce 把局部贡献相加得到完整输出 $Z$ 。
+图 7.8-2 用两层 MLP 展示 columnwise / rowwise 成对出现的原因。左侧先把 $A$ 按列切成 $A_1, A_2$ ，两个 rank 都看到同一个输入 $X$ ，分别算出 $X A_1$ 和 $X A_2$ ，于是中间激活 $Y$ 被切成两个 shard。
+右侧再把 $B$ 按行切成 $B_1, B_2$ ，各 rank 计算自己的局部贡献，最后通过 all-reduce 把局部贡献相加得到完整输出 $Z$ 。
 
 图中的 `f` 和 `g` 表示并行区域两端的边界函数。forward 时，`f` 是 identity，`g` 是 all-reduce；backward 时依赖方向反过来，`g` 是 identity，`f` 是 all-reduce。这个对偶关系说明：TP 不会消除通信，只是把通信放在矩阵切分的边界上。
 
@@ -1087,7 +1157,8 @@ TP 沿矩阵乘法的宽度切分：把大矩阵切成子块在不同 rank 上�
 
 *图 7.8-3 张量并行的条件*
 
-TP 的优势是没有 PP 那种 pipeline bubble，也不依赖增大 batch 来提高利用率；只要网络足够快，层内矩阵乘可以保持较高并行效率。缺点是通信非常频繁：TP 在每个 Transformer block 内都会产生 activation-sized collectives。pipeline 的点对点通信量通常按每个 micro-batch 约 $\mathrm{bsh}$ 估算，而 TP 的通信量级可以写成每层约
+TP 的优势是没有 PP 那种 pipeline bubble，也不依赖增大 batch 来提高利用率；只要网络足够快，层内矩阵乘可以保持较高并行效率。缺点是通信非常频繁：TP 在每个 Transformer block 内都会产生 activation-sized collectives。
+pipeline 的点对点通信量通常按每个 micro-batch 约 $\mathrm{bsh}$ 估算，而 TP 的通信量级可以写成每层约
 
 $$
 8\mathrm{bsh} \frac{n_{devices} - 1}{n_{devices}}
@@ -1101,7 +1172,8 @@ GPU 训练里通常把 TP 限制在节点内 NVLink / NVSwitch 域；TPU 的 mes
 
 ## 7.9 SP / CP / EP：Activation 与长上下文 / MoE 维度的并行
 
-参数状态分片切完之后，剩余的 activation 显存、长序列 KV 和 MoE experts 又会接替成为瓶颈。这一节给出三条继续切分 activation 的路线：sequence parallelism 让 pointwise 项沿序列维度分摊、context parallelism / ring attention 让 attention 在长序列上 ring 通信、expert parallelism 让 MoE 的 experts 沿设备维度分布。
+参数状态分片切完之后，剩余的 activation 显存、长序列 KV 和 MoE experts 又会接替成为瓶颈。
+这一节给出三条继续切分 activation 的路线：sequence parallelism 让 pointwise 项沿序列维度分摊、context parallelism / ring attention 让 attention 在长序列上 ring 通信、expert parallelism 让 MoE 的 experts 沿设备维度分布。
 
 ### 7.9.1 Activation Memory 与 Sequence Parallelism
 
@@ -1129,7 +1201,8 @@ $$
 \mathrm{sbh} \left(34 + 5 \frac{as}{h}\right) = 34\mathrm{sbh} + 5\mathrm{as}^2\mathrm{b}
 $$
 
-左边的 $34\mathrm{sbh}$ 是逐层的线性项，按 Korthikanti 等人的拆解由三部分组成：attention block 的非二次项 $11\mathrm{sbh}$、MLP block 的 $19\mathrm{sbh}$、两个 LayerNorm 的 $4\mathrm{sbh}$。右边的 $5\mathrm{as}^2\mathrm{b}$ 来自 attention 中随序列长度二次增长的项，包括 dropout mask 等存储。和 FlashAttention 的思路一样，二次项可以通过重计算或更节省存储的 attention 实现大幅削减。
+左边的 $34\mathrm{sbh}$ 是逐层的线性项，按 Korthikanti 等人的拆解由三部分组成：attention block 的非二次项 $11\mathrm{sbh}$、MLP block 的 $19\mathrm{sbh}$、两个 LayerNorm 的 $4\mathrm{sbh}$。
+右边的 $5\mathrm{as}^2\mathrm{b}$ 来自 attention 中随序列长度二次增长的项，包括 dropout mask 等存储。和 FlashAttention 的思路一样，二次项可以通过重计算或更节省存储的 attention 实现大幅削减。
 
 在 TP 下，矩阵乘相关 activation 可以随 tensor parallel size $t$ 分摊，但仍会留下不随 $t$ 缩小的逐点项。同一篇论文的 Eq. (2) 把加入 TP 后的账本写成：
 
@@ -1148,7 +1221,8 @@ sequence parallelism（序列并行，SP）的目标就是处理这部分 $10\ma
 需要和 TP matmul 对接时，再在边界上使用 all-gather 或 reduce-scatter，让数据布局在“sequence-sharded”和“hidden-sharded”之间切换。
 
 > [!NOTE]
-> sequence parallelism 让 pointwise activation 常驻为 sequence shard；collective 主要发生在进入或离开张量并行矩阵乘的边界，不需要在所有位置都 all-gather 完整 activation。forward 和 backward 的 all-gather / reduce-scatter 方向互为对偶。
+> sequence parallelism 让 pointwise activation 常驻为 sequence shard；collective 主要发生在进入或离开张量并行矩阵乘的边界，不需要在所有位置都 all-gather 完整 activation。
+> forward 和 backward 的 all-gather / reduce-scatter 方向互为对偶。
 
 ![图 7.9-4 activation memory 线性扩展](images/7-9-4-activation-memory-linear-scaling.png)
 
@@ -1176,7 +1250,9 @@ sequence parallelism（序列并行，SP）的目标就是处理这部分 $10\ma
 6. `all-to-all combine` 把 expert 输出送回 token 原来的 rank 或后续需要的位置。
 7. 系统按原 token 顺序恢复 activation，并继续后面的 Transformer block。
 
-直觉上，EP 把“每个 rank 都复制所有 experts”的参数成本变成“每个 rank 只持有一部分 experts”，同时把计算集中到 router 选中的 experts 上。代价是 token routing 会引入动态 all-to-all：如果 router 分布不均，某些 expert rank 会比其他 rank 更忙，通信 split size 也会变得不规则。
+按参数账本算：设 expert 并行度为 $E$，dense DP 在每个 rank 上复制全部 expert 参数（每 rank $\Psi_{\mathrm{experts}}$），EP 把 experts 均分到 $E$ 个 rank、每个 rank 只持有 $\Psi_{\mathrm{experts}}/E$，参数显存按 $E$ 倍下降；
+计算也只发生在 router 选中的 experts 上。
+代价是每层引入两次全量 all-to-all（上面第 4 步 dispatch、第 6 步 combine）：router 分布不均时，某些 expert rank 收到的 token 远多于其他 rank，计算时长由最忙的 rank 决定，all-to-all 的 split size 也随之变得不规则。
 
 ![图 7.9-6 why expert parallelism](images/7-9-6-why-expert-parallelism.png)
 
@@ -1186,7 +1262,8 @@ EP 和 TP 在系统行为上有相似处：二者都需要高带宽互联，也�
 
 区别在于，TP 继续切矩阵，切得太细会让本地 GEMM 变小、GPU 利用率下降；EP 则让每个 expert 的本地矩阵乘保持较大，只把 token route 到需要的 expert。
 
-NVIDIA [Megatron Core MoE 文档](https://docs.nvidia.com/megatron-core/developer-guide/latest/user-guide/features/moe.html) 把这条经验写进调优指南：expert layer 优先用 EP 而不是 TP，因为更大的局部 GEMM 提高 GPU 利用率，且 MoE 层上 EP 的通信开销低于 TP；文档给的例子是 Mixtral 8x7B 上 `EP8×TP1` 优于 `EP4×TP2`。这条规则只适用于 MoE expert layer，不适用于 dense attention layer。
+NVIDIA [Megatron Core MoE 文档](https://docs.nvidia.com/megatron-core/developer-guide/latest/user-guide/features/moe.html) 把这条经验写进调优指南：expert layer 优先用 EP 而不是 TP，
+因为更大的局部 GEMM 提高 GPU 利用率，且 MoE 层上 EP 的通信开销低于 TP；文档给的例子是 Mixtral 8x7B 上 `EP8×TP1` 优于 `EP4×TP2`。这条规则只适用于 MoE expert layer，不适用于 dense attention layer。
 
 ![图 7.9-7 combining expert parallelism](images/7-9-7-combining-expert-parallelism.png)
 
@@ -1198,13 +1275,16 @@ NVIDIA [Megatron Core MoE 文档](https://docs.nvidia.com/megatron-core/develope
 - **ETP（expert tensor parallelism）**：单个专家内部的矩阵乘再做张量并行。
 - **EDP（expert data parallelism）**：专家副本沿数据维复制，用来扩展吞吐或缓解单个专家热点。
 
-这些维度需要和 TP、PP、DP、SP、CP 一起选择。简单相乘并不总是可行：DP 和 EP 往往共享一部分 replica 结构，EP 的上限会受到 DP group 划分约束；TP 和 EP 也可能互相影响，因为 attention 层需要 TP/CP，而 MoE MLP 层更希望保留较大的 expert GEMM。同一层 Transformer block 里的 attention 和 MoE FFN 可能需要不同的并行组合。
+这些维度需要和 TP、PP、DP、SP、CP 一起选择。简单相乘并不总是可行：DP 和 EP 往往共享一部分 replica 结构，EP 的上限会受到 DP group 划分约束；TP 和 EP 也可能互相影响，因为 attention 层需要 TP/CP，而 MoE MLP 层更希望保留较大的 expert GEMM。
+同一层 Transformer block 里的 attention 和 MoE FFN 可能需要不同的并行组合。
 
 ![图 7.9-8 decoupling attention / expert parallelism](images/7-9-8-decoupling-attention-expert-parallelism.png)
 
 *图 7.9-8 decoupling attention / expert parallelism*
 
-Megatron 的 MoE parallel folding 体现了这种解耦：attention layers 可以用 TP/CP/DP/PP 组合，MoE layers 则用 ETP/EP/EDP/PP 组合，两组之间只要求 PP 划分一致。这样做同时解除了上面那条 EP ≤ DP 的上限——传统映射把 EP group 放在 DP 的子组里，专家并行度就被数据并行度卡住（[Liu et al., *MoE Parallel Folding*, arXiv:2504.14960](https://arxiv.org/abs/2504.14960) §3.2）。MoE 通常替换 MLP；attention 没有 experts 可以 route token，所以不能靠 EP 解决 attention 的宽度和长上下文问题。
+Megatron 的 MoE parallel folding 体现了这种解耦：attention layers 可以用 TP/CP/DP/PP 组合，MoE layers 则用 ETP/EP/EDP/PP 组合，两组之间只要求 PP 划分一致。
+这样做同时解除了上面那条 EP ≤ DP 的上限——传统映射把 EP group 放在 DP 的子组里，专家并行度就被数据并行度卡住（[Liu et al., *MoE Parallel Folding*, arXiv:2504.14960](https://arxiv.org/abs/2504.14960) §3.2）。MoE 通常替换 MLP；
+attention 没有 experts 可以 route token，所以不能靠 EP 解决 attention 的宽度和长上下文问题。
 
 像 norm、router 这类参数量小但调用频繁的模块，很多系统会直接复制在各设备上，避免为它们单独设计复杂的并行切分。
 
@@ -1214,7 +1294,8 @@ Megatron 的 MoE parallel folding 体现了这种解耦：attention layers 可�
 
 *图 7.9-9 other parallelism strategies*
 
-**上下文并行（context parallelism, CP）/ ring attention** 面向长上下文场景。它沿序列长度切分 activation 或 KV：每个 rank 负责一段 query，key/value 按环形或其他规则在 rank 间传递，逐块完成 attention 累积。这可以降低单卡长序列显存压力，但会让 attention 本身更通信敏感。
+**上下文并行（context parallelism, CP）/ ring attention** 面向长上下文场景。它沿序列长度切分 activation 或 KV：每个 rank 负责一段 query，key/value 按环形或其他规则在 rank 间传递，逐块完成 attention 累积。
+这可以降低单卡长序列显存压力，但会让 attention 本身更通信敏感。
 
 ## 7.10 混合并行与大规模训练组合
 
@@ -1236,7 +1317,8 @@ Megatron 的 MoE parallel folding 体现了这种解耦：attention layers 可�
 
 *图 7.10-2 模型并行与张量并行权衡*
 
-图 7.10-2 的横轴是每个 chip 分到的 batch，纵轴可以理解为 compute time / communication time。高于虚线表示更接近 compute-bound，低于虚线表示通信更容易成为瓶颈。batch 很小时，纯 FSDP 可能通信占比过高；加入模型并行后，每层计算和通信的比例会变化，可以把系统推回更高利用率区域。混合并行的目标是在 batch、通信和显存约束下让计算单元尽量保持忙碌。
+图 7.10-2 的横轴是每个 chip 分到的 batch，纵轴可以理解为 compute time / communication time。高于虚线表示更接近 compute-bound，低于虚线表示通信更容易成为瓶颈。batch 很小时，纯 FSDP 可能通信占比过高；加入模型并行后，每层计算和通信的比例会变化，可以把系统推回更高利用率区域。
+混合并行的目标是在 batch、通信和显存约束下让计算单元尽量保持忙碌。
 
 ![图 7.10-3 3D 并行](images/7-10-3-3d-parallelism.png)
 
@@ -1258,7 +1340,9 @@ Megatron 的 MoE parallel folding 体现了这种解耦：attention layers 可�
 
 *图 7.10-4 Narayanan 论文*
 
-Narayanan 2021 的实验（[arXiv:2104.04473](https://arxiv.org/abs/2104.04473)，*Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM*）展示了从 17 亿到 1 万亿参数（1.7B / 3.6B / 7.5B / 18B / 39B / 76B / 145B / 310B / 530B / 1T）模型的 3D 并行配置；论文另以 GPT-3 175B 作为参照配置。表格说明：随着模型变大，单靠 DP 不够，需要逐步增加 TP 和 PP；但只要组合得当，模型 FLOPs utilization 仍能维持在较高区间。
+Narayanan 2021 的实验（[arXiv:2104.04473](https://arxiv.org/abs/2104.04473)，*Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM*）
+展示了从 17 亿到 1 万亿参数（1.7B / 3.6B / 7.5B / 18B / 39B / 76B / 145B / 310B / 530B / 1T）模型的 3D 并行配置；论文另以 GPT-3 175B 作为参照配置。表格说明：随着模型变大，单靠 DP 不够，需要逐步增加 TP 和 PP；
+但只要组合得当，模型 FLOPs utilization 仍能维持在较高区间。
 
 ![图 7.10-5 3D 并行的收益](images/7-10-5-3d-parallelism-benefit.png)
 
@@ -1278,7 +1362,8 @@ Narayanan 2021 的实验（[arXiv:2104.04473](https://arxiv.org/abs/2104.04473)�
 
 图 7.10-7 说明 activation recomputation 可能“自己付回成本”：它增加 FLOPs，但节省显存后可以支持更大 batch；更大的 batch 又能帮助隐藏 pipeline bubble 或摊薄通信，从而提高整体吞吐。这个取舍和 FlashAttention 类似：多算一点，少存和少搬很多。
 
-多篇技术报告展示了这些规则的实际组合。7B 级 dense 模型的参数状态可以用 FSDP 这类通用分片外壳处理。Gemma 2 走的是 TPU 路线：27B 用 6,144 颗 TPUv5p，768-way data 分片配 8-way model 分片，optimizer state 再按类 ZeRO-3 的方式切开。Llama 3 405B 这类超大 dense 模型没有 expert 可切，通常需要 TP、CP、PP 和 DP 一起分摊宽度、长上下文、深度和 batch。
+多篇技术报告展示了这些规则的实际组合。7B 级 dense 模型的参数状态可以用 FSDP 这类通用分片外壳处理。Gemma 2 走的是 TPU 路线：27B 用 6,144 颗 TPUv5p，768-way data 分片配 8-way model 分片，optimizer state 再按类 ZeRO-3 的方式切开。
+Llama 3 405B 这类超大 dense 模型没有 expert 可切，通常需要 TP、CP、PP 和 DP 一起分摊宽度、长上下文、深度和 batch。
 
 DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ETP/EDP，同时仍然为 attention 保留 TP/CP。案例里的并行度数字要和 dense layer、MoE layer、长上下文和网络拓扑一起理解。
 
@@ -1286,7 +1371,8 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 
 ## 7.11 代表性大规模训练配置
 
-这一节把前面所有抽象落到公开报告的真实数字：Llama 3 405B 标准上下文（DP=64/128 两档集群规模）与 128K 长上下文（DP=8）的 TP/PP/CP/DP、DeepSeek-V3 的 PP16 + EP64 + ZeRO-1（TP 压到 1）、Mixtral / Gemma 2 / Qwen3 / Nemotron 3 Super 的公开并行度。
+这一节把前面所有抽象落到公开报告的真实数字：Llama 3 405B 标准上下文（DP=64/128 两档集群规模）与 128K 长上下文（DP=8）的 TP/PP/CP/DP、DeepSeek-V3 的 PP16 + EP64 + ZeRO-1（TP 压到 1）、
+Mixtral / Gemma 2 / Qwen3 / Nemotron 3 Super 的公开并行度。
 
 下表汇总公开来源给出的代表性大规模训练配置（`?` 表示对应论文 / 官方文档未公开的字段）：
 
@@ -1294,20 +1380,38 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | Llama 3 405B (标准上下文) | 8 | 16 | 1 | 0 | 64 或 128 | - | CP=1；DP=64 / 128 ([Llama 3 paper Table 4](https://arxiv.org/abs/2407.21783)) |
 | Llama 3 405B (128K long-context) | 8 | 16 | 16 | 0 | 8 | - | 长上下文阶段 CP=16，DP=8 ([Llama 3 paper Table 4](https://arxiv.org/abs/2407.21783), 16,384 GPUs / 131,072 seq len) |
-| DeepSeek V3 | 1 | 16 | - | 64 | - | ZeRO-1 | 16-way PP + 64-way EP（跨 8 节点）+ ZeRO-1 DP，TP 压到 1；§3.2 Training Framework 写明 "without using costly Tensor Parallelism (TP)"，DualPipe 与跨节点 all-to-all kernel 见 §3.2.1、§3.2.2（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437)） |
-| Mixtral 8x22B | 2 | 8 | 1 | 8 | 8 | - | TP=2 / PP=8 / CP=1 / EP=8 / VPP=7，16 节点 128 GPU；按 attention 侧 world = TP×CP×DP×PP 得 DP=8，EP=8 ≤ DP 满足 §7.9.2 的传统映射；来自社区维护的 [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) `runtime_configs/benchmarking/runtime.conf` benchmarking recipe，构建在 Megatron-Core 之上 |
-| Nemotron 3 Super 120B-A12B | 2 | ? | 64 | 64 | ? | - | 模型已公开（[nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8)，120B 总参 / 12B 激活，2026-03-11），model card 只给部署侧 TP/EP；家族论文 [NVIDIA Nemotron 3, arXiv:2512.20856](https://arxiv.org/abs/2512.20856) 描述 LatentMoE 架构与 NVFP4 训练；训练侧并行度见 [Nemotron 3 Super 技术报告](https://research.nvidia.com/labs/nemotron/files/NVIDIA-Nemotron-3-Super-Technical-Report.pdf) §2.6：LC-Phase 长上下文扩展在 GB200 GPU 上使用 64-way context parallelism、2-way tensor parallelism、64-way expert parallelism，PP 与 DP 未在该节给出 |
-| Gemma 2 27B | 8 | 0 | 0 | 0 | 768 | ZeRO-3 类 | [arXiv:2408.00118](https://arxiv.org/abs/2408.00118) Table 3：6,144 颗 TPUv5p，768-way data 分片 + 8-way model 分片，optimizer state 另按类 ZeRO-3 方式分片（2B 为 512 chips / 512×1，9B 为 4,096 chips / 1,024×4） |
-| Qwen3 235B-A22B | 2 | 8 | 1 | 32 | 16 | - | 官方 [arXiv:2505.09388](https://arxiv.org/abs/2505.09388) 与 HF model card 未公开原训练并行度；以上 TP/PP/CP/EP 数值来自社区 [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) `runtime_configs/benchmarking/runtime.conf` benchmarking recipe（VPP=4，32 节点 256 GPU）。按 attention 侧 world = TP×CP×DP×PP 得 DP=16；EP=32 超过 DP=16，MoE 层按 §7.9.2 的 MoE parallel folding 用 ETP×EP×EDP×PP 组合，与 256 卡对齐 |
+| DeepSeek V3 | 1 | 16 | - | 64 | - | ZeRO-1 | 16-way PP + 64-way EP + ZeRO-1 DP，TP=1（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437)，§3.2） |
+| Mixtral 8x22B | 2 | 8 | 1 | 8 | 8 | - | TP=2 / PP=8 / CP=1 / EP=8 / VPP=7（[Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) benchmarking recipe） |
+| Nemotron 3 Super 120B-A12B | 2 | ? | 64 | 64 | ? | - | LC-Phase：2-way TP、64-way CP、64-way EP，PP / DP 未公开（技术报告 §2.6，见下） |
+| Gemma 2 27B | 8 | 0 | 0 | 0 | 768 | ZeRO-3 类 | 6,144 颗 TPUv5p，768-way data + 8-way model 分片（[arXiv:2408.00118](https://arxiv.org/abs/2408.00118) Table 3） |
+| Qwen3 235B-A22B | 2 | 8 | 1 | 32 | 16 | - | 社区 Megatron-MoE-ModelZoo benchmarking recipe（VPP=4，32 节点 256 GPU），见下 |
+
+表中数值的出处与推导：
+
+- **DeepSeek V3**：EP 跨 8 节点；
+  §3.2 Training Framework 写明 "without using costly Tensor Parallelism (TP)"，DualPipe 与跨节点 all-to-all kernel 见 §3.2.1、§3.2.2（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437)）。
+- **Mixtral 8x22B**：16 节点 128 GPU；按 attention 侧 world = TP×CP×DP×PP 得 DP=8，EP=8 ≤ DP 满足 §7.9.2 的传统映射；
+  来自社区维护的 [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) `runtime_configs/benchmarking/runtime.conf` benchmarking recipe，构建在 Megatron-Core 之上。
+- **Nemotron 3 Super 120B-A12B**：模型已公开（[nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8)，120B 总参 / 12B 激活，
+  2026-03-11），model card 只给部署侧 TP/EP；家族论文 [NVIDIA Nemotron 3, arXiv:2512.20856](https://arxiv.org/abs/2512.20856) 描述 LatentMoE 架构与 NVFP4 训练。
+  训练侧并行度见 [Nemotron 3 Super 技术报告](https://research.nvidia.com/labs/nemotron/files/NVIDIA-Nemotron-3-Super-Technical-Report.pdf) §2.6：
+  LC-Phase 长上下文扩展在 GB200 GPU 上使用 64-way context parallelism、2-way tensor parallelism、64-way expert parallelism，PP 与 DP 未在该节给出。
+- **Gemma 2 27B**：optimizer state 另按类 ZeRO-3 方式分片（2B 为 512 chips / 512×1，9B 为 4,096 chips / 1,024×4）。
+- **Qwen3 235B-A22B**：官方 [arXiv:2505.09388](https://arxiv.org/abs/2505.09388) 与 HF model card 未公开原训练并行度；
+  表中 TP/PP/CP/EP 数值来自社区 [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo) `runtime_configs/benchmarking/runtime.conf` benchmarking recipe。
+  按 attention 侧 world = TP×CP×DP×PP 得 DP=16；EP=32 超过 DP=16，MoE 层按 §7.9.2 的 MoE parallel folding 用 ETP×EP×EDP×PP 组合，与 256 卡对齐。
 
 观察到的工程模式：
 
-- **TP 一般 ≤ 8**：节点内 NVLink/NVSwitch 提供足够带宽；超出 8 之后跨节点 TP 的 all-reduce 开销迅速失控。DeepSeek V3 paper §3.2 Training Framework 写到 "making it possible to train DeepSeek-V3 without using costly tensor parallelism"，是把 TP 压到 1 的代表性例证。
+- **TP 一般 ≤ 8**：节点内 NVLink/NVSwitch 提供足够带宽；超出 8 之后跨节点 TP 的 all-reduce 开销迅速失控。
+  DeepSeek V3 paper §3.2 Training Framework 写到 "thereby enabling us to train DeepSeek-V3 without using costly Tensor Parallelism (TP)"，是把 TP 压到 1 的代表性例证。
 - **EP 可很大但极难调**：MoE 的 all-to-all 通信与 expert imbalance 互相耦合；DeepSeek V3 的 64-way EP（跨 8 个节点）依赖 DualPipe 调度和定制的跨节点 all-to-all kernel。
-- **长上下文阶段会切到大 CP**：Llama 3 paper Table 4 显示标准上下文阶段 CP=1，128K 长上下文阶段 CP=16、DP 相应从 128 降到 8。DeepSeek-V3 走的是另一条路线，用 YaRN 分两阶段把窗口从 4K 扩到 32K 再到 128K，并把 batch size 从 1920 降到 480 来控制 activation（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §4.3）。
+- **长上下文阶段会切到大 CP**：Llama 3 paper Table 4 显示标准上下文阶段 CP=1，128K 长上下文阶段 CP=16、DP 相应从 128 降到 8。
+  DeepSeek-V3 走的是另一条路线，用 YaRN 分两阶段把窗口从 4K 扩到 32K 再到 128K，并把 batch size 从 1920 降到 480 来控制 activation（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §4.3）。
 - **DP 上限由 batch size 和硬件规模共同决定**：GPU 集群上的公开配置多落在 DP≤128（Llama 3 paper Table 4 的 DP=64/128/8）；TPU pod 上的 data 分片可以大得多，Gemma 2 的 27B 用 768-way、9B 用 1,024-way data 分片。
 
-硬件层级方面，NVIDIA **NVL72**（GB200/GB300）把 36 张 Grace CPU + 72 张 Blackwell GPU 放进一个 NVLink domain；72-way TP 在 NVL72 内部仍然是节点内通信，可以大幅放宽"TP ≤ 8"的工程经验（[NVIDIA GB200 NVL72 数据表](https://www.nvidia.com/en-us/data-center/gb200-nvl72/)）。
+硬件层级方面，NVIDIA **NVL72**（GB200/GB300）把 36 张 Grace CPU + 72 张 Blackwell GPU 放进一个 NVLink domain；
+72-way TP 在 NVL72 内部仍然是节点内通信，可以大幅放宽"TP ≤ 8"的工程经验（[NVIDIA GB200 NVL72 数据表](https://www.nvidia.com/en-us/data-center/gb200-nvl72/)）。
 
 ## 本章总结与下章衔接
 
@@ -1317,7 +1421,8 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 
 更实用的结论可以压缩成一句话：**先让模型放得下，再让通信跟得上，最后再追求满算力。** 具体到策略选择时，通常先判断参数、optimizer state、activation 谁是主瓶颈，再根据节点内外带宽决定 TP、PP、DP、SP、CP、EP 的组合；“标准并行方案”只能作为起点，最终仍要由资源账本和 benchmark 校准。
 
-资源账本只能回答"训练会不会爆"和"算力跑满没有"，不能回答"这个规模训下来是什么 loss"。下一章把视角从"训得起"切到"训得对"：[第 8 章 §8.1 Scaling Workflow：先拟合，再放大](../chapter8/chapter8_Scaling_Laws.md) 用 IsoFLOP、Chinchilla、muP 等方法把 compute budget 拆成最优的模型规模和数据量。
+资源账本只能回答"训练会不会爆"和"算力跑满没有"，不能回答"这个规模训下来是什么 loss"。
+下一章把视角从"训得起"切到"训得对"：[第 8 章 §8.1 Scaling Workflow：先拟合，再放大](../chapter8/chapter8_Scaling_Laws.md) 用 IsoFLOP、Chinchilla、muP 等方法把 compute budget 拆成最优的模型规模和数据量。
 
 对照章首学习目标，读到这里应能：
 
@@ -1368,4 +1473,4 @@ DeepSeek / Qwen 这类 MoE 系统则会把 MoE FFN 的 expert 维度交给 EP/ET
 - Gemma 2 Table 3 — 2B/9B/27B 的 chip 数与 data / model 分片数。
 - MoE Parallel Folding §3.2 — 传统映射把 EP group 放进 DP 子组，专家并行度被数据并行度上限卡住；folding 后 attention 用 TP×CP×DP×PP、MoE 用 ETP×EP×EDP×PP，只要求 PP 划分一致。
 - Nemotron 3 — LatentMoE 架构与 NVFP4 训练。
-- Megatron-LM Table 1 — 弱扩展模型规模为 1.7B / 3.6B / 7.5B / 18B / 39B / 145B / 310B / 530B / 1T。
+- Megatron-LM Table 1 — 弱扩展模型规模为 1.7B / 3.6B / 7.5B / 18B / 39B / 76B / 145B / 310B / 530B / 1T。

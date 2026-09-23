@@ -109,7 +109,9 @@
 
 [Allen AI 团队在 OLMo-2-32B 发布博客中展示的模型基准性能](https://allenai.org/blog/olmo2-32B)，主要覆盖 MATH、MMLU、DROP 和 GSM8k 等基准。
 
-下面是 [HELM](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard)、OpenCompass、SuperCLUE、Artificial Analysis、OpenRouter 和 Chatbot Arena 等平台的截图例子。它们有的强调能力覆盖，有的强调中文或区域性任务，有的强调成本或用户偏好。
+下面是 [HELM](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard)、OpenCompass、SuperCLUE、Artificial Analysis、OpenRouter 和 Chatbot Arena 等平台的截图例子。
+
+它们有的强调能力覆盖，有的强调中文或区域性任务，有的强调成本或用户偏好。
 
 ![图 11.1-8 HELM capabilities 排行榜](images/11-1-8-helm-capabilities-leaderboard.png)
 
@@ -149,7 +151,9 @@
 
 *图 11.1-15 评估危机观点*
 
-Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会饱和，公开榜单会被过拟合，社区案例观察又容易受到确认偏误和小样本影响。因此，本章按 perplexity、考试基准、聊天基准、agent 基准、纯推理、安全、真实性和有效性七类逐类拆解，反复回到 difficulty、realism 和 validity 三个维度。
+Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会饱和，公开榜单会被过拟合，社区案例观察又容易受到确认偏误和小样本影响。
+
+因此，本章按 perplexity、考试基准、聊天基准、agent 基准、纯推理、安全、真实性七类逐类拆解，反复回到 difficulty、realism 和 validity 三个维度；有效性（§11.10）是横跨这七类的失真来源检查。
 
 ## 11.2 如何看待评估
 
@@ -220,9 +224,15 @@ Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会�
 
 公理起点是「语言模型是一个 token 序列上的概率分布 $p_\theta$」。给定一个真实分布 $t$ 与模型分布 $p$，任意序列的交叉熵 $\mathrm{H}(t, p)$ 都给出「模型对真实序列平均要花多少 nats 来编码」的下界。perplexity 就是这条下界的指数化重标度。
 
-给定测试序列 $x_{1:T}$，平均负对数似然为 $L=-\frac{1}{T}\sum_{t=1}^{T}\log p_\theta(x_t\mid x_{<t})$，困惑度定义为 $\mathrm{PPL}=e^L$。因此 PPL 直接由 next-token 概率分布导出，适合比较相同 tokenizer、语料和上下文长度下的模型；更换 tokenizer 或测试分布后，数值不再处于同一测量尺度。
+给定测试序列 $x_{1:T}$，平均负对数似然为 $L=-\frac{1}{T}\sum_{t=1}^{T}\log p_\theta(x_t\mid x_{<t})$，困惑度定义为 $\mathrm{PPL}=e^L$。
 
-语言模型定义了一个序列概率分布 $p(x)$，它对任意一段 token 序列 $x$ 给出概率值，也就是这个序列在模型分布下有多自然。困惑度衡量模型对某个数据集分配高概率的能力。在预训练阶段，模型的目标就是最小化训练集上的困惑度。数值越小，表示模型越容易预测这些 token。训练侧优化交叉熵的等价表述与具体算式见 [第 2 章 §2.4 计算效率](../chapter2/chapter2_pytorch与资源核算.md)。
+因此 PPL 直接由 next-token 概率分布导出，适合比较相同 tokenizer、语料和上下文长度下的模型；更换 tokenizer 或测试分布后，数值不再处于同一测量尺度。
+
+语言模型定义了一个序列概率分布 $p(x)$，它对任意一段 token 序列 $x$ 给出概率值，也就是这个序列在模型分布下有多自然。
+
+困惑度衡量模型对某个数据集分配高概率的能力。在预训练阶段，模型的目标就是最小化训练集上的困惑度。数值越小，表示模型越容易预测这些 token。
+
+训练侧优化交叉熵的等价表述与具体算式见 [第 2 章 §2.4 计算效率](../chapter2/chapter2_pytorch与资源核算.md)。
 
 $$
 \text{Perplexity} = \left( \frac{1}{p(D)} \right)^{1/|D|}
@@ -252,13 +262,17 @@ $$
 
 ### 11.3.4 历史与演变
 
-Jozefowicz 等人在 [《Exploring the Limits of Language Modeling》](https://arxiv.org/abs/1602.02410) 论文中，用纯 CNN + LSTM 架构，在 十亿（1B） Word Benchmark 上把困惑度从 51.3 降到 30.0。这是工程经验层面的观察，不是公理推导：next-token 概率在更大模型 + 更大数据下确实能拟合得更准，但为什么"扩大到多少就能拟合多准"并无闭式解，靠 scaling law 经验拟合。
+Jozefowicz 等人在 [《Exploring the Limits of Language Modeling》](https://arxiv.org/abs/1602.02410) 论文中，用纯 CNN + LSTM 架构，在 十亿（1B） Word Benchmark 上把困惑度从 51.3 降到 30.0。
+
+这是工程经验层面的观察，属经验拟合：next-token 概率在更大模型 + 更大数据下确实能拟合得更准，但"扩大到多少就能拟合多准"并无闭式解，靠 scaling law 经验拟合。
 
 ![图 11.3-1 CNN+LSTM 降低困惑度](images/11-3-1-cnn-lstm-perplexity.png)
 
 *图 11.3-1 CNN+LSTM 降低困惑度*
 
-OpenAI 在 [《Language Models are Unsupervised Multitask Learners》](https://cdn.openai.com/better-language-models/) 论文中发布的 GPT-2 在 WebText（来自 Reddit 链接的网页文本，约 40GB）上训练，然后直接在标准数据集上做 zero-shot（零样本）评估。这属于「分布外评估」（out-of-distribution），训练和测试来自不同数据源。
+OpenAI 在 [《Language Models are Unsupervised Multitask Learners》](https://cdn.openai.com/better-language-models/) 论文中发布了 GPT-2。
+
+GPT-2 在 WebText（来自 Reddit 链接的网页文本，约 40GB）上训练，然后直接在标准数据集上做 zero-shot（零样本）评估。这属于「分布外评估」（out-of-distribution），训练和测试来自不同数据源。
 
 GPT-2 的关键观察是：在大规模、多样化训练下，模型对从未见过的标准测试集仍能保持良好困惑度。这意味着 next-token 训练虽然以单语料为目标，但学到的概率分布能跨域迁移——这一性质目前没有严格推导支撑，属于经验性观察。
 
@@ -391,9 +405,15 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 [MMLU](https://arxiv.org/abs/2009.03300) 包含 57 个学科（从数学、历史到法律、伦理）的多项选择题。问题源自网络，由学生收集。它更侧重于知识而非语言理解。
 
-最初用 GPT-3 的少样本提示进行评估时，最大型号的 X-Large（175B）只能取得 43.9% 的平均准确率，而 Small（2.7B）、Medium（6.7B）、Large（13B）三档分别是 25.9%、24.9%、26.0%，基本停在 25% 的随机基线上（[Hendrycks et al., 2020, arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1）。
+最初用 GPT-3 的少样本提示进行评估时，最大型号的 X-Large（175B）只能取得 43.9% 的平均准确率。
 
-几年之后，MMLU 已经接近饱和。这恰恰说明单一知识基准很容易从「有区分度」变成「只剩刷榜价值」。公理上是 difficulty / validity 失衡：当模型的能力下限被推到随机基线之上，准确率开始进入饱和区，分数差异逐渐由题目噪声与 prompt 模板而非真实能力决定。
+其余三档中，Small（2.7B）、Medium（6.7B）、Large（13B）分别是 25.9%、24.9%、26.0%，基本停在 25% 的随机基线上（[Hendrycks et al., 2020, arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1）。
+
+几年之后，MMLU 已经接近饱和。这恰恰说明单一知识基准很容易从「有区分度」变成「只剩刷榜价值」。
+
+用 difficulty / validity 三维度看，这是两者的失衡：当模型的能力下限被推到随机基线之上，准确率进入饱和区；进入饱和区后的分数差异更多由题目噪声与 prompt 模板驱动。
+
+MMLU-Pro 论文实测同一模型在 MMLU 上仅 prompt 变体就带来 4%–5% 的分数波动（见 §11.4.2）。
 
 ![图 11.4-1 GPT-3 在 MMLU 上的 few-shot 提示](images/11-4-1-gpt3-mmlu-few-shot.png)
 
@@ -418,11 +438,17 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 把选项从 4 增到 10 并加入 CoT 评估后，模型在 MMLU-Pro 上的得分相对 MMLU 下降 16%–33%：领先模型 GPT-4o 在 MMLU-Pro 上只有 72.6%，而它在 MMLU 上是 88.7%（CoT）/ 87.2%（direct）。
 
-公理层面，两项设计同时起作用：(a) 选项数从 4 增到 10 把随机基线从 25% 压到 10%，让准确率不再轻易触顶；(b) CoT 把「选择答案」这一动作从「字面猜测」转化为「逐步推理」，让分数差异主要由推理深度而非格式投机带来。两项合起来同时改善区分度和稳定性：GPT-4o、Claude 3 Opus、GPT-4-Turbo 的分差从 MMLU 上的约 2% 拉开到 MMLU-Pro 上的约 9%，prompt 变体带来的分数波动也从 MMLU 的 4%–5% 收窄到 2%。
+公理层面，两项设计同时起作用：(a) 选项数从 4 增到 10 把随机基线从 25% 压到 10%，让准确率不再轻易触顶；(b) CoT 把「选择答案」这一动作从「字面猜测」转化为「逐步推理」，让分数差异主要由推理深度而非格式投机带来。
+
+两项合起来同时改善区分度和稳定性：GPT-4o、Claude 3 Opus、GPT-4-Turbo 的分差从 MMLU 上的约 2% 拉开到 MMLU-Pro 上的约 9%，prompt 变体带来的分数波动也从 MMLU 的 4%–5% 收窄到 2%。
 
 ### 11.4.3 GPQA (Graduate-Level Google-Proof Q&A)
 
-[GPQA](https://arxiv.org/abs/2311.12022) Main 共 **448 题**（Extended 546 / Diamond 198 子集），由 61 名 PhD 领域专家通过 Upwork 平台设计（论文 §2.1 "The Collection Pipeline" 原文："We hire 61 contractors through Upwork to write and validate the dataset. We require that they have completed or are currently in a PhD program in their field of expertise"）。目标是创建「防谷歌」问题，即非专家即使花 30 分钟用谷歌搜索也难以解答。
+[GPQA](https://arxiv.org/abs/2311.12022) Main 共 **448 题**（Extended 546 / Diamond 198 子集），题目与校验由 61 名 PhD 领域专家通过 Upwork 平台完成（论文 §2.1 "The Collection Pipeline"）。原文：
+
+"We hire 61 contractors through Upwork to write and validate the dataset. We require that they have completed or are currently in a PhD program in their field of expertise"。
+
+目标是创建「防谷歌」问题，即非专家即使花 30 分钟用谷歌搜索也难以解答。
 
 公理起点是「专家能力上限 ≈ 真值标签」：专家能答对的题才有可能成为有效基准题，专家都答错的题则更像题目噪声。论文用三档**实测准确率**验证题目确实够难：
 
@@ -440,7 +466,11 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ### 11.4.4 Humanity's Last Exam
 
-[Humanity's Last Exam](https://arxiv.org/abs/2501.14249)（HLE）是一个由社区贡献的多模态、多学科基准，公开题库共 2,500 道，覆盖数学、人文与自然科学等数十个学科。约 14% 的题目需要同时理解文本和图像，约 24% 是选择题，其余 76% 是精确匹配题。奖金池 50 万美元按贡献题目的难度分档：最难的 50 题各 5,000 美元，再往后 500 题各 500 美元。
+[Humanity's Last Exam](https://arxiv.org/abs/2501.14249)（HLE）是一个由社区贡献的多模态、多学科基准，公开题库共 2,500 道，覆盖数学、人文与自然科学等数十个学科。
+
+题型上，约 14% 的题目需要同时理解文本和图像，约 24% 是选择题，其余 76% 是精确匹配题。
+
+奖金池 50 万美元按贡献题目的难度分档：最难的 50 题各 5,000 美元，再往后 500 题各 500 美元。
 
 题目由社区贡献，先用前沿 LLM 筛选掉过于简单的题，再经过多阶段专家审查。公理起点是「前沿模型集体失分的题」最有可能保留难度梯度——简单题与已饱和的题会被前置筛选过滤，剩余的题在分布上更接近「模型能力上限附近」的样本。HLE 的局限在于问题征集过程可能存在严重的选择偏差，且问题类型仍局限于有标准答案的「考试」形式。
 
@@ -458,57 +488,73 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 ### 11.5.1 Chatbot Arena
 
-[Chatbot Arena](https://arxiv.org/abs/2403.04132)（现改名 LMArena）采用盲测配对比较和 Bradley-Terry（BT）系数估计（早期版本使用 ELO，2024 论文已切换为 BT）。公理起点是 paired comparison 理论：人类对两个匿名回答的偏好满足 $p(A \succ B) = \sigma(\alpha_A - \alpha_B)$（logistic 形式），整体排名可以通过最大化似然 $L = \prod_{(i,j)} p(i \succ j)^{[i \succ j]}$ 反推每个模型的潜在分数 $\alpha_i$。真实用户提交提示，同时收到两个匿名模型的回复，并选择更优者。优点是输入动态、能容纳新模型。
+[Chatbot Arena](https://arxiv.org/abs/2403.04132)（现改名 LMArena）采用盲测配对比较和 Bradley-Terry（BT）系数估计（早期版本使用 ELO，2024 论文已切换为 BT）。
+
+公理起点是 paired comparison 理论：人类对两个匿名回答的偏好满足 $p(A \succ B) = \sigma(\alpha_A - \alpha_B)$（logistic 形式）。
+
+整体排名可以通过最大化似然 $L = \prod_{(i,j)} p(i \succ j)^{[i \succ j]}$ 反推每个模型的潜在分数 $\alpha_i$。
+
+真实用户提交提示，同时收到两个匿名模型的回复，并选择更优者。优点是输入动态、能容纳新模型。
 
 公理的边界同样重要：评估者是网站访客，样本可能存在偏差；BT 分数可能被策略性操纵（gameable），需要把评估时间、流量来源与提示词模板一起记录下来才能复现。
 
-![图 11.5-1 Chatbot Arena 分数排行榜](images/11-5-1-chatbot-arena-leaderboard.png)
+榜单页面截图见图 11.1-14，页头记录了更新时间、总票数与参与模型数，正是复现所需的时间戳实例。
 
-*图 11.5-1 Chatbot Arena 分数排行榜*
+[Arena 实时排行榜](https://huggingface.co/spaces/lmarena-ai/chatbot-arena-leaderboard)适合观察人类偏好信号如何随模型和用户分布变化。
 
-[Arena 实时排行榜](https://huggingface.co/spaces/lmarena-ai/chatbot-arena-leaderboard)适合观察人类偏好信号如何随模型和用户分布变化。Arena Score 试图用盲测人类偏好逼近真实使用体验，但它同时也更容易受到平台流量分布、提示词挖掘和策略性优化的影响——使用 Arena 数据作为评估依据时，应同时记录评估时间、流量来源与提示词模板。
+Arena Score 试图用盲测人类偏好逼近真实使用体验，但它同时也更容易受到平台流量分布、提示词挖掘和策略性优化的影响——使用 Arena 数据作为评估依据时，应同时记录评估时间、流量来源与提示词模板。
 
 ### 11.5.2 IFEval (Instruction-Following Eval)
 
 [IFEval](https://arxiv.org/abs/2311.07911) 使用可自动验证的约束（如“回答必须包含至少5句话”）来测试模型。优点是自动化程度高。局限是只评估约束遵守情况，不评估语义质量，且约束本身可能过于人工化。
 
-![图 11.5-2 IFEval 指令约束样例](images/11-5-2-ifeval-instruction-details.png)
+![图 11.5-1 IFEval 指令约束样例](images/11-5-1-ifeval-instruction-details.png)
 
-*图 11.5-2 IFEval 指令约束样例*
+*图 11.5-1 IFEval 指令约束样例*
 
-图 11.5-3 展示的是 HELM 上 IFEval 的排名视角。它衡量的是“模型是否遵守显式指令约束”，不等同于语义质量、创造力或完整助手能力。
+图 11.5-2 展示的是 HELM 上 IFEval 的排名视角。它衡量的是“模型是否遵守显式指令约束”，不等同于语义质量、创造力或完整助手能力。
 
-![图 11.5-3 HELM IFEval 排行榜](images/11-5-3-helm-ifeval-leaderboard.png)
+![图 11.5-2 HELM IFEval 排行榜](images/11-5-2-helm-ifeval-leaderboard.png)
 
-*图 11.5-3 HELM IFEval 排行榜*
+*图 11.5-2 HELM IFEval 排行榜*
 
 ### 11.5.3 AlpacaEval
 
 [AlpacaEval](https://tatsu-lab.github.io/alpaca_eval/) 包括各种来源的 805 条指令。使用一个强大的 LLM（如 GPT-4）作为裁判，判断候选模型的回答是否优于 GPT-4 自身的回答，并计算胜率。优点是自动化程度高，能处理开放域回答。问题在于存在裁判偏见，且早期版本易被回答长度等表面特征欺骗。
 
-![图 11.5-4 AlpacaEval 排行榜](images/11-5-4-alpacaeval-leaderboard.png)
+![图 11.5-3 AlpacaEval 排行榜](images/11-5-3-alpacaeval-leaderboard.png)
 
-*图 11.5-4 AlpacaEval 排行榜*
+*图 11.5-3 AlpacaEval 排行榜*
 
 AlpacaEval 2.0 的一个重要变化，是用回归方式修正长度偏置，避免模型通过生成更长、更啰嗦的回答来获得更高胜率。这说明开放式回答评估不能只依赖一个裁判分数，还要检查裁判是否被表面特征欺骗。
 
 ### 11.5.4 WildBench
 
-[WildBench](https://arxiv.org/abs/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（论文 §2.1）。主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude 3 Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。
+[WildBench](https://arxiv.org/abs/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（论文 §2.1）。
 
-论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。这条性质对应第一性原理的「基元不变性」：不同 LLM 裁判只要共享同一份 checklist，得到的相对排名就保持单调一致。因此 WildBench 度量的是「LLM-as-judge 这一整类尺子给出的相对秩序」——具体 judge 的绝对刻度会被多 judge ensemble 稀释。
+主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude 3 Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。
 
-WildBench 与 Chatbot Arena 高度相关。论文 §4.2 Table 3 报告的 Pearson 相关系数随 baseline（GPT-4-Turbo / Claude-3-Haiku / 三个模型平均）与长度阈值 $K$（500 字符 / 无阈值）取值不同；其中 WB-Reward 在 GPT-4-Turbo baseline + $K = 500$ 设置下对 top-ranking 模型达 0.99，三个 baseline 平均 + $K = 500$ 下为 0.98，Claude-3-Haiku baseline + 无阈值下为 0.985，WB-Score 0.955，均高于 ArenaHard 的 0.91 与 AlpacaEval 2.0 length-controlled win rate 的 0.89（论文同时报告其他 baseline 与 $K$ 取值的相关系数随设置变化）。这些数值随评测设置而异，但总体说明 WildBench 已成为新基准有效性的”事实上的”检验标准之一。
+论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。这条性质对应第一性原理的「基元不变性」：不同 LLM 裁判只要共享同一份 checklist，得到的相对排名就保持单调一致。
 
-![图 11.5-5 WildBench 构建流程](images/11-5-5-wildbench-pipeline.png)
+因此 WildBench 度量的是「LLM-as-judge 这一整类尺子给出的相对秩序」——具体 judge 的绝对刻度会被多 judge ensemble 稀释。
 
-*图 11.5-5 WildBench 构建流程*
+WildBench 与 Chatbot Arena 高度相关。论文 §4.2 Table 3 报告的 Pearson 相关系数随 baseline（GPT-4-Turbo / Claude-3-Haiku / 三个模型平均）与长度阈值 $K$（500 字符 / 无阈值）取值不同。
+
+其中 WB-Reward 在 GPT-4-Turbo baseline + $K = 500$ 设置下对 top-ranking 模型达 0.99，三个 baseline 平均 + $K = 500$ 下为 0.98，Claude-3-Haiku baseline + 无阈值下为 0.985。
+
+同表中 WB-Score 0.955，ArenaHard 0.91，AlpacaEval 2.0 length-controlled win rate 0.89——WildBench 的相关系数在各设置下均高于后两者（论文同时报告其他 baseline 与 $K$ 取值的相关系数随设置变化）。
+
+这些数值随评测设置而异，但总体说明 WildBench 已成为新基准有效性的”事实上的”检验标准之一。
+
+![图 11.5-4 WildBench 构建流程](images/11-5-4-wildbench-pipeline.png)
+
+*图 11.5-4 WildBench 构建流程*
 
 [HELM 的 WildBench 视图](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/wildbench)可以用来观察不同模型在真实对话样本上的表现。它的价值在于引入更接近真实用户提问分布的样本；某个固定时点的排行榜名次只是快照。
 
-![图 11.5-6 HELM WildBench 排行榜](images/11-5-6-helm-wildbench-leaderboard.png)
+![图 11.5-5 HELM WildBench 排行榜](images/11-5-5-helm-wildbench-leaderboard.png)
 
-*图 11.5-6 HELM WildBench 排行榜*
+*图 11.5-5 HELM WildBench 排行榜*
 
 对于人工评估和 LLM-as-a-judge，rubric 或 checklist 的价值在于把“这个回答好不好”拆成可复核的判断项。它不能消除偏见，但能降低不同裁判之间的漂移，让错误更容易被定位。
 
@@ -517,13 +563,18 @@ WildBench 与 Chatbot Arena 高度相关。论文 §4.2 Table 3 报告的 Pearso
 LLM-as-judge 把评估成本压低到可大规模运行的级别，但也把 judge 模型自身的偏差带进了分数。公理起点是「judge 是一个概率分布，其条件独立性只在 prompt 内成立」：当 rubric 要求 judge 同时评分两个回答时，位置 / 长度 / 风格等表面特征便会以非零权重进入条件概率，从而偏移评分。主要偏差来源有四类：
 
 - **位置偏差（position bias）**：judge 模型倾向给某一固定位置的回答更高分；多轮交换位置后取平均可以分离这一效应 ([Zheng et al., 2023, arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3.3)。
-- **冗长度偏差（verbosity bias）**：judge 模型倾向给更冗长的回答更高分，无论内容质量是否真的更高；这是 AlpacaEval、AlpacaEval 2.0 等基于 LLM-as-judge 的指标最被反复讨论的问题。缓解办法包括按字符 / token / 段落长度归一化分数、报告 length-controlled win rate，或在 prompt 中显式要求 judge 忽略长度。
+- **冗长度偏差（verbosity bias）**：judge 模型倾向给更冗长的回答更高分，无论内容质量是否真的更高；这是 AlpacaEval、AlpacaEval 2.0 等基于 LLM-as-judge 的指标最被反复讨论的问题。
+  缓解办法包括按字符 / token / 段落长度归一化分数、报告 length-controlled win rate，或在 prompt 中显式要求 judge 忽略长度。
 - **自我增强偏差（self-enhancement bias）**：judge 模型倾向给同家族模型更高分；常见缓解是引入多 judge 集成或与人类标注的校准。
 - **有限推理能力（limited capability in grading math and reasoning questions）**：judge 模型在评分数学与逻辑推理题时能力不足；解决方法是引入更强的 judge 或人工 spot check。
 
-工程做法通常同时叠加：多 judge 投票（pairwise 偏好下用 majority vote）、length-controlled win rate、judge ensemble 与 human spot check。JudgeBench ([arXiv:2410.12784](https://arxiv.org/abs/2410.12784)) 等基准则直接评估 judge 模型本身的判别能力，而不是被评模型的能力。
+工程做法通常同时叠加：多 judge 投票（pairwise 偏好下用 majority vote）、length-controlled win rate、judge ensemble 与 human spot check。
 
-reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward 的偏差清单需要一起维护；偏好优化的训练侧细节见 [第 12 章 §12.5 偏好优化与 DPO 系列](../chapter12/chapter12_大模型基本训练流程.md)，RLVR 的验证信号侧见 [第 13 章 §13.3 GRPO 与 Dr. GRPO](../chapter13/chapter13_可验证奖励的强化学习.md)。
+JudgeBench ([arXiv:2410.12784](https://arxiv.org/abs/2410.12784)) 等基准则直接评估 judge 模型本身的判别能力，而不是被评模型的能力。
+
+reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward 的偏差清单需要一起维护。
+
+偏好优化的训练侧细节见 [第 12 章 §12.5 偏好优化与 DPO 系列](../chapter12/chapter12_大模型基本训练流程.md)，RLVR 的验证信号侧见 [第 13 章 §13.3 GRPO 与 Dr. GRPO](../chapter13/chapter13_可验证奖励的强化学习.md)。
 
 ## 11.6 智能体基准
 
@@ -535,9 +586,21 @@ reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward
 
 同一个 agent benchmark 既是评估工具也是 RL 训练数据：SWE-bench 风格任务在[第 13 章 §13.4 案例研究](../chapter13/chapter13_可验证奖励的强化学习.md)的 agentic RL 训练里被大量构造为可验证 rollout。
 
-**Agent scaffold 的四个核心组件**：**explicit planning**（显式写出多步计划并勾选进度）、**hierarchical delegation**（任务分层委派，子任务可由更小的 agent loop 完成以保持上下文干净）、**persistent memory**（通过读写文件维护跨 turn 状态，区别于纯上下文窗口）、**extreme context engineering**（在 prompt 中显式给出大量过程性指令，区别于单纯的上下文压缩 / 重组 / 检索）。公理起点是「语言模型的上下文窗口有限 + 单调成本随序列长度增长」：要让模型在长程任务里不丢状态，必须把状态外置到文件、把计划外置到显式列表、把指令子集分到子 agent。四个组件各自对应一种外置策略（计划 / 子任务边界 / 跨 turn 状态 / 过程性指令）。这四项与 2025-2026 主流 agent 框架（Claude Code、Cursor、Aider 等）的设计选择基本对齐；同一底座模型在不同 scaffold 组合下的 benchmark 分数可能差几倍。
+**Agent scaffold 的四个核心组件**：**explicit planning**（显式写出多步计划并勾选进度）、**hierarchical delegation**（任务分层委派，子任务可由更小的 agent loop 完成以保持上下文干净）。
 
-**基准饱和与坐标移动**：早期 GPT-3 X-Large 在 MMLU 上只有 43.9%，但刷到接近饱和后被 MMLU-Pro 替代（具体口径见 §11.4.2）。GPQA 论文里 GPT-4 few-shot CoT 在 Diamond 子集上是 38.8%，而 2026 年 9 月的官方榜单上，GPQA Diamond 已有多个前沿模型超过 94%（[gpqa.ai](https://gpqa.ai/) 头部模型达 98.9%），SWE-bench Verified 的最高分达到约 79.9%（[swebench.com](https://www.swebench.com/) Claude Opus 4.5, 2025-12）。基准饱和与坐标快速移动说明同一模型在不同时间窗的分数几乎不能直接横比，评估时需要同时记录版本、日期和 prompt 模板。
+另外两个是 **persistent memory**（通过读写文件维护跨 turn 状态，区别于纯上下文窗口）、**extreme context engineering**（在 prompt 中显式给出大量过程性指令，区别于单纯的上下文压缩 / 重组 / 检索）。
+
+公理起点是「语言模型的上下文窗口有限 + 单调成本随序列长度增长」：要让模型在长程任务里不丢状态，必须把状态外置到文件、把计划外置到显式列表、把指令子集分到子 agent。四个组件各自对应一种外置策略（计划 / 子任务边界 / 跨 turn 状态 / 过程性指令）。
+
+这四项与 2025-2026 主流 agent 框架（Claude Code、Cursor、Aider 等）的设计选择基本对齐；同一底座模型在不同 scaffold 组合下的 benchmark 分数可能差几倍。
+
+**基准饱和与坐标移动**：早期 GPT-3 X-Large 在 MMLU 上只有 43.9%，但刷到接近饱和后被 MMLU-Pro 替代（具体口径见 §11.4.2）。
+
+GPQA 论文里 GPT-4 few-shot CoT 在 Diamond 子集上是 38.8%，而 2026 年 9 月的官方榜单上，GPQA Diamond 已有多个前沿模型超过 94%（[gpqa.ai](https://gpqa.ai/) 头部模型达 98.9%）。
+
+SWE-bench Verified 的最高分达到 79.2%（[swebench.com](https://www.swebench.com/) Claude Opus 4.5, 2025-12）。
+
+基准饱和与坐标快速移动说明同一模型在不同时间窗的分数几乎不能直接横比，评估时需要同时记录版本、日期和 prompt 模板。
 
 ### 11.6.1 SWE-bench
 
@@ -571,7 +634,11 @@ Terminal-Bench 与 Cybench 的难度口径不同。Cybench 用人类「首次解
 
 ### 11.6.3 Cybench
 
-[Cybench](https://arxiv.org/abs/2408.08926) 完成 40 个网络安全领域的「夺旗」（CTF）挑战。任务难度通过人类「首次解决时间」（First-Solve Time, FST）来度量；最难的题目由人类团队首解耗时约 24 小时 54 分钟，整体范围从约 2 分钟到 24 小时 54 分钟不等（论文 Figure 3 / Section 5）。公理起点是「人类首解时间反映题目的真实难度梯度」：CTF 比赛天然提供了一支庞大的领域专家群体，他们的 FST 是任务难度的客观锚点。
+[Cybench](https://arxiv.org/abs/2408.08926) 完成 40 个网络安全领域的「夺旗」（CTF）挑战。任务难度通过人类「首次解决时间」（First-Solve Time, FST）来度量。
+
+最难的题目由人类团队首解耗时约 24 小时 54 分钟，整体范围从约 2 分钟到 24 小时 54 分钟不等（论文 Figure 3 / Section 5）。
+
+公理起点是「人类首解时间反映题目的真实难度梯度」：CTF 比赛天然提供了一支庞大的领域专家群体，他们的 FST 是任务难度的客观锚点。
 
 ![图 11.6-5 Cybench 评测流程](images/11-6-5-cybench-workflow.png)
 
@@ -583,7 +650,11 @@ Terminal-Bench 与 Cybench 的难度口径不同。Cybench 用人类「首次解
 
 ### 11.6.4 MLE-bench
 
-[MLE-bench](https://arxiv.org/abs/2410.07095) 自动化参与 75 个 Kaggle 机器学习竞赛，包括数据处理、模型训练、超参调优和结果提交。公理起点是「Kaggle 奖牌比例 = 在独立测试集上的相对名次」：把 Kaggle 公开 leaderboard 当作人类基线，agent 的奖牌率直接量化「agent 在 ML 工程任务上接近或超过人类中等水平的频率」。在论文给定的设置下，最佳智能体（o1-preview + AIDE scaffold）在 pass@1 条件下获得任何 Kaggle 奖牌（bronze / silver / gold）的比例约为 **16.9%**（论文 Table 2）；同一最佳智能体在 pass@8 时这一比例上升至约 34.1%（论文 §1）。
+[MLE-bench](https://arxiv.org/abs/2410.07095) 自动化参与 75 个 Kaggle 机器学习竞赛，包括数据处理、模型训练、超参调优和结果提交。
+
+公理起点是「Kaggle 奖牌比例 = 在独立测试集上的相对名次」：把 Kaggle 公开 leaderboard 当作人类基线，agent 的奖牌率直接量化「agent 在 ML 工程任务上接近或超过人类中等水平的频率」。
+
+在论文给定的设置下，最佳智能体（o1-preview + AIDE scaffold）在 pass@1 条件下获得任何 Kaggle 奖牌（bronze / silver / gold）的比例约为 **16.9%**（论文 Table 2）；同一最佳智能体在 pass@8 时这一比例上升至约 34.1%（论文 §1）。
 
 ![图 11.6-7 MLE-bench 评测流程](images/11-6-7-mlebench-workflow.png)
 
@@ -621,11 +692,19 @@ ARC-AGI-1:
 
 *图 11.7-3 ARC-AGI-2 任务示例*
 
-它捕捉了一种更纯粹的、类似人类的模式识别和泛化能力，是早期 AGI 研究的重要基准。公理起点是「模式归纳可在不依赖语言与世界知识的前提下成立」：网格任务只要求从有限样本推断变换规则，知识库与语料规模对解法影响有限，传统 LLM 在此任务上表现极差。新一代模型的进展说明交互、搜索和测试时适应正在改变这类任务的解法空间——把推理的算力从「参数中」转移到「测试时搜索」上。
+它捕捉了一种更纯粹的、类似人类的模式识别和泛化能力，是早期 AGI 研究的重要基准。
+
+公理起点是「模式归纳可在不依赖语言与世界知识的前提下成立」：网格任务只要求从有限样本推断变换规则，知识库与语料规模对解法影响有限，传统 LLM 在此任务上表现极差。
+
+新一代模型的进展说明交互、搜索和测试时适应正在改变这类任务的解法空间——把推理的算力从「参数中」转移到「测试时搜索」上。
 
 ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到交互环境：模型在环境中尝试操作、观察反馈并调整策略，覆盖了 ARC-AGI-1/2 未涉及的「规则未知环境下的探索与归纳」。这是 ARC-AGI 系列首次引入交互环境的新成员。
 
-**ARC-AGI-1 自 o1/o3 后已基本解决**：ARC-AGI-1 早期传统 LLM 几乎无法通过，但在 OpenAI o1、o3 引入 test-time compute / search 后分数迅速上升至接近饱和，ARC-AGI-2 也正在被快速解决。这条经验观察支撑的论断是：test-time compute 在模式归纳类任务上能补足「参数中未压缩的推理能力」——纯语言建模 + scaling 并不能直接产生模式归纳能力，但配合搜索与自适应步数就能。这是 reasoning model 范式（CoT + search + test-time adaptation）改变纯推理任务解法空间的关键转折点，常作为 reasoning 模型价值的代表性证据。
+**ARC-AGI-1 自 o1/o3 后已基本解决**：ARC-AGI-1 早期传统 LLM 几乎无法通过，但在 OpenAI o1、o3 引入 test-time compute / search 后分数迅速上升至接近饱和，ARC-AGI-2 也正在被快速解决。
+
+这条经验观察支撑的论断是：test-time compute 在模式归纳类任务上能补足「参数中未压缩的推理能力」——纯语言建模 + scaling 并不能直接产生模式归纳能力，但配合搜索与自适应步数就能。
+
+这是 reasoning model 范式（CoT + search + test-time adaptation）改变纯推理任务解法空间的关键转折点，常作为 reasoning 模型价值的代表性证据。
 
 ![图 11.7-4 ARC-AGI-3 交互环境](images/11-7-4-arc-agi-3-environment.png)
 
@@ -685,7 +764,9 @@ ARC-AGI-3 在 2026 年 3 月发布，把任务从一次性网格预测切换到�
 
 ### 11.8.4 部署前测试
 
-美国安全研究所和英国人工智能安全研究所携手合作，公司在发布前向安全机构提供模型访问权限（目前为自愿性质），安全机构进行评估并向公司提交[报告](https://www.nist.gov/system/files/documents/2024/12/18/US_UK_AI%20Safety%20Institute_%20December_Publication-OpenAIo1.pdf)。
+美国安全研究所和英国人工智能安全研究所携手合作，公司在发布前向安全机构提供模型访问权限（目前为自愿性质）。
+
+安全机构进行评估并向公司提交[报告](https://www.nist.gov/system/files/documents/2024/12/18/US_UK_AI%20Safety%20Institute_%20December_Publication-OpenAIo1.pdf)。
 
 ### 11.8.5 但安全究竟是什么？
 
@@ -745,13 +826,21 @@ GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重�
 
 ### 11.10.1 训练-测试集重叠（Train-Test Overlap）
 
-在预训练数据即整个互联网的时代，确保测试集未被模型「见过」变得极其困难。这会导致评估结果虚高。解决方法从两条公理出发：① 如果模型在训练阶段见过某题，其在该题上的条件概率会比未见题更高（permutation test 的统计推断基础）；② 测试集相对训练语料的「时间距离」越大，污染概率越低。下面的四条路线分别从「推断」「披露」「时效」「私有」四个角度落实这两条公理。
+在预训练数据即整个互联网的时代，确保测试集未被模型「见过」变得极其困难。这会导致评估结果虚高。
+
+解决方法从两条出发点开始：① 如果模型在训练阶段见过某题，其在该题上的条件概率会比未见题更高，这是 permutation test 的统计推断基础。
+
+② 测试集相对训练语料的「时间距离」越大，训练语料包含该题的概率越低（工程先验，路线 3 再叠加「发布时间晚于训练截止」的硬条件）。
+
+下面的四条路线分别从「推断」「披露」「时效」「私有」四个角度落实这两条出发点。
 
 经典机器学习评估要求测试集不参与训练。ImageNet、SQuAD 这类基础模型时代的数据集通常有明确 train/test 划分；语言模型训练则会混合大规模、多来源语料，大部分机构也不会公开完整数据清单。
 
 #### 路线 1：尝试从模型中推断训练集和测试集的重叠部分
 
-公理：测试集中的样本应当可交换（exchangeability），即打乱顺序后模型的概率输出不变。若模型对某个排列显著更偏好，则可推断它曾接触过该集合的特定顺序。[PROVING TEST SET CONTAMINATION IN BLACK BOX LANGUAGE MODELS](https://arxiv.org/abs/2310.17623) 利用这一性质给出 black-box 模型污染的可证明下界。
+公理：测试集中的样本应当可交换（exchangeability），即打乱顺序后模型的概率输出不变。若模型对某个排列显著更偏好，则可推断它曾接触过该集合的特定顺序。
+
+[PROVING TEST SET CONTAMINATION IN BLACK BOX LANGUAGE MODELS](https://arxiv.org/abs/2310.17623) 利用这一性质给出 black-box 模型污染的可证明下界。
 
 ![图 11.10-1 训练-测试重叠推断思路](images/11-10-1-contamination-exchangeability.png)
 
@@ -777,11 +866,15 @@ GDPval 覆盖美国 GDP 前 9 个行业中的 44 个职业。这个细节很重�
 
 *图 11.10-2 基准标注错误和噪声*
 
-因此，现代评估不只需要更难的题，也需要更干净的题。Platinum benchmark 的思路是对已有基准做高质量人工复核，减少错误答案、歧义题和噪声标签（["Do Large Language Model Benchmarks Test Reliability?", arXiv:2502.03461](https://arxiv.org/abs/2502.03461)）。
+因此，现代评估不只需要更难的题，也需要更干净的题。
+
+Platinum benchmark 的思路是对已有基准做高质量人工复核，减少错误答案、歧义题和噪声标签（["Do Large Language Model Benchmarks Test Reliability?", arXiv:2502.03461](https://arxiv.org/abs/2502.03461)）。
 
 agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅看最终输出，还要看测试用例是否充分、任务是否能被简单脚本绕过、agent trace 是否暴露不合理捷径。第一性原理来源是「scoring 函数必须真正奖励目标行为」——若 trivial agent 能满足 scoring，则该 scoring 没有信度。
 
-τ-bench 是这条性质的反例。该基准在设计上把空响应记为成功，导致在 airline 子集里，38% 的任务在设计上本就不可完成（如改签不可退票），只返回空响应的 trivial agent 在该子集上拿到 38% 成功率，反而超过基于 GPT-4o 的 agent（[Zhu 等, Establishing Best Practices for Building Rigorous Agentic Benchmarks, arXiv:2507.02825](https://arxiv.org/abs/2507.02825)，论文 §1 与 §5.2）。
+τ-bench 是这条性质的反例。该基准在设计上把空响应记为成功，导致在 airline 子集里，38% 的任务在设计上本就不可完成（如改签不可退票），只返回空响应的 trivial agent 在该子集上拿到 38% 成功率。
+
+这一数字反而超过基于 GPT-4o 的 agent。该结果见 [Zhu 等, Establishing Best Practices for Building Rigorous Agentic Benchmarks, arXiv:2507.02825](https://arxiv.org/abs/2507.02825)（论文 §1 与 §5.2）。
 
 针对这类问题，[Docent](https://transluce.org/introducing-docent) 一类方法尝试用 LLM 辅助审查 agent 执行轨迹，帮助发现评估集自身的漏洞。
 
@@ -793,7 +886,9 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 
 评估对象必须先说清楚：当前比较的是方法还是模型/系统。这个边界就是评估的 rules of the game。
 
-公理起点是「评估结果的可比性来自被允许的自由度」。在 ImageNet 时代，研究者被允许修改的只有算法本身（其他变量都被数据集与训练协议钉死），因此评估的是方法——「同一张考卷下，谁的算法更好」。在 foundation-model 时代，研究者被允许修改一切（数据、tokenizer、训练配方、scaffold），因此评估的是模型/系统——「同一产品目标下，谁的整体更好」。两者回答的问题不同，规则也不同。
+公理起点是「评估结果的可比性来自被允许的自由度」。在 ImageNet 时代，研究者被允许修改的只有算法本身（其他变量都被数据集与训练协议钉死），因此评估的是方法——「同一张考卷下，谁的算法更好」。
+
+在 foundation-model 时代，研究者被允许修改一切（数据、tokenizer、训练配方、scaffold），因此评估的是模型/系统——「同一产品目标下，谁的整体更好」。两者回答的问题不同，规则也不同。
 
 - 过去：在 ImageNet 时代，我们评估的是方法（method），即在固定数据集和训练协议下，新算法的优劣。
 - 现在：我们更多评估的是模型/系统（model/system），即「端到端」的最终产品，开发者可以使用任何数据、任何技巧。
@@ -808,13 +903,23 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 
 ## 本章总结与下章衔接
 
-评估设计本身的工程判断可以收成三条规则。第一，**单一分数不足以支撑结论**——perplexity、exam、chat、agent、推理、安全、真实使用这七类评估各回答一个独立问题，任何一份模型评估材料都应先定位它属于哪一类，再判断结论的适用边界。这条规则的公理起点是「单一指标只能约束一个目标维度」：当目标是「模型有多好」这一多维构念时，任何一个数字都是多个分量的投影，没有跨分量的信息。
+评估设计本身的工程判断可以收成三条规则。第一，**单一分数不足以支撑结论**——perplexity、exam、chat、agent、推理、安全、真实使用这七类评估各回答一个独立问题，任何一份模型评估材料都应先定位它属于哪一类，再判断结论的适用边界。
 
-第二，**评估的规则优先于分数本身**——相同的「78%」分数在不同 prompt 范围、采样参数、工具权限、agent scaffold 下含义不同，比较前必须先确认 rules of the game 一致（§11.2 与 §11.11）。这对应 difficulty / realism / validity 三维度（§11.2）：规则变动会同时改变三维度，因此同一分数跨规则横比不成立。
+这条规则的公理起点是「单一指标只能约束一个目标维度」：当目标是「模型有多好」这一多维构念时，任何一个数字都是多个分量的投影，没有跨分量的信息。
 
-第三，**评估与训练相互定义**——LM-as-judge 的偏差清单（§11.5.5）直接决定偏好优化目标（[第 12 章 §12.5 偏好优化与 DPO 系列](../chapter12/chapter12_大模型基本训练流程.md)）和 RLVR 验证信号（[第 13 章 §13.3 GRPO 与 Dr. GRPO](../chapter13/chapter13_可验证奖励的强化学习.md)）的偏差结构，judge 与 reward 的偏差需要一起维护。这条规则的公理起点是「奖励函数定义优化目标」：评估侧的偏差会被训练侧的损失函数继承。
+第二，**评估的规则优先于分数本身**——相同的「78%」分数在不同 prompt 范围、采样参数、工具权限、agent scaffold 下含义不同，比较前必须先确认 rules of the game 一致（§11.2 与 §11.11）。
 
-下章进入[第 12 章 §12.2 大模型训练的第一个阶段：预训练（Pre-training，PT）](../chapter12/chapter12_大模型基本训练流程.md)：评估方法定下来后，训练流水线按 pre-training → mid-training → SFT → RLHF/PPO/DPO 组织；其中 RLHF 与 DPO 的偏好数据来源与 judge 偏差控制直接对应本章 §11.5.5 的四类偏差。
+这对应 difficulty / realism / validity 三维度（§11.2）：规则变动会同时改变三维度，因此同一分数跨规则横比不成立。
+
+第三，**评估与训练相互定义**——LM-as-judge 的偏差清单（§11.5.5）直接决定偏好优化目标的偏差结构，偏好优化的训练侧细节见 [第 12 章 §12.5 偏好优化与 DPO 系列](../chapter12/chapter12_大模型基本训练流程.md)。
+
+同一清单也决定 RLVR 验证信号的偏差结构（[第 13 章 §13.3 GRPO 与 Dr. GRPO](../chapter13/chapter13_可验证奖励的强化学习.md)），judge 与 reward 的偏差需要一起维护。
+
+这条规则的公理起点是「奖励函数定义优化目标」：评估侧的偏差会被训练侧的损失函数继承。
+
+下章进入[第 12 章 §12.2 大模型训练的第一个阶段：预训练（Pre-training，PT）](../chapter12/chapter12_大模型基本训练流程.md)：评估方法定下来后，训练流水线按 pre-training → mid-training → SFT → RLHF/PPO/DPO 组织。
+
+其中 RLHF 与 DPO 的偏好数据来源与 judge 偏差控制直接对应本章 §11.5.5 的四类偏差。
 
 ## 思考
 
@@ -833,7 +938,7 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - [MMLU-Pro, arXiv:2406.01574](https://arxiv.org/abs/2406.01574)
 - [GPQA, arXiv:2311.12022](https://arxiv.org/abs/2311.12022)
 - [Humanity's Last Exam, arXiv:2501.14249](https://arxiv.org/abs/2501.14249)
-- [τ-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains, arXiv:2406.12045](https://arxiv.org/abs/2406.12045) — Yao、Shinn、Razavi、Narasimhan（2024-06），Sierra / Princeton
+- [τ-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains, arXiv:2406.12045](https://arxiv.org/abs/2406.12045) — Yao、Shinn、Razavi、Narasimhan（2024-06），Sierra
 - [LAMBADA, arXiv:1606.06031](https://arxiv.org/abs/1606.06031)
 - [Jozefowicz 等, Exploring the Limits of Language Modeling, arXiv:1602.02410](https://arxiv.org/abs/1602.02410)
 - [Oren 等, Proving Test Set Contamination in Black Box Language Models, arXiv:2310.17623](https://arxiv.org/abs/2310.17623) — 用 permutation test 给出 black-box LLM 数据污染的可证明下界
@@ -857,7 +962,7 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - ["Do Large Language Model Benchmarks Test Reliability?" (Platinum benchmarks), arXiv:2502.03461](https://arxiv.org/abs/2502.03461)
 - [Zhu 等, Establishing Best Practices for Building Rigorous Agentic Benchmarks, arXiv:2507.02825](https://arxiv.org/abs/2507.02825)
 - [Docent（Transluce）：用 LLM 审查 agent 执行轨迹](https://transluce.org/introducing-docent)
-- [nanoGPT speedrun (Modded NanoGPT)](https://github.com/KellerJordan/ModdedNanoGPT)
+- [nanoGPT speedrun (Modded NanoGPT)](https://github.com/KellerJordan/modded-nanogpt)
 - [OpenAI, Introducing SWE-bench Verified](https://openai.com/index/introducing-swe-bench-verified/)
 - [HELM Leaderboard](https://crfm.stanford.edu/helm/latest/)
 - [LMArena Leaderboard](https://lmarena.ai/)
@@ -870,26 +975,26 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 
 - [HellaSwag, arXiv:1905.07830](https://arxiv.org/abs/1905.07830)（§11.3.8）
 - [MMLU / Hendrycks 2020, arXiv:2009.03300](https://arxiv.org/abs/2009.03300)（§11.4.1 Table 1）
-- [MMLU-Pro, arXiv:2406.01574](https://arxiv.org/abs/2406.01574)（§11.4.2 §3 / Table 1）
+- [MMLU-Pro, arXiv:2406.01574](https://arxiv.org/abs/2406.01574)（§11.4.2 §3.1 / 附录 Table 5）
 - [GPQA, arXiv:2311.12022](https://arxiv.org/abs/2311.12022)（§11.4.3 §1 §3 §4 Table 5）
-- [Humanity's Last Exam, arXiv:2501.14249](https://arxiv.org/abs/2501.14249)（§11.4.4 §2）
+- [Humanity's Last Exam, arXiv:2501.14249](https://arxiv.org/abs/2501.14249)（§11.4.4 §3）
 - [τ-bench, arXiv:2406.12045](https://arxiv.org/abs/2406.12045)（§11.10.2 引言）
 - [LAMBADA, arXiv:1606.06031](https://arxiv.org/abs/1606.06031)（§11.3.8）
 - [Jozefowicz 等, Exploring the Limits of Language Modeling, arXiv:1602.02410](https://arxiv.org/abs/1602.02410)（§11.3.4）
 - [Oren 等, Proving Test Set Contamination in Black Box Language Models, arXiv:2310.17623](https://arxiv.org/abs/2310.17623)（§11.10.1 路线 1）
 - [Andy K Zhang 等, Language model developers should report train-test overlap, arXiv:2410.08385](https://arxiv.org/abs/2410.08385)（§11.10.1 路线 2）
-- [Chatbot Arena, arXiv:2403.04132](https://arxiv.org/abs/2403.04132)（§11.5.1 §3）
+- [Chatbot Arena, arXiv:2403.04132](https://arxiv.org/abs/2403.04132)（§11.5.1 §4）
 - [IFEval, arXiv:2311.07911](https://arxiv.org/abs/2311.07911)（§11.5.2）
 - [AlpacaEval 2.0 length-controlled debiasing, arXiv:2404.04475](https://arxiv.org/abs/2404.04475)（§11.5.3）
 - [WildBench, arXiv:2406.04770](https://arxiv.org/abs/2406.04770)（§11.5.4 §2 §3 §4 Table 3）
 - [LLM-as-judge (Zheng 2023), arXiv:2306.05685](https://arxiv.org/abs/2306.05685)（§11.5.5 §3）
 - [JudgeBench, arXiv:2410.12784](https://arxiv.org/abs/2410.12784)（§11.5.5）
-- [SWE-bench, arXiv:2310.06770](https://arxiv.org/abs/2310.06770)（§11.6.1 §3）
+- [SWE-bench, arXiv:2310.06770](https://arxiv.org/abs/2310.06770)（§11.6.1 摘要 / §2.1）
 - [Terminal-Bench, arXiv:2601.11868](https://arxiv.org/abs/2601.11868)（§11.6.2 §2 / 摘要），[官方网站](https://www.tbench.ai/)
 - [Cybench, arXiv:2408.08926](https://arxiv.org/abs/2408.08926)（§11.6.3 §5 / Figure 3）
 - [MLE-bench, arXiv:2410.07095](https://arxiv.org/abs/2410.07095)（§11.6.4 Table 2 / §1）
-- [AIR-Bench, arXiv:2407.17436](https://arxiv.org/abs/2407.17436)（§11.8.2 §3）
-- [HarmBench, arXiv:2402.04249](https://arxiv.org/abs/2402.04249)（§11.8.1 §3）
+- [AIR-Bench, arXiv:2407.17436](https://arxiv.org/abs/2407.17436)（§11.8.2 摘要 / §2.1）
+- [HarmBench, arXiv:2402.04249](https://arxiv.org/abs/2402.04249)（§11.8.1 §4.1）
 - [Zou 等, Universal and Transferable Adversarial Attacks (GCG), arXiv:2307.15043](https://arxiv.org/abs/2307.15043)（§11.8.3）
 - [Clio, arXiv:2412.13678](https://arxiv.org/abs/2412.13678)（§11.9.2）
 - [MedHELM, arXiv:2505.23802](https://arxiv.org/abs/2505.23802)（§11.9.3 §3）
@@ -906,7 +1011,7 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - [LMArena Leaderboard](https://lmarena.ai/)（§11.1.1 / §11.5.1）
 - [Artificial Analysis](https://artificialanalysis.ai/)（§11.1.1 / §11.1.2）
 - [OpenRouter Rankings](https://openrouter.ai/rankings)（§11.1.1 / §11.1.2）
-- [nanoGPT speedrun (Modded NanoGPT)](https://github.com/KellerJordan/ModdedNanoGPT)（§11.11）
+- [nanoGPT speedrun (Modded NanoGPT)](https://github.com/KellerJordan/modded-nanogpt)（§11.11）
 - [Docent（Transluce）：用 LLM 审查 agent 执行轨迹](https://transluce.org/introducing-docent)（§11.10.2）
 - 查阅日期：2026-05-28 / 2026-09-05 / 2026-09-16 / 2026-09-22。
 
@@ -915,10 +1020,16 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 本章事实声明均按论文 § 编号 + 段首句定位：
 
 - §11.3 perplexity 公理起点：language model as distribution $p(x)$ 与 $\mathrm{PPL}=e^L$ 定义见 lecture_12.py L60-L106；Jozefowicz 等 2016 1BW 困惑度 51.3 → 30.0 见 [arXiv:1602.02410](https://arxiv.org/abs/1602.02410) Table 1 / §5。
-- §11.4 知识类基准：MMLU GPT-3 X-Large 43.9% / Small 25.9% / Medium 24.9% / Large 26.0% 见 [arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1；MMLU-Pro 12,032 题 + 14 学科 + 来源组成 6,810 + 4,083 + 598 + 541 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §3 Table 1；GPT-4o MMLU 88.7% (CoT) / 87.2% (direct) 与 MMLU-Pro 72.6% 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §4 Table 2；GPQA 448 / 546 / 198 题数 + 61 PhD contractors + 65% / 74% 专家准确率 + 34.1% ± 2.3% 非专家准确率 + GPT-4 38.7% / 39.7% / 38.8% 见 [arXiv:2311.12022](https://arxiv.org/abs/2311.12022) §1 §3.1 §3.2 §4 Table 5；HLE 2,500 题 + 14% multimodal + 24% / 76% MCQ / EM + $500K 奖金见 [arXiv:2501.14249](https://arxiv.org/abs/2501.14249) §2。
-- §11.5 指令遵循基准：Chatbot Arena BT 公理 $p(A \succ B) = \sigma(\alpha_A - \alpha_B)$ 与 $\prod_{(i,j)} p(i \succ j)^{[i \succ j]}$ 见 [arXiv:2403.04132](https://arxiv.org/abs/2403.04132) §3；WildBench 1024 题（从 1M 中筛出）+ WB-Reward / WB-Score Pearson 相关系数 + 多 judge ensemble 见 [arXiv:2406.04770](https://arxiv.org/abs/2406.04770) §2.1 §3.1 §3.2 §4.2 Table 3；AlpacaEval 2.0 length-controlled win rate 见 [arXiv:2404.04475](https://arxiv.org/abs/2404.04475)；LLM-as-judge 四类偏差（length / position / self-preference / style）见 [arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3。
-- §11.6 智能体基准：SWE-bench 2,294 题 + 12 仓库见 [arXiv:2310.06770](https://arxiv.org/abs/2310.06770) §3；Terminal-Bench 2.0 数据集构造（93 contributors / 229 tasks / 89 tasks 入 2.0 / frontier < 65%）见 [arXiv:2601.11868](https://arxiv.org/abs/2601.11868) §2 / 摘要；Cybench 40 题 + FST 2 分钟到 24 小时 54 分钟见 [arXiv:2408.08926](https://arxiv.org/abs/2408.08926) §5 / Figure 3；MLE-bench 75 题 + o1-preview + AIDE pass@1 16.9% / pass@8 34.1% 见 [arXiv:2410.07095](https://arxiv.org/abs/2410.07095) Table 2 / §1。
-- §11.8 安全基准：HarmBench 510 行为类别见 [arXiv:2402.04249](https://arxiv.org/abs/2402.04249) §3；AIR-Bench 314 风险类别 + 5,694 提示见 [arXiv:2407.17436](https://arxiv.org/abs/2407.17436) §3。
+- §11.4 知识类基准：MMLU GPT-3 X-Large 43.9% / Small 25.9% / Medium 24.9% / Large 26.0% 见 [arXiv:2009.03300](https://arxiv.org/abs/2009.03300) Table 1；MMLU-Pro 12,032 题 + 14 学科见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §3.1，来源组成 6,810 + 4,083 + 598 + 541 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) 附录 Table 5；GPT-4o MMLU 88.7% (CoT) / 87.2% (direct) 与 MMLU-Pro 72.6% 见 [arXiv:2406.01574](https://arxiv.org/abs/2406.01574) §6.2 Table 3；GPQA 448 / 546 / 198 题数 + 61 PhD contractors + 65% / 74% 专家准确率 + 34.1% ± 2.3% 非专家准确率 + GPT-4 38.7% / 39.7% / 38.8% 见 [arXiv:2311.12022](https://arxiv.org/abs/2311.12022) §1 §3.1 §3.2 §4 Table 5；HLE 2,500 题 + 14% multimodal + 24% / 76% MCQ / EM + $500K 奖金见 [arXiv:2501.14249](https://arxiv.org/abs/2501.14249) §3。
+- §11.5 指令遵循基准：Chatbot Arena BT 公理 $p(A \succ B) = \sigma(\alpha_A - \alpha_B)$ 与 $\prod_{(i,j)} p(i \succ j)^{[i \succ j]}$ 见 [arXiv:2403.04132](https://arxiv.org/abs/2403.04132) §4；WildBench 1024 题（从 1M 中筛出）+ WB-Reward / WB-Score Pearson 相关系数 + 多 judge ensemble 见 [arXiv:2406.04770](https://arxiv.org/abs/2406.04770) §2.1 §3.1 §3.2 §4.2 Table 3；AlpacaEval 2.0 length-controlled win rate 见 [arXiv:2404.04475](https://arxiv.org/abs/2404.04475)；LLM-as-judge 四类偏差（position / verbosity / self-enhancement / limited capability）见 [arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3.3。
+- §11.6 智能体基准：SWE-bench 2,294 题 + 12 仓库见 [arXiv:2310.06770](https://arxiv.org/abs/2310.06770) 摘要 / §2.1；Terminal-Bench 2.0 数据集构造（93 contributors / 229 tasks / 89 tasks 入 2.0 / frontier < 65%）见 [arXiv:2601.11868](https://arxiv.org/abs/2601.11868) §2 / 摘要；Cybench 40 题 + FST 2 分钟到 24 小时 54 分钟见 [arXiv:2408.08926](https://arxiv.org/abs/2408.08926) §5 / Figure 3；MLE-bench 75 题 + o1-preview + AIDE pass@1 16.9% / pass@8 34.1% 见 [arXiv:2410.07095](https://arxiv.org/abs/2410.07095) Table 2 / §1。
+- §11.8 安全基准：HarmBench 510 行为类别见 [arXiv:2402.04249](https://arxiv.org/abs/2402.04249) §4.1；AIR-Bench 314 风险类别 + 5,694 提示见 [arXiv:2407.17436](https://arxiv.org/abs/2407.17436) 摘要 / §2.1。
 - §11.9 真实性：GDPval 44 职业 + 9 行业见 [arXiv:2510.04374](https://arxiv.org/abs/2510.04374) §2；MedHELM 121 临床任务 + 29 临床医生贡献见 [arXiv:2505.23802](https://arxiv.org/abs/2505.23802) §3。
 - §11.10 有效性：contamination 四条路线的公理起点见 [arXiv:2310.17623](https://arxiv.org/abs/2310.17623) §3 与 [arXiv:2410.08385](https://arxiv.org/abs/2410.08385) §1；τ-bench airline 子集 38% trivial 胜率见 [arXiv:2507.02825](https://arxiv.org/abs/2507.02825) §1 §5.2。
 - §11.11 rules of the game：method vs model/system 的 ImageNet 时代 vs foundation-model 时代边界见 lecture_12.py L379-L390；nanoGPT speedrun 范式见 lecture_12.py L384-L386。
+
+## 待核证清单
+
+本章以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
+
+- `chapter11_评估与基准测试.md:L705` — 「ARC-AGI-2 也正在被快速解决」——原因：ARC Prize 官方榜单为 JavaScript 渲染，静态抓取取不到 ARC-AGI-2 当前分数，无法给出「快速解决」的量化证据；已试：`https://arcprize.org/leaderboard`、`https://arcprize.org/arc-agi`（均返回无分数壳页面），`https://openai.com/index/o3-and-gpt-4o-alpha/`（仅含 2024-12 预测「o3 将把 ARC-AGI-2 压到 30% 以下」）。

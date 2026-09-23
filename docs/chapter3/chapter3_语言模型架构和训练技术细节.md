@@ -6,7 +6,8 @@
 
 这一章沿同一条问题主线推进：现代默认骨架里每一项选择都在解决哪个具体瓶颈；它和原始 Transformer 的差异来自何处；在什么场景下保留可调余地。
 
-本章按五块组织内容：§3.1 回顾位置编码、多头注意力、FFN、残差和归一化等基础模块；§3.2 把这些模块换成 Pre-norm + RMSNorm + no bias + SwiGLU + RoPE 等现代默认并解释各自解决的问题，其中 §3.2.5 把注意力变体按 KV cache、稀疏读取、线性时间三条线展开；§3.3 给出超参数经验区间；§3.4 介绍稳定性技巧。
+本章按五块组织内容：§3.1 回顾位置编码、多头注意力、FFN、残差和归一化等基础模块；§3.2 把这些模块换成 Pre-norm + RMSNorm + no bias + SwiGLU + RoPE 等现代默认并解释各自解决的问题，其中 §3.2.5 把注意力变体按 KV cache、稀疏读取、线性时间三条线展开；§3.3 给出超参数经验区间；
+§3.4 介绍稳定性技巧。
 
 ## 本章学习目标
 
@@ -38,15 +39,20 @@
 
 这一节给出位置编码、多头注意力、残差 + 归一化和 FFN 四个基础模块的最小必要内容，作为 §3.2 现代默认骨架的历史基线。读完应能用一张公式账本复述原始 Transformer 各模块的输入输出、形状和它们组合成 block 的方式，并知道后续哪些位置会被 Pre-norm、RMSNorm、SwiGLU、RoPE 等替换。
 
-Transformer 模型的起源可以追溯到 2017 年，当时由 Google 研究团队在论文[《Attention Is All You Need》](https://arxiv.org/abs/1706.03762)中首次提出。该模型的核心创新是引入 self-attention，摒弃了传统的循环神经网络（RNN）和卷积神经网络（CNN）结构。self-attention 允许模型在处理序列数据时并行计算，从而提高计算效率，并改善长距离依赖建模。
+Transformer 模型的起源可以追溯到 2017 年，当时由 Google 研究团队在论文[《Attention Is All You Need》](https://arxiv.org/abs/1706.03762)中首次提出。该模型的核心创新是引入 self-attention，摒弃了传统的循环神经网络（RNN）和卷积神经网络（CNN）结构。
+self-attention 允许模型在处理序列数据时并行计算，从而提高计算效率，并改善长距离依赖建模。
 
 ![图 3.1-1 Transformer 架构](images/3-1-1-transformer.png)
 
-*图 3.1-1 现代 decoder-only block 的整体结构，标注 Causal Multi-Head Self-Attention、Absolute Position Embeddings、Add & Dropout、Position-Wise Feed-Forward 等组件；这套 attention + FFN + residual + norm 骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，但差异是单 stack 而非 encoder-decoder 双 stack*
+*图 3.1-1 现代 decoder-only block 的整体结构，标注 Causal Multi-Head Self-Attention、Absolute Position Embeddings、Add & Dropout、Position-Wise Feed-Forward 等组件；
+这套 attention + FFN + residual + norm 骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，
+但差异是单 stack 而非 encoder-decoder 双 stack*
 
-图 3.1-1 给出现代 decoder-only block 的标准骨架：左侧是输入到输出的纵向流（Token Embedding + Absolute Position Embeddings 相加 → Add & Dropout → N 个 Transformer Block → Norm → Linear → Softmax），右侧把单个 block 展开为 Causal Multi-Head Self-Attention、Add、Dropout、Position-Wise Feed-Forward、Norm 五个组件的串联加两条 residual。
+图 3.1-1 给出现代 decoder-only block 的标准骨架：左侧是输入到输出的纵向流（Token Embedding + Absolute Position Embeddings 相加 → Add & Dropout → N 个 Transformer Block → Norm → Linear → Softmax），
+右侧把单个 block 展开为 Causal Multi-Head Self-Attention、Add、Dropout、Position-Wise Feed-Forward、Norm 五个组件的串联加两条 residual。
 
-这套”attention + FFN + residual + norm”骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，差异有三：(1) 注意力改为 Causal Multi-Head Self-Attention（mask 掉未来位置），不再保留原始 encoder-decoder 之间的 cross-attention；(2) block 内 norm 位置从 Post-LN (Vaswani et al., 2017 §3.1) 改为 Pre-LN，成为后续 decoder-only LLM 的默认；(3) 位置编码方案与具体激活函数与原始 Transformer 不同。
+这套”attention + FFN + residual + norm”骨架与原始 Transformer (Vaswani et al., 2017) §3.1 encoder/decoder block 共享同一族组件，差异有三：(1) 注意力改为 Causal Multi-Head Self-Attention（mask 掉未来位置），
+不再保留原始 encoder-decoder 之间的 cross-attention；(2) block 内 norm 位置从 Post-LN (Vaswani et al., 2017 §3.1) 改为 Pre-LN，成为后续 decoder-only LLM 的默认；(3) 位置编码方案与具体激活函数与原始 Transformer 不同。
 
 第 (1)(2) 点差异进入 §3.2 集中讨论的 norm 位置与注意力形式；第 (3) 点中位置编码进入 §3.2.4，激活函数进入 §3.2.3。
 
@@ -72,7 +78,8 @@ $$
 X = E_{\text{token}} + PE(pos)
 $$
 
-正余弦位置编码是 Transformer 模型中为序列引入**位置信息**的关键设计。由于 Transformer 的核心是自注意力机制，它**本身不具备对 token 顺序**的感知能力：如果直接把同一组词向量输入模型，那么“我爱你”和“你爱我”会被视为相同的 token 集合。为了解决这一问题，需要在输入中显式加入位置信息。正余弦位置编码是一种无需训练、通过固定公式生成的位置表示方式，其核心思想是利用不同频率的正弦和余弦函数，为序列中的每个位置生成一个唯一的、且具有相对位置关系感知能力的编码向量。
+正余弦位置编码是 Transformer 模型中为序列引入**位置信息**的关键设计。由于 Transformer 的核心是自注意力机制，它**本身不具备对 token 顺序**的感知能力：如果直接把同一组词向量输入模型，那么“我爱你”和“你爱我”会被视为相同的 token 集合。为了解决这一问题，需要在输入中显式加入位置信息。正余弦位置编码是一种无需训练、
+通过固定公式生成的位置表示方式，其核心思想是利用不同频率的正弦和余弦函数，为序列中的每个位置生成一个唯一的、且具有相对位置关系感知能力的编码向量。
 
 编码向量的维度按相邻两维分成一组，第 $i$ 组（ $i = 0, 1, \dots, d_{\text{model}}/2 - 1$ ）共用同一个频率。对序列中第 $pos$ 个位置（从 0 开始计数），这一组的偶数维 $2i$ 用正弦函数：
 
@@ -108,7 +115,8 @@ $$
 
 *图 3.1-2 multi-head attention 将 Q/K/V 拆成多个 head 并行计算，再拼接回模型维度*
 
-attention 可以看作按相关性加权求和：query 表示当前位置想找什么，key 表示历史位置能被怎样匹配，value 表示被读出并汇总的信息。multi-head attention 把同一个 hidden state 投影到多个较低维子空间，每个 head 独立计算 attention，再把结果拼接回 $d_{\text{model}}$ 。这样模型可以同时表达多种依赖模式，而总矩阵乘法规模仍与模型维度绑定。
+attention 可以看作按相关性加权求和：query 表示当前位置想找什么，key 表示历史位置能被怎样匹配，value 表示被读出并汇总的信息。multi-head attention 把同一个 hidden state 投影到多个较低维子空间，每个 head 独立计算 attention，再把结果拼接回 $d_{\text{model}}$ 。
+这样模型可以同时表达多种依赖模式，而总矩阵乘法规模仍与模型维度绑定。
 
 **1. 单头注意力的做法与局限**
 
@@ -131,7 +139,8 @@ $$
 
 **2. 多头注意力的设计思想**
 
-多头注意力通过将 $d_{\text{model}}$ 维的查询、键、值拆分为 $h$ 个独立的头，每个头在更低维的空间（ $d_k = d_{\text{model}} / h$ ）中并行执行注意力计算，从而使模型能够从多个表示子空间中联合提取信息。每个头都有自己的投影矩阵，可以关注到不同类型的特征，例如（这只是个例子，我们无法确定每个头的分工） **有的头可能聚焦局部语法结构，有的头则捕捉远距离语义依赖**。
+多头注意力通过将 $d_{\text{model}}$ 维的查询、键、值拆分为 $h$ 个独立的头，每个头在更低维的空间（ $d_k = d_{\text{model}} / h$ ）中并行执行注意力计算，从而使模型能够从多个表示子空间中联合提取信息。每个头都有自己的投影矩阵，可以关注到不同类型的特征，例如（这只是个例子，我们无法确定每个头的分工）
+ **有的头可能聚焦局部语法结构，有的头则捕捉远距离语义依赖**。
 
 
 **3. 多头注意力的具体计算过程**
@@ -152,17 +161,17 @@ Q = Q.transpose(1, 2)                        # [bs, h, seq_len, d_k]
 对每个头 $i$ ，独立执行缩放点积注意力：
 
 $$
-\text{Head}_i = \text{Attention}(Q_i, K_i, V_i) = \text{softmax}\left(\frac{Q_i K_i^T}{\sqrt{d_k}}\right)V_i
+H_i = \text{Attention}(Q_i, K_i, V_i) = \text{softmax}\left(\frac{Q_i K_i^T}{\sqrt{d_k}}\right)V_i
 $$
 
-其中 $Q_i K_i^T$ 的形状为 $[\text{batch}, h, \text{seq}, \text{seq}]$ ，表示每个头内部所有位置两两之间的注意力分数。每个头的输出 $\text{Head}_i$ 形状为 $[\text{batch}, \text{seq}, d_k]$ 。
+其中 $Q_i K_i^T$ 的形状为 $[\text{batch}, h, \text{seq}, \text{seq}]$ ，表示每个头内部所有位置两两之间的注意力分数。每个头的输出记作 $H_i$ ，形状为 $[\text{batch}, \text{seq}, d_k]$ 。
 
 **第三步：拼接与最终线性变换**
 
 将所有头的输出沿头维度拼接起来，恢复原始维度：
 
 $$
-\text{MultiHead}(Q,K,V) = \text{Concat}(\text{Head}_1, ..., \text{Head}_h)
+\text{MultiHead}(Q,K,V) = \text{Concat}(H_1, ..., H_h)
 $$
 
 拼接后的形状为 $[\text{batch}, \text{seq}, h \times d_k] = [\text{batch}, \text{seq}, d_{\text{model}}]$。最后通过一个输出投影矩阵 $W^O$（形状 $[d_{\text{model}}, d_{\text{model}}]$）进行线性变换，得到最终的多头注意力输出：
@@ -193,15 +202,15 @@ $$
 **Head 2**：关注**共指关系**（代词指代）
 **Head 3**：关注**语义相似**（同义词）
 
-**同时还可以提升表示能力**，因为每头在低维子空间（ $d_k = 64$ ）计算，比单头在高维空间更高效
-多头合并相当于**高秩矩阵分解**，表达能力更强。
+**表示能力来自分工**：每个头只在 $d_k = 64$ 的子空间上给出一套加权，多个头覆盖不同的子空间与不同的 attention pattern，拼接后再由 $W^O$ 混合回 $d_{\text{model}}$ 维，语法、共指、语义相似等不同依赖可以由不同头分别承担。
 
-**计算效率也更高**，各头可**并行计算**，适合 GPU 加速（到 GPU 那章可知道），总计算量与单头相当（ $d_{\text{model}} \times d_{\text{model}}$ ）。
+**计算效率来自并行**：各头计算相互独立，可以并行执行，适合 GPU 加速；总计算量与单头相当（ $d_{\text{model}} \times d_{\text{model}}$ ）。
 
 
 **缩放因子 $\sqrt{d_k}$ 的作用**
 
-原始论文 §3.2.1（Vaswani et al., 2017）正文说明： $d_k$ 较大时点积的绝对值会变得很大，将 softmax 推入梯度极小的区域，因此对点积做 $1/\sqrt{d_k}$ 的缩放。论文同节脚注 4 给出方差推导的完整形式：假设 $q, k$ 各分量独立且零均值、方差为 1，则点积 $Q \cdot K = \sum_{i=1}^{d_k} q_i k_i$ 满足
+原始论文 §3.2.1（Vaswani et al., 2017）正文说明： $d_k$ 较大时点积的绝对值会变得很大，将 softmax 推入梯度极小的区域，因此对点积做 $1/\sqrt{d_k}$ 的缩放。论文同节脚注 4 给出方差推导的完整形式：假设 $q, k$ 各分量独立且零均值、方差为 1，
+则点积 $Q \cdot K = \sum_{i=1}^{d_k} q_i k_i$ 满足
 
 $$
 \text{Var}(Q \cdot K) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = d_k \cdot \text{Var}(q_i k_i)
@@ -349,13 +358,14 @@ ReLU 的**计算高效**，相比 Sigmoid/Tanh，ReLU 的导数计算简单（0 
 
 ## 3.2 Transformer 的现代变体及代表模型
 
-这一节按 block 的结构决策拆开看现代 dense decoder 的默认骨架：归一化位置与类型（§3.2.1）、前馈网络与激活函数（§3.2.2 / §3.2.3）、位置编码（§3.2.4）、注意力变体（§3.2.5）。每条决策都对应一组具体工程权衡（训练稳定性、数据移动、表达效率、KV cache 体积、长上下文能力），读完应能对「为什么这套默认」给出可迁移的解释，而不是只记住一组术语。
+这一节按 block 的结构决策拆开看现代 dense decoder 的默认骨架：归一化位置与类型（§3.2.1）、前馈网络与激活函数（§3.2.2 / §3.2.3）、位置编码（§3.2.4）、注意力变体（§3.2.5）。每条决策都对应一组具体工程权衡（训练稳定性、数据移动、表达效率、KV cache 体积、长上下文能力），读完应能对「为什么这套默认」
+给出可迁移的解释，而不是只记住一组术语。
 
 原始 Transformer 论文给出了注意力、FFN、残差和归一化的基本骨架，但今天训练 decoder-only LLM 时，默认配置已经发生了明显变化。更稳妥的阅读方式是拆开看每个 block 的结构决策：norm 放在哪里、FFN 是否门控、位置编码如何注入、KV cache 如何压缩、softmax 如何保持稳定。
 
 ![图 3.2-1 语言模型架构配置对比](images/3-2-1-model-configs.png)
 
-*图 3.2-1 把多代模型的 norm、FFN、位置编码和注意力决策排成同一张表*
+*图 3.2-1 把多代模型的 norm、层内并行方式（Parallel Layer）、位置编码与激活等决策排成同一张表*
 
 图中的表格适合用来观察趋同趋势，不适合作为固定排行榜。许多模型都从 Post-LN、ReLU、绝对位置编码逐步转向 Pre-norm/RMSNorm、门控 FFN、RoPE 或其变体，并在推理侧引入 GQA、MLA、CLA、SWA、NoPE 等减小 KV cache 或改善长上下文的设计。
 
@@ -368,11 +378,12 @@ ReLU 的**计算高效**，相比 Sigmoid/Tanh，ReLU 的导数计算简单（0 
 
 今天训练 decoder-only LLM 时，原始 Transformer 更适合作为历史基线。现代常见基线会在 Pre-norm、RMSNorm、无 bias 线性层、门控 FFN、RoPE、KV cache 友好的注意力以及 softmax 稳定化技巧之间做组合取舍。
 
-如果把现代 dense decoder 主线压缩成一句话，比较接近的默认骨架就是：**Pre-norm + RMSNorm + no bias + SwiGLU + RoPE**。长上下文或高效推理再在这个骨架之上叠加 **NoPE/SWA/full attention 的交替**，或者引入 **GQA、MLA、CLA、DSA** 等面向 KV cache、稀疏读取或长程信息流的变体。
+如果把现代 dense decoder 主线压缩成一句话，比较接近的默认骨架就是：**Pre-norm + RMSNorm + no bias + SwiGLU + RoPE**。长上下文或高效推理再在这个骨架之上叠加 **NoPE/SWA/full attention 的交替**，或者引入 **GQA、MLA、CLA、DSA** 等面向 KV cache、
+稀疏读取或长程信息流的变体。
 
 ![图 3.2-2 现代 Transformer 默认骨架](images/3-2-2-modern-transformer-defaults.png)
 
-*图 3.2-2 把上述默认骨架串成单个 dense decoder block，标注每个组件的输入 / 输出形状与关键差异*
+*图 3.2-2 左侧是完整模型堆叠，中间放大单个 decoder block，标出 block 级输入 / 输出形状（batch_size, seq_len, d_model）与 Add/Norm、Causal MHA（RoPE）、Position-Wise FFN 的串联，右侧列出与原始 Transformer 的差异*
 
 ![图 3.2-3 架构设计取舍](images/3-2-3-architecture-design-decisions.png)
 
@@ -391,7 +402,8 @@ ReLU 的**计算高效**，相比 Sigmoid/Tanh，ReLU 的导数计算简单（0 
 | GQA / MLA / CLA | 减少或重组 KV cache | 关注 cache 大小、带宽和额外投影计算；理论注意力复杂度只是其中一项 |
 | DSA | 稀疏读取历史 token | 它挑的是历史位置；压缩 K/V 归 GQA/MLA/CLA，选专家归 MoE routing |
 
-因此，读现代模型配置时可以先问“它想省什么或稳住什么”：RMSNorm/no bias 主要减少归一化和线性层的额外状态，SwiGLU 提高 FFN 表达效率，RoPE/NoPE/SWA/full attention 处理位置信息与长程连接，GQA/MLA/CLA 处理 KV cache，DSA 处理稀疏历史读取。这个分组能避免把所有名词都粗略归为“长上下文技巧”。
+因此，读现代模型配置时可以先问“它想省什么或稳住什么”：RMSNorm/no bias 主要减少归一化和线性层的额外状态，SwiGLU 提高 FFN 表达效率，RoPE/NoPE/SWA/full attention 处理位置信息与长程连接，GQA/MLA/CLA 处理 KV cache，DSA 处理稀疏历史读取。
+这个分组能避免把所有名词都粗略归为“长上下文技巧”。
 
 这里尤其要区分两个都可能写成 top-k 的机制：attention 稀疏化是在历史 token 或 KV 位置里选子集；MoE routing 则是在 FFN 专家里选子集。前者改变“看哪些上下文”，后者改变“用哪些专家计算当前 token”。
 
@@ -426,9 +438,12 @@ $$
 
 *图 3.2-5 Pre-norm 与 Post-norm 的收敛对比：左图为英越翻译 Dev BLEU，右上为 IWSLT 验证损失与 BLEU，右下为 BERT 预训练验证损失*
 
-采用预归一化配合其他稳定化技巧后，即使不使用**预热机制**，系统表现也能媲美甚至**优于**需要精细预热方案的**后归一化 LayerNorm**。左图展示了英语-越南语机器翻译（Nguyen & Salazar, *Transformers without Tears: Improving the Normalization of Self-Attention*, IWSLT 2019, [arXiv:1910.05895](https://arxiv.org/abs/1910.05895)）下的 Dev BLEU 收敛轨迹；右上是 Xiong 2020 在 IWSLT 机器翻译任务上的验证损失与 BLEU 曲线（同一任务的 Adam 优化器 × 预热对比）；右下是 BERT 在预训练步数上的验证损失对比，是当前图片中唯一跳出机器翻译场景的实验。
+采用预归一化配合其他稳定化技巧后，即使不使用**预热机制**，系统表现也能媲美甚至**优于**需要精细预热方案的**后归一化 LayerNorm**。
+左图展示了英语-越南语机器翻译（Nguyen & Salazar, *Transformers without Tears: Improving the Normalization of Self-Attention*, IWSLT 2019, [arXiv:1910.05895](https://arxiv.org/abs/1910.05895)）
+下的 Dev BLEU 收敛轨迹；右上是 Xiong 2020 在 IWSLT 机器翻译任务上的验证损失与 BLEU 曲线（同一任务的 Adam 优化器 × 预热对比）；右下是 BERT 在预训练步数上的验证损失对比，是当前图片中唯一跳出机器翻译场景的实验。
 
-关于预归一化的优势存在**多种解释**：有研究认为它能避免层间**梯度衰减**，保持**梯度规模恒定**；而未使用预热的后归一化会导致**梯度爆炸**。综合这些论点，预归一化本身被普遍接受为更稳定的训练架构选择——它通过把 LayerNorm 移到子层输入前来避免 LayerNorm 的可学习缩放叠加进 residual stream，从而保持 residual stream 的恒等通路。
+关于预归一化的优势存在**多种解释**：有研究认为它能避免层间**梯度衰减**，保持**梯度规模恒定**；而未使用预热的后归一化会导致**梯度爆炸**。综合这些论点，预归一化本身被普遍接受为更稳定的训练架构选择——它通过把 LayerNorm 移到子层输入前来避免 LayerNorm 的可学习缩放叠加进 residual stream，
+从而保持 residual stream 的恒等通路。
 
 如今，**预归一化和其他 LayerNorm 技巧被广泛用作训练大型神经网络时的稳定性辅助手段**。
 
@@ -440,7 +455,8 @@ Norm 位置并不是只能二选一。一些模型会在模块前后都放置 no
 
 **4. 简化变体：RMSNorm**
 
-RMSNorm 的核心变化是去掉均值中心化，只按均方根缩放，并通常不使用 bias。它的优势来自两方面：一是计算和参数更少，二是实证上常能保持与 LayerNorm 接近的训练效果。许多 decoder-only LLM 因此采用 RMSNorm，但它不是无条件优于 LayerNorm；在 muP、强 weight decay、低精度训练等设置下，RMSNorm 的可学习 gain 也可能改变缩放行为，需要和训练设置一起验证。
+RMSNorm 的核心变化是去掉均值中心化，只按均方根缩放，并通常不使用 bias。它的优势来自两方面：一是计算和参数更少，二是实证上常能保持与 LayerNorm 接近的训练效果。许多 decoder-only LLM 因此采用 RMSNorm，但它不是无条件优于 LayerNorm；在 muP、强 weight decay、低精度训练等设置下，
+RMSNorm 的可学习 gain 也可能改变缩放行为，需要和训练设置一起验证。
 
 Transformer 原始的层归一化：
 
@@ -457,9 +473,14 @@ $$
 RMSNorm 的 systems intuition 是：归一化层 FLOPs 占比很小，但 arithmetic intensity 低，容易被数据移动主导。RMSNorm 少做均值中心化并通常去掉 bias，能减少参数、访存和实现复杂度；它的优势不只是“算得少”，更在于把低算术强度的操作压得更轻。
 
 > [!NOTE]
-> **Pre-norm 的例外**：在现代 dense Transformer 中，pre-norm 几乎是默认选择，OPT-350M（[arXiv:2205.01068](https://arxiv.org/abs/2205.01068)）是仍保留 post-layer-norm 的代表案例。HF [`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m) 的 config 里 `do_layer_norm_before: false` 直接对应这一点，同一份 config 还写着 `activation_function: "relu"`、`hidden_size: 1024` 与 `word_embed_proj_dim: 512`——同一代模型内部的 norm 顺序、激活和 embedding 投影都可能不统一，读配置时按每个 checkpoint 的字段确认。
+> **Pre-norm 的例外**：在现代 dense Transformer 中，pre-norm 几乎是默认选择，OPT-350M（[arXiv:2205.01068](https://arxiv.org/abs/2205.01068)）是仍保留 post-layer-norm 的代表案例。
+> HF [`facebook/opt-350m`](https://huggingface.co/facebook/opt-350m) 的 config 里 `do_layer_norm_before: false` 直接对应这一点。
+>
+> 同一份 config 还写着 `activation_function: "relu"`、`hidden_size: 1024` 与 `word_embed_proj_dim: 512`——同一代模型内部的 norm 顺序、激活和 embedding 投影都可能不统一，读配置时按每个 checkpoint 的字段确认。
 
-Narang 等人（EMNLP 2021，[arXiv:2102.11972](https://arxiv.org/abs/2102.11972)）的消融在 Table 1 给出具体数字：同为 223M 参数、11.1T ops 的设置下，Vanilla Transformer（pre-norm + LayerNorm + shared biases + relative attention——这里的 Vanilla 指 Narang 复现的 T5-style 基线，并非 Vaswani 2017 原始论文中的配置）每秒 3.50 步、final loss 1.838；将 LayerNorm 替换为 RMSNorm 后每秒 3.68 步、final loss 1.821。两组对照除归一化方式外保持一致，因此 RMSNorm 的收益主要来自实现层的算术强度和数据移动改善，而不是表达能力本身。
+Narang 等人（EMNLP 2021，[arXiv:2102.11972](https://arxiv.org/abs/2102.11972)）的消融在 Table 1 给出具体数字：同为 223M 参数、11.1T ops 的设置下，
+Vanilla Transformer（pre-norm + LayerNorm + shared biases + relative attention——这里的 Vanilla 指 Narang 复现的 T5-style 基线，并非 Vaswani 2017 原始论文中的配置）每秒 3.50 步、final loss 1.838；
+将 LayerNorm 替换为 RMSNorm 后每秒 3.68 步、final loss 1.821。两组对照除归一化方式外保持一致，因此 RMSNorm 的收益主要来自实现层的算术强度和数据移动改善，而不是表达能力本身。
 
 ![图 3.2-6 RMSNorm 实验](images/3-2-6-rmsnorm-experiment.png)
 
@@ -473,7 +494,8 @@ RMSNorm 运行时的收益已经能在论文中观察到；更重要的可迁移
 
 在中间插入 LayerNorm 会把 LayerNorm 的可学习缩放叠加进 residual stream，因此 Pre-norm 把 LayerNorm 移到子层输入前，让 residual stream 保持「纯」恒等。这一点正好与之前展示的梯度尖峰现象吻合。
 
-虽然 LayerNorm 效果良好，许多现代模型改用 RMSNorm——这一选择属于算术强度 / 数据移动公理下的工程推论。Ivanov et al 2023 的「Matrix multiplies are the vast majority of FLOPs (and memory)」说明：归一化层 FLOPs 占比小但算术强度低，RMSNorm 通过去除均值中心化与 bias 减少参数和访存，能改善 wall-clock 表现。ablation 数据见 [arXiv:2102.11972](https://arxiv.org/abs/2102.11972) Table 1。
+虽然 LayerNorm 效果良好，许多现代模型改用 RMSNorm——这一选择属于算术强度 / 数据移动公理下的工程推论。Ivanov et al 2023 的「Matrix multiplies are the vast majority of FLOPs (and memory)」说明：归一化层 FLOPs 占比小但算术强度低，
+RMSNorm 通过去除均值中心化与 bias 减少参数和访存，能改善 wall-clock 表现。ablation 数据见 [arXiv:2102.11972](https://arxiv.org/abs/2102.11972) Table 1。
 
 ### 3.2.2 前馈网络
 
@@ -483,7 +505,8 @@ $$
 \text{FFN}(x) = \max(0, xW_1 + b_1)W_2 + b_2
 $$
 
-原始 Transformer 的前馈网络结构包含带 bias 的线性层、ReLU 和第二个线性层。但当前主流实现（非门控版本）通常会移除 bias。工程原因是：bias 这类操作的算术强度低，收益通常有限，却会增加参数、访存和实现分支；同时，一些训练设置里 bias 也可能带来稳定性问题。因此，现代 decoder-only LLM 往往把线性层和 RMSNorm 的 bias 都去掉，把主计算尽量集中到矩阵乘法上。
+原始 Transformer 的前馈网络结构包含带 bias 的线性层、ReLU 和第二个线性层。但当前主流实现（非门控版本）通常会移除 bias。工程原因是：bias 这类操作的算术强度低，收益通常有限，却会增加参数、访存和实现分支；同时，一些训练设置里 bias 也可能带来稳定性问题。因此，
+现代 decoder-only LLM 往往把线性层和 RMSNorm 的 bias 都去掉，把主计算尽量集中到矩阵乘法上。
 
 现代模型的大多数实现（如果不是门控的）：
 
@@ -497,7 +520,8 @@ FFN 去除偏置项 b 的理由几乎和 RMSNorm 一致，去除偏置项的想�
 
 标准 Transformer block 通常是 **serial layers**：先做 attention，再做 MLP，中间各自经过 norm 和 residual。这种顺序结构更容易实现，也更符合今天多数 LLaMA-like 模型的默认配置。
 
-也有一些模型采用 **parallel layers**，把 attention 分支和 MLP 分支并行作用在同一个归一化后的输入上，最后一起加回 residual stream。GPT-J、PaLM、GPT-NeoX 是较早采用这一设计的代表；Cohere Command A、Falcon 2 11B、Command R+ 等较新模型也沿用 parallel block。它的好处是减少串行依赖，理论上利于并行调度；代价是不同分支的交互时机被改变，训练稳定性和可迁移经验不如 serial block 普遍。
+也有一些模型采用 **parallel layers**，把 attention 分支和 MLP 分支并行作用在同一个归一化后的输入上，最后一起加回 residual stream。GPT-J、PaLM、GPT-NeoX 是较早采用这一设计的代表；Cohere Command A、Falcon 2 11B、
+Command R+ 等较新模型也沿用 parallel block。它的好处是减少串行依赖，理论上利于并行调度；代价是不同分支的交互时机被改变，训练稳定性和可迁移经验不如 serial block 普遍。
 
 当前实践里，serial block 仍是更稳妥的默认选择。parallel block 可以作为系统调度或架构实验选项，但不应仅因为“并行”两个字就假设它一定更快或更好；最终效果取决于 kernel 调度、通信、norm 位置和学习率设置。
 
@@ -575,21 +599,30 @@ $$
 
 其中 $\text{Swish}(x) = x \cdot \sigma(\beta x)$ ，其形状与高斯误差单元相似，通常 $\beta=1$ ， $\sigma(x) = \frac{1}{1 + e^{-x}}$ 。
 
-SwiGLU 使用 Swish（HF 配置里写为 `hidden_act: "silu"`，SiLU 与 Swish 在 $\beta=1$ 时等价）作为门控非线性，是 LLaMA、PaLM、Mistral、OLMo 等许多现代 decoder-only 模型中的常见选择。它通常比普通 GeLU FFN 更强，但因为有两条上投影分支，也会带来额外计算和参数预算；Mistral-7B v0.1 的 `config.json` 在字段上只暴露 `hidden_act: "silu"`，门控结构由 `MistralForCausalLM` 实现硬编码为 `down_proj(act(gate_proj(x)) * up_proj(x))`。
+SwiGLU 使用 Swish（HF 配置里写为 `hidden_act: "silu"`，SiLU 与 Swish 在 $\beta=1$ 时等价）作为门控非线性，是 LLaMA、PaLM、Mistral、OLMo 等许多现代 decoder-only 模型中的常见选择。它通常比普通 GeLU FFN 更强，但因为有两条上投影分支，
+也会带来额外计算和参数预算；Mistral-7B v0.1 的 `config.json` 在字段上只暴露 `hidden_act: "silu"`，门控结构由 `MistralForCausalLM` 实现硬编码为 `down_proj(act(gate_proj(x)) * up_proj(x))`。
 
 **门控 FFN 的实验信号**
 
 ![图 3.2-9 Shazeer GLU 实验](images/3-2-9-shazeer-glu.png)
 
-*图 3.2-9 Shazeer 2020 的 GLU 变体实验显示，门控 FFN 在多种设置下能改善损失或下游结果*
+*图 3.2-9 Shazeer 2020 的 GLU 变体实验：GLU / GeGLU / SwiGLU / ReGLU 的 Score Average 高于 ReLU / GeLU / Swish 基线，ReGLU 84.67 最高*
 
-Shazeer 的 GLU 变体实验（*GLU Variants Improve Transformer*, [arXiv:2002.05202](https://arxiv.org/abs/2002.05202)）与 Narang 等人在 T5 类模型上的消融（*Do Transformer Modifications Transfer Across Implementations and Applications?*, [arXiv:2102.11972](https://arxiv.org/abs/2102.11972)）都显示，门控 FFN 往往能取得更低损失或更好下游结果。这些实验规模早于当前前沿模型，但方向上解释了为什么 SwiGLU/GeGLU 会成为常见默认配置。
+Shazeer 的 GLU 变体实验（*GLU Variants Improve Transformer*, [arXiv:2002.05202](https://arxiv.org/abs/2002.05202)）
+与 Narang 等人在 T5 类模型上的消融（*Do Transformer Modifications Transfer Across Implementations and Applications?*, [arXiv:2102.11972](https://arxiv.org/abs/2102.11972)）都显示，
+门控 FFN 往往能取得更低损失或更好下游结果。这些实验规模早于当前前沿模型，但方向上解释了为什么 SwiGLU/GeGLU 会成为常见默认配置。
 
 ![图 3.2-10 Narang 激活函数实验](images/3-2-10-narang-activation-experiment.png)
 
-*图 3.2-10 Narang 等人的消融提供了门控激活收益的另一组证据，也显示效果需要结合模型和训练设置理解*
+*图 3.2-10 Narang 等人在 223M 参数、11.1T ops 下的激活消融：SwiGLU 的 final loss 1.789 最低，GLU / GeGLU / ReGLU / LiGLU 也优于 Vanilla Transformer 的 1.838*
 
-非门控路径仍有代表：GPT-3 使用 GeLU，Nemotron 340B 使用 squared ReLU，Falcon 系列（含 180B）沿用 GeLU。[Falcon 技术报告](https://arxiv.org/abs/2311.16867) §4.3.3 原文写明不采用 SwiGLU 的具体原因是「Out of concern for the memory footprint of our trainings on A100-40GB, and because of no clear uplift in zero-shot, we choose not to adopt SwiGLU」——主要权衡来自 A100-40GB 训练时的显存预算与零样本提升不明显，而非单纯出于「门控会翻倍中间激活」这一推论；`FalconConfig` 的 `activation` 默认值也仍是 `"gelu"`。结合上一段的实验结果可以给出更稳妥的判断：SwiGLU/GeGLU 是当前很强的默认选择，但最终仍要由模型规模、训练设置、硬件 kernel 和消融实验共同决定。
+非门控路径仍有代表：GPT-3 使用 GeLU，Nemotron 340B 使用 squared ReLU，Falcon 系列（含 180B）沿用 GeLU。
+[Falcon 技术报告](https://arxiv.org/abs/2311.16867) §4.3.3 原文写明不采用 SwiGLU 的具体原因是
+「Out of concern for the memory footprint of our trainings on A100-40GB, and because of no clear uplift in zero-shot, we choose not to adopt SwiGLU」
+。
+
+这段引文把权衡点放在 A100-40GB 训练时的显存预算与零样本提升不明显上，而非单纯出于「门控会翻倍中间激活」这一推论；`FalconConfig` 的 `activation` 默认值也仍是 `"gelu"`。结合上一段的实验结果可以给出更稳妥的判断：SwiGLU/GeGLU 是当前很强的默认选择，但最终仍要由模型规模、训练设置、
+硬件 kernel 和消融实验共同决定。
 
 使用 SwiGLU/GeGLU 时还要重新核算 FFN 的隐藏维度。门控 FFN 通常有两条上投影分支，如果仍然沿用原始 Transformer 中 `4d` 的扩展比例，参数量和 FLOPs 会明显增加；许多实现会把中间维度调低，让门控结构带来的表达收益和计算预算重新平衡。
 
@@ -653,7 +686,8 @@ $$
 
 旋转位置编码就是一种相对嵌入，但与上面 T5 的“偏置加到 logit”不同，它用 Q/K 上的**旋转变换**来编码位置。
 
-RoPE 最早由苏剑林（Jianlin Su）在 2021 年的论文《RoFormer: Enhanced Transformer with Rotary Position Embedding》（[arXiv:2104.09864](https://arxiv.org/abs/2104.09864)）中提出，GPT-J 是较早采用 RoPE 的知名开源模型之一。现代 decoder-only LLM 大量使用 RoPE 或它的长上下文变体，因为它把位置信息注入到 Q/K 上，位置关系会直接进入每层 attention score。
+RoPE 最早由苏剑林（Jianlin Su）在 2021 年的论文《RoFormer: Enhanced Transformer with Rotary Position Embedding》（[arXiv:2104.09864](https://arxiv.org/abs/2104.09864)）中提出，
+GPT-J 是较早采用 RoPE 的知名开源模型之一。现代 decoder-only LLM 大量使用 RoPE 或它的长上下文变体，因为它把位置信息注入到 Q/K 上，位置关系会直接进入每层 attention score。
 
 这使 RoPE 更适合 causal attention 和 KV cache 场景。决定旋转角的 $\theta$ 按预定频率设置，其设计直觉与正弦余弦位置编码类似，都需要覆盖不同频率范围以表示近距离和远距离信息。
 
@@ -747,7 +781,11 @@ $$
 \theta_i = 10000^{-2i/d}
 $$
 
-其中， $i$ 是维度索引（从 0 开始）， $d$ 是嵌入向量的总维度。这一形式继承自 Vaswani 2017 的 long-term decay 表达（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864) §3.2.2 / §3.3）；RoFormer §3.2.2 Eq. 15 的旋转矩阵形式取 $10000^{-2(i-1)/d}$（ $i \in [1, d/2]$，one-indexed），§3.3 Properties of RoPE 文本形式取 $10000^{-2i/d}$，§3.4.3 的求和式把这一形式与 zero-indexed 范围 $i = 0, \dots, d/2-1$ 配对。正文采用 $10000^{-2i/d}$（ $i \in [0, d/2-1]$），与 §3.2.2 矩阵形式给出同一组 $d/2$ 个角频率，仅 $i$ 起点差 1。
+其中， $i$ 是维度索引（从 0 开始）， $d$ 是嵌入向量的总维度。这一形式继承自 Vaswani 2017 的 long-term decay 表达（[RoFormer, arXiv:2104.09864](https://arxiv.org/abs/2104.09864) §3.2.2 / §3.3）；
+RoFormer §3.2.2 Eq. 15 的旋转矩阵形式取 $10000^{-2(i-1)/d}$（ $i \in [1, d/2]$，one-indexed），§3.3 Properties of RoPE 文本形式取 $10000^{-2i/d}$，
+§3.4.3 的求和式把这一形式与 zero-indexed 范围 $i = 0, \dots, d/2-1$ 配对。
+
+正文采用 $10000^{-2i/d}$（ $i \in [0, d/2-1]$），与 §3.2.2 矩阵形式给出同一组 $d/2$ 个角频率，仅 $i$ 起点差 1。
 
 这种高维嵌入方法的关键是：每两个维度组成一对二维子空间，并按对应频率旋转。不同维度对拥有不同旋转速度，因此可以同时编码高频近距离信息和低频远距离信息。
 
@@ -761,25 +799,39 @@ RoPE 把位置信息注入到 Q/K 上，使注意力分数显式依赖相对距�
 
 ### 3.2.5 注意力机制的变体
 
-这一节把注意力变体按瓶颈分组：KV cache 是 generation 阶段显存与 HBM 带宽的主要来源；MQA / GQA / MLA / CLA 在缩小或重组 K/V；sliding-window、DSA、CSA / HCA 决定"看多少历史 token"和"以多高分辨率看"；linear attention / Mamba-2 / Gated DeltaNet 提供线性时间推理替代。
+这一节把注意力变体按瓶颈分组：KV cache 是 generation 阶段显存与 HBM 带宽的主要来源；MQA / GQA / MLA / CLA 在缩小或重组 K/V；sliding-window、DSA、CSA / HCA 决定"看多少历史 token"和"以多高分辨率看"；
+linear attention / Mamba-2 / Gated DeltaNet 提供线性时间推理替代。
 
-排列顺序也按这三层展开：先讲 KV cache 基础与共享策略：§3.2.5.1 给出 KV cache 基础，§3.2.5.2 给出 KV 共享总览，§3.2.5.3–§3.2.5.6 分别给出 MQA / GQA / MLA / CLA 的实现机制；再讲稀疏与滑动窗口（§3.2.5.7，SWA / DSA / CSA / HCA）；最后讲线性时间替代（§3.2.5.8，linear attention / Mamba-2 / Gated DeltaNet）。
+排列顺序也按这三层展开：先讲 KV cache 基础与共享策略：§3.2.5.1 给出 KV cache 基础，§3.2.5.2 给出 KV 共享总览，§3.2.5.3–§3.2.5.6 分别给出 MQA / GQA / MLA / CLA 的实现机制；再讲稀疏与滑动窗口（§3.2.5.7，SWA / DSA / CSA / HCA）；
+最后讲线性时间替代（§3.2.5.8，linear attention / Mamba-2 / Gated DeltaNet）。
 
-### 3.2.5.1 KV cache 基础
+#### 3.2.5.1 KV cache 基础
 
-![图 3.2-12 KV cache](images/3-2-12-kv-cache.png)
+![图 3.2-12 KV cache 分步动画](images/3-2-12-kv-cache-animation.gif)
 
-*图 3.2-12 有无 KV cache 的分步计算对照，标出取自 cache 与被 mask 的中间值*
+*图 3.2-12 scaled dot-product attention 分步动画：Step 1 到 Step 4 逐步加入新 token，Q / K / V 与 QK^T 的形状从 (1, emb_size) 长到 (4, emb_size)，上三角标出将被 mask 的位置（省略 Scale 与 Softmax）*
 
-自回归生成一次只产生一个新 token：模型读取已有上下文，输出下一个 token 的分布，再把新 token 接到上下文后继续生成。由于 generation 阶段不能像 prefill 那样完全并行，系统会缓存历史 token 的 K/V。这样生成新 token 时只需要为新 token 计算新的 Q/K/V，并复用历史 K/V，这个缓存就是 KV cache。
+自回归生成一次只产生一个新 token：模型读取已有上下文，输出下一个 token 的分布，再把新 token 接到上下文后继续生成。由于 generation 阶段不能像 prefill 那样完全并行，系统会缓存历史 token 的 K/V。这样生成新 token 时只需要为新 token 计算新的 Q/K/V，并复用历史 K/V，
+这个缓存就是 KV cache。
 
-KV cache 的算术强度与 batch × context 维度的 scaling 关系在 [第 9 章 §9.1.3 prefill 与 generation / §9.2.2 Attention 层：batch 不能同样摊薄 KV cache](../chapter9/chapter9_推理系统.md) 展开；GPU / HBM 视角下的字节账本与切分维度见 [第 5 章 §5.8 KV cache：HBM 上的另一笔账](../chapter5/chapter5_GPU和GPU相关优化.md)；serving 端的分页与 prefix sharing 见 [第 9 章 §9.5.2 PagedAttention：把 KV cache 当分页内存管理](../chapter9/chapter9_推理系统.md)。
+prefill 一次并行处理全部 $b \times n$ 个 token，注意力的算术强度为 $O\left(\left(\frac{1}{k} + \frac{1}{bn}\right)^{-1}\right)$： $bn$ 大时数值接近 $k$，计算可以持续压在 GPU 上。generation 一次只处理新 token，
+注意力的算术操作计为 $bnd^2$、访存计为 $bn^2d + nd^2$，算术强度变成：
 
-### 3.2.5.2 KV 共享总览
+$$O\left(\left(\frac{n}{d} + \frac{1}{b}\right)^{-1}\right)$$
+
+这个量级并不好。倒数里的 $n/d$ 项来自 K/V cache 的访存 $bn^2d$，$1/b$ 项来自投影访存 $nd^2$；两者都压不下去时，只能靠大 batch、短序列 $n$ 或大模型维度 $d$ 来换。缩小每步要搬动的 K/V 维度，就是 MQA / GQA / MLA / CLA 这组共享策略的共同出发点。
+
+实测差距可以直接量出来：GPT-2 在 Tesla T4 上生成 1000 个新 token，开启 cache 用时 11.885 ± 0.272 s，关闭 cache 用时 56.197 ± 1.855 s，约 4.7 倍；Hugging Face transformers 的 `generate` 默认开启 `use_cache`。
+
+KV cache 的算术强度与 batch × context 维度的 scaling 关系在 [第 9 章 §9.1.3 prefill 与 generation / §9.2.2 Attention 层：batch 不能同样摊薄 KV cache](../chapter9/chapter9_推理系统.md) 展开；
+GPU / HBM 视角下的字节账本与切分维度见 [第 5 章 §5.8 KV cache：HBM 上的另一笔账](../chapter5/chapter5_GPU和GPU相关优化.md)；serving 端的分页与 prefix sharing 见 [第 9 章 §9.5.2 PagedAttention：
+把 KV cache 当分页内存管理](../chapter9/chapter9_推理系统.md)。
+
+#### 3.2.5.2 KV 共享总览
 
 KV cache 显存压力最直接的回应是共享 K/V：MQA 最激进（所有 query head 共享一组 K/V），GQA 折中（若干 query head 共享一组 K/V），MLA 用低秩 latent 压缩再恢复，CLA 把 K/V 共享扩展到跨层。下面四个子节分别给出实现机制。
 
-### 3.2.5.3 MQA 多查询注意力
+#### 3.2.5.3 MQA 多查询注意力
 
 ![图 3.2-13 MQA](images/3-2-13-mqa.png)
 
@@ -791,9 +843,10 @@ KV cache 显存压力最直接的回应是共享 K/V：MQA 最激进（所有 qu
 
 MQA 把压缩推到极限，代价是所有 query head 只能读同一份 K/V 表示，质量损失在原始报告里就已经可见。当前主流 decoder-only LLM 更常落在 GQA（若干个 K/V group）或 MLA（DeepSeek 系列的低秩 latent）上，MQA 更多作为理解这条压缩谱系的端点出现。
 
-### 3.2.5.4 GQA 分组查询注意力
+#### 3.2.5.4 GQA 分组查询注意力
 
-GQA（grouped-query attention）在 MHA 和 MQA 之间折中：多个 query heads 共享一组 K/V heads。K/V groups 的数量决定 generation 阶段的 cache 体积和 HBM 读取量；groups 更多时，表示自由度也更接近 MHA。压缩谱系的两端是固定的：K/V groups = 1 退化到 MQA（cache 最省但所有 query head 共享同一份 K/V 表示），K/V groups = num_attention_heads 退化到 MHA（表达自由度最高但 cache 体积不变）。两个端点之间的中间区域，正是 GQA 在不同模型中扫描的位置。
+GQA（grouped-query attention）在 MHA 和 MQA 之间折中：多个 query heads 共享一组 K/V heads。K/V groups 的数量决定 generation 阶段的 cache 体积和 HBM 读取量；groups 更多时，表示自由度也更接近 MHA。压缩谱系的两端是固定的：
+K/V groups = 1 退化到 MQA（cache 最省但所有 query head 共享同一份 K/V 表示），K/V groups = num_attention_heads 退化到 MHA（表达自由度最高但 cache 体积不变）。两个端点之间的中间区域，正是 GQA 在不同模型中扫描的位置。
 
 图 3.2-14 把这个 tradeoff 落到每个样本的生成耗时上：K/V groups 越少，耗时越接近 MQA 端点；groups 过少时，质量或表达能力可能受到影响。
 
@@ -801,7 +854,7 @@ GQA（grouped-query attention）在 MHA 和 MQA 之间折中：多个 query head
 
 *图 3.2-14 每个样本生成耗时随 GQA 分组数的变化，分组越少耗时越接近 MQA*
 
-### 3.2.5.5 MLA 多头潜在注意力（DeepSeek）
+#### 3.2.5.5 MLA 多头潜在注意力（DeepSeek）
 
 MLA（Multi-head Latent Attention，多头潜在注意力）是 DeepSeek 引入的创新注意力架构，通过**低秩联合压缩技术**显著降低推理时的 KV cache 需求，在保持性能的同时大幅提升效率。
 
@@ -811,13 +864,15 @@ MLA（Multi-head Latent Attention，多头潜在注意力）是 DeepSeek 引入�
 
 DeepSeek-V2 报告中，MLA 通过显著减少生成所需的 KV cache 来提升推理效率。这里的关键变量是历史 K/V 在 cache 中保存为什么形态，以及额外投影计算能否被系统接受。
 
-传统 Transformer 模型通常采用多头注意力机制（MHA），但在 generation 中，庞大的 KV cache 会成为推理效率的瓶颈。MQA 以一组 K/V heads 服务全部 query heads，在固定训练设置下可能出现质量下降。GQA 使用中间数量的 K/V heads；原始 GQA 报告经过 uptraining 后得到接近 MHA 的质量。具体差异仍取决于 KV head 比例、训练设置、模型规模和目标任务。
+传统 Transformer 模型通常采用多头注意力机制（MHA），但在 generation 中，庞大的 KV cache 会成为推理效率的瓶颈。MQA 以一组 K/V heads 服务全部 query heads，在固定训练设置下可能出现质量下降。GQA 使用中间数量的 K/V heads；
+原始 GQA 报告经过 uptraining 后得到接近 MHA 的质量。具体差异仍取决于 KV head 比例、训练设置、模型规模和目标任务。
 
 ![图 3.2-16 attention 结构对比](images/3-2-16-attention-comparison.png)
 
 *图 3.2-16 MHA、GQA、MQA 与 MLA 的差异集中在 K/V head 数量和缓存表示方式上*
 
-传统 Transformer 采用多头注意力（MHA），每个注意力头需独立缓存 Key 和 Value 向量。对一条上下文长度为 $S$ 的请求，层数为 $L$ 、attention heads 数为 $h$ 、每个 head 维度为 $d_k$ 时，KV cache 的元素数量为 $O(S \cdot L \cdot h \cdot d_k)$ ，成为长序列推理的主要瓶颈。
+传统 Transformer 采用多头注意力（MHA），每个注意力头需独立缓存 Key 和 Value 向量。对一条上下文长度为 $S$ 的请求，层数为 $L$ 、attention heads 数为 $h$ 、每个 head 维度为 $d_k$ 时，KV cache 的元素数量为 $O(S \cdot L \cdot h \cdot d_k)$ ，
+成为长序列推理的主要瓶颈。
 
 MLA 的核心是将所有注意力头的 Key 和 Value 联合压缩到一个共享的低维潜在空间。给定当前 hidden state $h_t$（维度 $d_{\text{model}}$），先用下投影 $W_D^{\mathrm{KV}} \in \mathbb{R}^{d_c \times d_{\text{model}}}$ 构造一个 KV latent：
 
@@ -825,7 +880,8 @@ $$
 c_t^{\mathrm{KV}} = W_D^{\mathrm{KV}}h_t
 $$
 
-其中 $c_t^{\mathrm{KV}}$ 是 K/V 共用的压缩向量，维度 $d_c$ 远小于所有 K/V heads 的总维度（DeepSeek-V2 / V3 官方 config 均取 $d_c = 512$；V2 $d_{\text{model}}=5120$ 时约为 $d_{\text{model}}/10$，V3 $d_{\text{model}}=7168$ 时约为 $d_{\text{model}}/14$；具体 KV cache 体积对比见 [第 9 章 §9.3.2 MLA：存压缩 latent，再按需展开](../chapter9/chapter9_推理系统.md)）。Key 和 value 的相关投影由同一个 latent 分别恢复：
+其中 $c_t^{\mathrm{KV}}$ 是 K/V 共用的压缩向量，维度 $d_c$ 远小于所有 K/V heads 的总维度（DeepSeek-V2 / V3 官方 config 均取 $d_c = 512$；V2 $d_{\text{model}}=5120$ 时约为 $d_{\text{model}}/10$，
+V3 $d_{\text{model}}=7168$ 时约为 $d_{\text{model}}/14$；具体 KV cache 体积对比见 [第 9 章 §9.3.2 MLA：存压缩 latent，再按需展开](../chapter9/chapter9_推理系统.md)）。Key 和 value 的相关投影由同一个 latent 分别恢复：
 
 $$
 k_t^C = W_U^K c_t^{\mathrm{KV}}, \quad v_t^C = W_U^V c_t^{\mathrm{KV}}
@@ -845,7 +901,11 @@ $$
 
 MLA 在 attention 路径中增加了投影或重构计算。KV cache 和 HBM bandwidth 已成为瓶颈时，这些额外计算可以换取更低的显存占用和读取量。
 
-RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。每层每个 token 的缓存量约为 $d_c + d_k^R$ ，其中 $d_c$ 是 shared KV latent 的维度、 $d_k^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_k^R = 64$，约为 $d_k / 3$—— $d_k$ 由 `qk_nope_head_dim`（128）与 `qk_rope_head_dim`（64）相加得到 $192$ ，其中 $64/192$ 用于位置编码；具体字段见 [`deepseek-ai/DeepSeek-V2-Chat` 的 `config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)）。
+RoPE 直接作用在位置相关的 Q/K 上，会阻碍将 key 的上投影吸收到 query 路径。DeepSeek-V2 使用 decoupled RoPE：把带 RoPE 的 query 与共享 key 分开构造，并只缓存这个位置专属 key。
+
+每层每个 token 的缓存量约为 $d_c + d_k^R$ ，其中 $d_c$ 是 shared KV latent 的维度、 $d_k^R$ 是 decoupled RoPE key 向量的维度（DeepSeek-V2 中 $d_k^R = 64$，约为 $d_k / 3$—— $d_k$ 由 `qk_nope_head_dim`（128）
+与 `qk_rope_head_dim`（64）相加得到 $192$ ，其中 $64/192$ 用于位置编码；
+具体字段见 [`deepseek-ai/DeepSeek-V2-Chat` 的 `config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V2-Chat/blob/main/config.json)）。
 
 ![图 3.2-17 MLA 实验](images/3-2-17-mla-experiment.png)
 
@@ -855,9 +915,12 @@ MLA 和 MHA 在困难基准上的比较显示，DeepSeek-V2 在显著减少 KV c
 
 图 3.2-15 的结构图把 MLA 的工程边界画清楚：cache 里保存的是压缩 latent，attention 计算时需要物化或合并相关投影；RoPE 相关维度单独处理，是为了避免位置旋转直接作用在共享 latent 上破坏相对位置信号。
 
-### 3.2.5.6 CLA 跨层共享 KV
+#### 3.2.5.6 CLA 跨层共享 KV
 
-CLA（Cross-Layer Attention）的思路可以类比 GQA：GQA 在注意力头之间共享 K/V，CLA 则在层之间共享一部分 K/V。这样做的直接目标仍然是减少 KV cache，改善推理 latency/throughput 的帕累托边界。它不改变"根据 Q 读取历史 K/V"的基本形式，但改变了缓存的组织方式。Brandon 等人（*Reducing Transformer Key-Value Cache Size with Cross-Layer Attention*, [arXiv:2405.12981](https://arxiv.org/abs/2405.12981), 2024-05；MIT CSAIL & MIT-IBM Watson AI Lab）在 1B / 3B 规模的 Llama 风格模型上报告：CLA 把 KV cache 压缩 2×（与 MQA 组合相对 plain MQA 基线同样达到 2× reduction），困惑度退化小于 1%，个别设置还有改善。
+CLA（Cross-Layer Attention）的思路可以类比 GQA：GQA 在注意力头之间共享 K/V，CLA 则在层之间共享一部分 K/V。这样做的直接目标仍然是减少 KV cache，改善推理 latency/throughput 的帕累托边界。它不改变"根据 Q 读取历史 K/V"的基本形式，但改变了缓存的组织方式。
+
+Brandon 等人（*Reducing Transformer Key-Value Cache Size with Cross-Layer Attention*, [arXiv:2405.12981](https://arxiv.org/abs/2405.12981), 2024-05；MIT CSAIL & MIT-IBM Watson AI Lab）
+在 1B / 3B 规模的 Llama 风格模型上报告：CLA 把 KV cache 压缩 2×（与 MQA 组合相对 plain MQA 基线同样达到 2× reduction），困惑度退化小于 1%，个别设置还有改善。
 
 ![图 3.2-18 CLA 结构示意](images/3-2-18-cla-diagram.png)
 
@@ -865,11 +928,11 @@ CLA（Cross-Layer Attention）的思路可以类比 GQA：GQA 在注意力头之
 
 CLA 的收益来自减少每层都独立保存 K/V 的开销。代价是相邻层对历史信息的表示会被绑定在一起，因此它更像 cache 组织方式的改变，对 attention 语义的影响需要单独评估。
 
-### 3.2.5.7 稀疏与滑动窗口注意力（SWA / DSA / CSA / HCA）
+#### 3.2.5.7 稀疏与滑动窗口注意力（SWA / DSA / CSA / HCA）
 
 与共享 KV 改变 K/V 表示不同，稀疏策略改变的是"每个 query 实际去读哪些历史 token"。下面三组子节分别给出从局部窗口到动态稀疏再到细粒度压缩-稀疏混合的实现路径。
 
-**3.2.5.7.1 SWA 滑动窗口注意力**
+##### 3.2.5.7.1 SWA 滑动窗口注意力
 
 ![图 3.2-19 稀疏与结构化 attention](images/3-2-19-sparse-structured-attention.png)
 
@@ -877,7 +940,8 @@ CLA 的收益来自减少每层都独立保存 K/V 的开销。代价是相邻�
 
 稀疏 attention 的基本思路是为每个 query 限制可访问的历史位置：局部窗口保留邻近 token 的高分辨率信息，对角线或跨块模式负责把远处信息传回来。这样可以在表达能力和运行效率之间取得平衡。
 
-OpenAI 的 Sparse Transformer（Child et al., 2019, [arXiv:1904.10509](https://arxiv.org/abs/1904.10509)）用 strided / fixed pattern 形式的稀疏 attention 扩展注意力窗口；GPT-3 主体架构仍以密集注意力为主（[Brown et al., 2020, arXiv:2005.14165](https://arxiv.org/abs/2005.14165)），稀疏化是其配套实验而非主结构。
+OpenAI 的 Sparse Transformer（Child et al., 2019, [arXiv:1904.10509](https://arxiv.org/abs/1904.10509)）用 strided / fixed pattern 形式的稀疏 attention 扩展注意力窗口。GPT-3 沿用 GPT-2 的模型与架构，
+例外是在 transformer 各层交替使用密集注意力与局部带状稀疏注意力模式，与 Sparse Transformer 同族（[Brown et al., 2020, §2.1, arXiv:2005.14165](https://arxiv.org/abs/2005.14165)）。
 
 滑动窗口注意力是该思想的另一个变体，在每个层级仅关注当前位置的邻近区域。这种方式能有效控制处理长文本所需的总资源量；理论上信息可逐层向外传播，最远距离的上界约为「局部窗口 × 堆叠层数」（实际感受野取决于内容是否被有效聚合）。
 
@@ -890,17 +954,26 @@ OpenAI 的 Sparse Transformer（Child et al., 2019, [arXiv:1904.10509](https://a
 最近 LLaMA 4、Gemma 3、Gemma 4、OLMo 3 和 Cohere Command A 等模型采用了局部与全局混合的思路：大多数层使用带 RoPE 的 sliding-window attention，只处理局部上下文；间隔若干层再放入 full attention 层，用于跨窗口信息交换。
 
 > [!NOTE]
-> **Gemma 4 的两项新设计**：(1) **partial rotary embedding（partial RoPE / P-RoPE）**——`Gemma4TextConfig` 给两类层配不同的 RoPE：full-attention 层是 `rope_type="proportional"`、`partial_rotary_factor=0.25`、`rope_theta=1e6`，只旋转每个 head 前 1/4 的维度，其余维度的旋转频率补零；full-attention 层的 head_dim 还会被 `global_head_dim=512` 覆盖，因此被旋转的是前 128 维。sliding-attention 层保持 `rope_type="default"`、`rope_theta=1e4` 的完整 RoPE，head_dim 用基础值 256。这样长程 full-attention 路径只保留低频旋转分量，短程窗口路径保留完整位置分辨率。(2) **per-layer embedding（PLE）**——以 Gemma 4 E2B 的 `text_config` 为例，每层额外取一份 embedding 输入（`vocab_size_per_layer_input=262144`、`hidden_size_per_layer_input=256`），由 token 身份查表分支和上下文投影分支相加后按 $1/\sqrt{2}$ 缩放送进对应 decoder 层，让参数量可以从主干 hidden size 转移到按层展开的 embedding 表上。Gemma 4 31B dense 的 `hidden_size_per_layer_input=0`，PLE 默认不开启；这一参数随模型规模是否启用需要按各 checkpoint 的字段确认。
+> **Gemma 4 的两项新设计**：(1) **partial rotary embedding（partial RoPE / P-RoPE）**——`Gemma4TextConfig` 给两类层配不同的 RoPE：
+> full-attention 层是 `rope_type="proportional"`、`partial_rotary_factor=0.25`、`rope_theta=1e6`，只旋转每个 head 前 1/4 的维度，其余维度的旋转频率补零；
+> full-attention 层的 head_dim 还会被 `global_head_dim=512` 覆盖，因此被旋转的是前 128 维。sliding-attention 层保持 `rope_type="default"`、`rope_theta=1e4` 的完整 RoPE，head_dim 用基础值 256。
+>
+> 这样长程 full-attention 路径只保留低频旋转分量，短程窗口路径保留完整位置分辨率。
+>
+> (2) **per-layer embedding（PLE）**——以 Gemma 4 E2B 的 `text_config` 为例，每层额外取一份 embedding 输入（`vocab_size_per_layer_input=262144`、`hidden_size_per_layer_input=256`），
+> 由 token 身份查表分支和上下文投影分支相加后按 $1/\sqrt{2}$ 缩放送进对应 decoder 层，让参数量可以从主干 hidden size 转移到按层展开的 embedding 表上。Gemma 4 31B dense 的 `hidden_size_per_layer_input=0`，PLE 默认不开启；
+> 这一参数随模型规模是否启用需要按各 checkpoint 的字段确认。
 
 部分 full attention 层会去掉位置编码，即 **NoPE**，让长距离信息不受 RoPE 外推误差直接限制。这个组合可以理解为：RoPE 负责短程相对位置，SWA 控制计算成本，NoPE/full attention 负责低频全局信息流。
 
-**3.2.5.7.2 DSA DeepSeek Sparse Attention**
+##### 3.2.5.7.2 DSA DeepSeek Sparse Attention
 
 DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案，目标是在长上下文中只对高价值历史 token 做精细注意力计算，从而降低 full attention 的二次成本。
 
 它和前面的 GQA、MLA、CLA 分工不同：**GQA/MLA/CLA 主要是在缩小或重组要缓存的 K/V；DSA 主要是在决定“到底去看哪些历史 token”**。它属于稀疏读取策略，评估时需要关注历史 token 选择质量和稀疏访问效率。
 
-标准 full attention 让每个 query token 与所有历史 token 计算注意力。长上下文下，这个全连接范式成本很高，而许多任务真正需要高分辨率读取的历史位置只占一部分。DSA 因此采用“先筛选、后计算”的结构：先用轻量模块扫描历史 token，估计重要性分数；再让得分较高的位置进入精细注意力计算。核心组件是 indexer 和 top-k selector。
+标准 full attention 让每个 query token 与所有历史 token 计算注意力。长上下文下，这个全连接范式成本很高，而许多任务真正需要高分辨率读取的历史位置只占一部分。DSA 因此采用“先筛选、后计算”的结构：先用轻量模块扫描历史 token，估计重要性分数；再让得分较高的位置进入精细注意力计算。
+核心组件是 indexer 和 top-k selector。
 
 ![图 3.2-21 DSA](images/3-2-21-dsa-indexer.png)
 
@@ -922,7 +995,7 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 相关实验通常会同时报告质量与速度：稀疏注意力若能维持接近 full attention 的任务表现，同时在长序列的 decode、forward 和 backward 阶段减少计算，就具备工程吸引力。理论复杂度只是第一步，indexer 成本、top-k 选择开销和 kernel 实现同样会决定最终收益。
 
-**3.2.5.7.3 DeepSeek-V4 CSA / HCA 混合注意力**
+##### 3.2.5.7.3 DeepSeek-V4 CSA / HCA 混合注意力
 
 **CSA 的全称是 Compressed Sparse Attention，压缩稀疏注意力，HCA 的全称是 Heavily Compressed Attention，重度压缩注意力**。
 
@@ -930,7 +1003,10 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 *图 3.2-23 DeepSeek-V4 把资源占用和评测结果放在同一张快照里，便于观察注意力压缩是否换来可接受质量*
 
-图 3.2-23 把资源占用与评测结果放在同一张快照里。结合 [`DeepSeek-V4-Pro/config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 的字段（`index_topk` / `compress_ratios` / `index_n_heads` / `index_head_dim` / `sliding_window` 等），可以按三条线理解这个结构：CSA/DSA/HCA 负责压缩与稀疏选择长历史；滑动窗口分支和局部 RoPE 负责保留近邻上下文与位置关系；单 KV 头、共享 KV 与 grouped output projection 则共同指向更小的 KV cache、更低的 HBM 带宽压力和更可控的长上下文推理成本。
+图 3.2-23 把资源占用与评测结果放在同一张快照里。
+结合 [`DeepSeek-V4-Pro/config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) 的字段
+（`index_topk` / `compress_ratios` / `index_n_heads` / `index_head_dim` / `sliding_window` 等）
+，可以按三条线理解这个结构：CSA/DSA/HCA 负责压缩与稀疏选择长历史；滑动窗口分支和局部 RoPE 负责保留近邻上下文与位置关系；单 KV 头、共享 KV 与 grouped output projection 则共同指向更小的 KV cache、更低的 HBM 带宽压力和更可控的长上下文推理成本。
 
 ![图 3.2-24 DeepSeek V4 attention](images/3-2-24-deepseek-v4-attention.png)
 
@@ -938,7 +1014,7 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 CSA 和 HCA 混合注意力架构以 MQA 风格的共享 KV 为基础。核心逻辑是分工：CSA 用较低压缩率和 indexer 保留高分辨率关键块，HCA 用高压缩率提供低成本全局背景，滑动窗口分支负责最近上下文的细粒度依赖。
 
-**3.2.5.7.3.1 CSA：压缩与稀疏的平衡**
+###### 3.2.5.7.3.1 CSA：压缩与稀疏的平衡
 
 ![图 3.2-25 CSA 结构](images/3-2-25-csa-structure.png)
 
@@ -950,18 +1026,23 @@ CSA 的设计哲学是在大幅降低计算量的同时，保留对关键块的�
 
 这是为了避免直接处理海量的原始 KV cache。它将每 **m** 个 token 的 KV cache 压缩成一个条目，即一个块级表征。
 
-CSA 使用可学习的加权压缩机制：模型会为每个 token 计算压缩权重，然后将这 $m$ 个 token 的 K/V 按权重求和，融合成一个块级条目。相邻压缩块共享一部分 token，可以平滑边界信息，降低硬切分带来的信息断裂。这样 KV cache 规模降为原来的 $1/m$ 。在 V4 中，`m` 取值为 `4`；模型同时保留一小组滑动窗口 KV 条目，以增强局部细粒度依赖关系。
+CSA 使用可学习的加权压缩机制：模型会为每个 token 计算压缩权重，然后将这 $m$ 个 token 的 K/V 按权重求和，融合成一个块级条目。相邻压缩块共享一部分 token，可以平滑边界信息，降低硬切分带来的信息断裂。这样 KV cache 规模降为原来的 $1/m$ 。在 V4 中，`m` 取值为 `4`；
+模型同时保留一小组滑动窗口 KV 条目，以增强局部细粒度依赖关系。
 
 **2. DSA 登场**
 
 压缩后，如果对所有块做密集注意力，复杂度依然是平方级的。CSA 接着用稀疏注意力只挑选最相关的块。
 
-先使用**闪电索引器**快速计算当前查询 token 与所有压缩后 KV 块的相关性分数。根据索引分数，只为当前查询 token 保留分数最高的 $k$ 个压缩 KV 块。若原序列长度记为 $S$ 、压缩比记为 $m$（每 $m$ 个 token 合成一个压缩块），块级密集注意力在压缩序列上两两打分，复杂度为 $O((S/m)^2)$ 。稀疏选择 top- $k$ 块后按查询粒度计：每个查询 token 只读 $k$ 个块、共 $km$ 个 cache 条目，单个查询的读取量不随 $S$ 增长，序列总量为 $O(Sk)$ ；实际 wall-clock 还需计入闪电索引器为全部压缩块打分的开销。在 V4 中，Flash 的 **k=512**，Pro 的 **k=1024**；Pro 的这个数字就写在 `DeepSeek-V4-Pro/config.json` 的 `index_topk: 1024` 里，配套的闪电索引器规格是 `index_n_heads: 64`、`index_head_dim: 128`。它和 MoE routing 的 top-k 是两个独立旋钮：同一份 config 中 MoE 侧写的是 `num_experts_per_tok: 6`、`n_routed_experts: 384`，`index_topk` 控制稀疏注意力挑多少个压缩 KV 块，`num_experts_per_tok` 控制每个 token 激活多少个专家。
+先使用**闪电索引器**快速计算当前查询 token 与所有压缩后 KV 块的相关性分数。根据索引分数，只为当前查询 token 保留分数最高的 $k$ 个压缩 KV 块。若原序列长度记为 $S$ 、压缩比记为 $m$（每 $m$ 个 token 合成一个压缩块），块级密集注意力在压缩序列上两两打分，复杂度为 $O((S/m)^2)$ 。
+稀疏选择 top- $k$ 块后按查询粒度计：每个查询 token 只读 $k$ 个块、共 $km$ 个 cache 条目，单个查询的读取量不随 $S$ 增长，序列总量为 $O(Sk)$ ；实际 wall-clock 还需计入闪电索引器为全部压缩块打分的开销。
+
+在 V4 中，Flash 的 **k=512**，Pro 的 **k=1024**；Pro 的这个数字就写在 `DeepSeek-V4-Pro/config.json` 的 `index_topk: 1024` 里，配套的闪电索引器规格是 `index_n_heads: 64`、`index_head_dim: 128`。
+它和 MoE routing 的 top-k 是两个独立旋钮：同一份 config 中 MoE 侧写的是 `num_experts_per_tok: 6`、`n_routed_experts: 384`，`index_topk` 控制稀疏注意力挑多少个压缩 KV 块，`num_experts_per_tok` 控制每个 token 激活多少个专家。
 
 
 CSA 层执行流程可以概括为：先对 KV cache 做可学习的加权压缩，再利用闪电索引器低成本选出最相关的 top-k 块，最终核心 attention 只在稀疏选择的块上进行计算。
 
-**3.2.5.7.3.2 HCA：极高压缩率的全局背景**
+###### 3.2.5.7.3.2 HCA：极高压缩率的全局背景
 
 ![图 3.2-26 HCA 结构](images/3-2-26-hca-structure.png)
 
@@ -969,13 +1050,18 @@ CSA 层执行流程可以概括为：先对 KV cache 做可学习的加权压缩
 
 HCA 的目标是极低成本地维护一个覆盖十万级 token 的全局背景视野。它只做压缩，不做稀疏选择。
 
-其实 HCA 与 CSA 类似，但压缩率 m 比 CSA 要大得多，多个 token 的局部信息被融合。`DeepSeek-V4-Pro/config.json` 的 `compress_ratios` 逐层给出这两档取值（`num_hidden_layers = 61` 配置下，列表含 61 个数值）：开头两层是 `128, 128`，之后按 `4, 128` 反复交替 29 对共 58 个值，最末以单个 `0` 收尾（即列表 `[-3] = 4` 为 CSA 压缩率、`[-2] = 128` 为 HCA 压缩率、`[-1] = 0` 走 SWA / 全分辨率 full-attention 层；末尾三档依次为 CSA → HCA → SWA）。因此 HCA 层压缩率 128、CSA 层压缩率 4，序列中只有首尾几层与该交替模式不完全吻合——最末 `0` 走 SWA / 全分辨率路径，开头两层为 HCA bootstrap。因为压缩得足够狠，序列长度变得极短。所以 HCA 可以在这个极短的序列上进行**密集注意力**，让每个 token 都能不丢失地看到整个全局背景。由于序列短，计算成本完全可控。
+其实 HCA 与 CSA 类似，但压缩率 m 比 CSA 要大得多，多个 token 的局部信息被融合。`DeepSeek-V4-Pro/config.json` 的 `compress_ratios` 按序列出压缩率取值（列表共 62 项，`num_hidden_layers = 61`）：开头两项是 `128, 128`，
+之后按 `4, 128` 反复交替 29 对共 58 项，末尾再以 `4, 0` 收束（即列表 `[-3] = 128` 为 HCA 压缩率、`[-2] = 4` 为 CSA 压缩率、`[-1] = 0` 走 SWA / 全分辨率 full-attention 层；末尾三项依次为 HCA → CSA → SWA）。
 
-### 3.2.5.8 线性时间替代：linear attention / Mamba-2 / Gated DeltaNet
+因此 HCA 层压缩率 128、CSA 层压缩率 4，序列中只有首尾几项与该交替模式不完全吻合——最末 `0` 走 SWA / 全分辨率路径，开头两个 `128` 项为 HCA bootstrap。
+
+因为压缩得足够狠，序列长度变得极短。所以 HCA 可以在这个极短的序列上进行**密集注意力**，让每个 token 都能不丢失地看到整个全局背景。由于序列短，计算成本完全可控。
+
+#### 3.2.5.8 线性时间替代：linear attention / Mamba-2 / Gated DeltaNet
 
 稀疏注意力仍需要 O(nk) 形式的有效复杂度（k 是稀疏选择窗口）；如果想进一步降到线性时间，需要把注意力的递推形式保留下来。下面两个子节依次走过 linear attention 的递推等价形式、Mamba-2 的门控衰减，以及 Gated DeltaNet 在此之上加的写入门与 delta 规则。
 
-**3.2.5.8.1 从 linear attention 到 Mamba-2**
+##### 3.2.5.8.1 从 linear attention 到 Mamba-2
 
 标准注意力的主要成本来自 $QK^\top$，序列长度为 $n$ 时复杂度近似为 $O(n^2)$。如果暂时把 softmax 视为恒等映射，则有：
 
@@ -989,37 +1075,58 @@ $$
 S_t = S_{t-1} + k_t v_t^\top,\quad y_t = q_t^\top S_t
 $$
 
-这就是 linear attention 与循环形式之间的关键联系：训练时可以利用并行形式，推理时可以像 RNN 一样增量更新状态。Mamba-2（Dao & Gu, *Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality*, [arXiv:2405.21060](https://arxiv.org/abs/2405.21060), 2024）可以从这个角度理解为在线性注意力状态上加入输入相关的门控与衰减：[arXiv:2312.00752](https://arxiv.org/abs/2312.00752) 是原始 Mamba 论文（Gu & Dao, 2023）。
+这就是 linear attention 与循环形式之间的关键联系：训练时可以利用并行形式，推理时可以像 RNN 一样增量更新状态。
+Mamba-2（Dao & Gu,
+*Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality*, [arXiv:2405.21060](https://arxiv.org/abs/2405.21060), 2024）
+可以从这个角度理解为在线性注意力状态上加入输入相关的门控与衰减：[arXiv:2312.00752](https://arxiv.org/abs/2312.00752) 是原始 Mamba 论文（Gu & Dao, 2023）。
 
 $$
-S_t = \gamma_t S_{t-1} + k_t v_t^\top,\quad y_t = q_t^\top S_t + v_t^\top D
+S_t = \gamma_t S_{t-1} + k_t v_t^\top,\quad y_t = q_t^\top S_t
 $$
 
-其中 $\gamma_t=f(x_t)$ 控制旧状态保留程度。这样做的目标是保留线性时间推理的优势，同时通过 gating 提升表达能力。此处沿 fla 库写法取 $S_t \in \mathbb{R}^{d_k \times d_v}$，于是 $k_t v_t^\top$ 形状为 $d_k \times d_v$，与 $S_t$ 同形；Gated DeltaNet 论文 §2.1 把 Mamba-2 的这条线性递推写在转置约定 $S_t \in \mathbb{R}^{d_v \times d_k}$ 下（ $d_k$ 与 $d_v$ 分别是 query/key 与 value 的 head 维度），同一递推转置后写成 $S_t = \gamma_t S_{t-1} + v_t k_t^\top,\ y_t = S_t q_t + D \odot x$。两种写法互为转置，逐元素含义一致。
+其中 $\gamma_t=f(x_t)$ 控制旧状态保留程度（Gated DeltaNet 论文 §2.1 把每步遗忘门记作 $\alpha_t$、累积衰减记作 $\gamma_t = \prod_i \alpha_i$）。这样做的目标是保留线性时间推理的优势，同时通过 gating 提升表达能力。
 
-实践中的落地形态是 hybrid attention：一部分层使用线性/状态空间类模块，一部分层保留 full attention，以折中长上下文效率和复杂推理质量。MiniMax-01（[arXiv:2501.08313](https://arxiv.org/abs/2501.08313)）用 lightning attention + softmax attention + MoE 的 7:1 组合（线性注意力层数: softmax attention 层数 = 7:1）；Nemotron-H（[arXiv:2504.03624](https://arxiv.org/abs/2504.03624)）把 self-attention 层压到总层数的约 8%（8B 版 52 层里 4 层 attention，56B 版 118 层里 10 层），其余层由 Mamba-2 与 FFN 各占一半交替排布；Qwen3-Next（[Qwen3-Next blog](https://qwen.ai/blog?id=qwen3-next)）用 Gated DeltaNet + full attention 的 3:1 组合。
+此处沿 fla 库写法取 $S_t \in \mathbb{R}^{d_k \times d_v}$，于是 $k_t v_t^\top$ 形状为 $d_k \times d_v$，与 $S_t$ 同形；
+Gated DeltaNet 论文 §2.1 把 Mamba-2 的这条线性递推写在转置约定 $S_t \in \mathbb{R}^{d_v \times d_k}$ 下（ $d_k$ 与 $d_v$ 分别是 query/key 与 value 的 head 维度），
+同一递推转置后写成 $S_t = \alpha_t S_{t-1} + v_t k_t^\top,\ o_t = S_t q_t$。两种写法只差状态矩阵的转置约定，输出式同为状态矩阵与 query 的乘积。
 
-**3.2.5.8.2 Gated DeltaNet**
+实践中的落地形态是 hybrid attention：一部分层使用线性/状态空间类模块，一部分层保留 full attention，以折中长上下文效率和复杂推理质量。MiniMax-01（[arXiv:2501.08313](https://arxiv.org/abs/2501.08313)）
+用 lightning attention + softmax attention + MoE 的 7:1 组合（线性注意力层数: softmax attention 层数 = 7:1）。
 
-在线性注意力这条线上还有 [Gated DeltaNet](https://arxiv.org/abs/2412.06464)（Yang/Kautz/Hatamizadeh, 2024-12）。Gated DeltaNet 把 Mamba-2 的标量衰减 $\gamma_t = \exp(-\Delta_t \cdot \exp(A_{\log}))$ 保留为遗忘门 $\alpha_t$，再额外引入写入门 $\beta_t = \sigma(W_\beta x_t)$，把状态更新写成 delta 形式
+Nemotron-H（[arXiv:2504.03624](https://arxiv.org/abs/2504.03624)）把 self-attention 层压到总层数的约 8%（8B 版 52 层里 4 层 attention，56B 版 118 层里 10 层），其余层由 Mamba-2 与 FFN 各占一半交替排布；
+Qwen3-Next（[Qwen3-Next blog](https://qwen.ai/blog?id=qwen3-next)）用 Gated DeltaNet + full attention 的 3:1 组合。
+
+##### 3.2.5.8.2 Gated DeltaNet
+
+在线性注意力这条线上还有 [Gated DeltaNet](https://arxiv.org/abs/2412.06464)（Yang/Kautz/Hatamizadeh, 2024-12）。
+Gated DeltaNet 把 Mamba-2 的标量衰减 $\gamma_t = \exp(-\Delta_t \cdot \exp(A_{\log}))$ 保留为遗忘门 $\alpha_t$，再额外引入写入门 $\beta_t = \sigma(W_\beta x_t)$，
+把状态更新写成 delta 形式
 
 $$
 S_t = \alpha_t\,(I - \beta_t\, k_t k_t^\top)\,S_{t-1} + \beta_t\, k_t v_t^\top
 $$
 
-其中 $\alpha_t$ 与 $\beta_t$ 是两个独立 gate。这里的状态约定沿 fla 库写法取 $S_t \in \mathbb{R}^{d_k \times d_v}$，于是 $(I - \beta_t k_t k_t^\top) \in \mathbb{R}^{d_k \times d_k}$ 从左侧作用在 $S_{t-1}$ 上，delta 外积写成 $k_t v_t^\top$（形状 $d_k \times d_v$，与 $S_t$ 同形），对应 [fla 库的 gated delta net 实现](https://github.com/sustcsonglin/flash-linear-attention)。
+其中 $\alpha_t$ 与 $\beta_t$ 是两个独立 gate。这里的状态约定沿 fla 库写法取 $S_t \in \mathbb{R}^{d_k \times d_v}$，于是 $(I - \beta_t k_t k_t^\top) \in \mathbb{R}^{d_k \times d_k}$ 从左侧作用在 $S_{t-1}$ 上，
+delta 外积写成 $k_t v_t^\top$（形状 $d_k \times d_v$，与 $S_t$ 同形），对应 [fla 库的 gated delta net 实现](https://github.com/sustcsonglin/flash-linear-attention)。
 
-[Gated DeltaNet 论文](https://arxiv.org/abs/2412.06464) §3.1 的状态更新式取转置约定 $S_t \in \mathbb{R}^{d_v \times d_k}$，因此写成 $S_t = S_{t-1}\bigl(\alpha_t (I - \beta_t k_t k_t^\top)\bigr) + \beta_t v_t k_t^\top$，转移矩阵从右侧作用、delta 外积用 $v_t k_t^\top$。两种写法互为转置，逐元素含义一致。
+[Gated DeltaNet 论文](https://arxiv.org/abs/2412.06464) §3.1 的状态更新式取转置约定 $S_t \in \mathbb{R}^{d_v \times d_k}$，
+因此写成 $S_t = S_{t-1}\bigl(\alpha_t (I - \beta_t k_t k_t^\top)\bigr) + \beta_t v_t k_t^\top$，转移矩阵从右侧作用、delta 外积用 $v_t k_t^\top$。两种写法互为转置，逐元素含义一致。
 
-该形式兼具 RNN 的局部遗忘门控和 linear attention 的并行训练形式；Qwen3-Next 用 3:1 hybrid，Gated DeltaNet 占 3/4 层、softmax attention 占 1/4 层（`full_attention_interval=4`，见 [Qwen3-Next-80B-A3B config](https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct)）。线性层的状态大小固定为 $d_k \times d_v$，而输入序列长度 $n$ 可以继续增长；因此它无法像 full attention 那样为每个历史 token 保留独立键值，精确检索能力会受到状态容量约束。提高 linear-attention 层比例可能放大这项取舍，但退化幅度依赖任务和训练配方，需用长上下文检索评测确定比例。
+该形式兼具 RNN 的局部遗忘门控和 linear attention 的并行训练形式；Qwen3-Next 用 3:1 hybrid，Gated DeltaNet 占 3/4 层、softmax attention 占 1/4 层（`full_attention_interval=4`，
+见 [Qwen3-Next-80B-A3B config](https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct)）。
+
+线性层的状态大小固定为 $d_k \times d_v$，而输入序列长度 $n$ 可以继续增长；因此它无法像 full attention 那样为每个历史 token 保留独立键值，精确检索能力会受到状态容量约束。提高 linear-attention 层比例可能放大这项取舍，但退化幅度依赖任务和训练配方，需用长上下文检索评测确定比例。
 
 ## 3.3 超参数考量与设计原则
 
-本节把架构选择转成可检验的超参数实验：每次只改变一个候选变量（FFN expansion、head dim、宽深比或词表大小），固定 tokenizer、训练 tokens、optimizer、batch、scheduler 和评测集，记录 pretraining loss、吞吐和显存。曲线的最低点、斜率和资源代价分别对应质量、缩放趋势与工程约束，具体数值属于实验拟合而非普遍定律。
+本节把架构选择转成可检验的超参数实验：每次只改变一个候选变量（FFN expansion、head dim、宽深比或词表大小），固定 tokenizer、训练 tokens、optimizer、batch、scheduler 和评测集，记录 pretraining loss、吞吐和显存。曲线的最低点、斜率和资源代价分别对应质量、缩放趋势与工程约束，
+具体数值属于实验拟合而非普遍定律。
 
-这一节给出训练一个新 dense decoder 时常用的几个超参数经验区间：FFN expansion ratio（§3.3.1）、head dim 与 model dim 的比例（§3.3.2）、宽深比（§3.3.3）、vocab size（§3.3.4）、dropout 与 weight decay（§3.3.5）。这些区间描述的是分布中心，不是固定常数；具体模型的层数、头数、 $d_{\text{ff}}$ 与正则化设置写在各自的论文、模型卡和官方 config 里，读配置时按这些一手数字对照本节即可。
+这一节给出训练一个新 dense decoder 时常用的几个超参数经验区间：FFN expansion ratio（§3.3.1）、head dim 与 model dim 的比例（§3.3.2）、宽深比（§3.3.3）、vocab size（§3.3.4）、dropout 与 weight decay（§3.3.5）。这些区间描述的是分布中心，
+不是固定常数；具体模型的层数、头数、 $d_{\text{ff}}$ 与正则化设置写在各自的论文、模型卡和官方 config 里，读配置时按这些一手数字对照本节即可。
 
-当你突然被要求训练一个新语言模型时，会对超参数产生很多疑问，因为它们的数量相当多。你应该意识到的一个关键点是：在不同成功模型中，实际上只有少数几个超参数会被调整。业界遵循着相当明确的经验法则和指导原则。比如前馈网络的尺寸应该扩大多少？注意力头数量该如何设定？词表规模多大合适？前馈层（FFN）大小应该比隐藏层大小大多少？有多少个头，num_heads 是否总是应该能整除隐藏层大小？人们是如何扩展这些模型的，是变得更深（deep）还是变得更宽（wide）？
+当你突然被要求训练一个新语言模型时，会对超参数产生很多疑问，因为它们的数量相当多。你应该意识到的一个关键点是：在不同成功模型中，实际上只有少数几个超参数会被调整。业界遵循着相当明确的经验法则和指导原则。比如前馈网络的尺寸应该扩大多少？注意力头数量该如何设定？词表规模多大合适？前馈层（FFN）大小应该比隐藏层大小大多少？有多少个头，
+num_heads 是否总是应该能整除隐藏层大小？人们是如何扩展这些模型的，是变得更深（deep）还是变得更宽（wide）？
 
 ### 3.3.1 前馈神经网络
 
@@ -1029,7 +1136,8 @@ $$
 \text{FFN}(x) = \max(0,xW_1 + b_1)W_2 + b_2
 $$
 
-这里涉及两个超参数： $d_{\text{model}}$ （输入 x 的维度，即 FFN 的输入维度）和 $d_{\text{ff}}$ （前馈网络维度，即 FFN 的隐藏层输出维度），最终会投影回 $d_{\text{model}}$ 维度。当你打算扩大模型的时候，FFN 通常也会扩大，具体扩大多少倍其实业内早有共识：几乎所有使用 ReLU 类 MLP 的研究者都会将 $d_{\text{ff}}$ 设为 $d_{\text{model}}$ 的 4 倍。
+这里涉及两个超参数： $d_{\text{model}}$ （输入 x 的维度，即 FFN 的输入维度）和 $d_{\text{ff}}$ （前馈网络维度，即 FFN 的隐藏层输出维度），最终会投影回 $d_{\text{model}}$ 维度。当你打算扩大模型的时候，FFN 通常也会扩大，具体扩大多少倍其实业内早有共识：
+几乎所有使用 ReLU 类 MLP 的研究者都会将 $d_{\text{ff}}$ 设为 $d_{\text{model}}$ 的 4 倍。
 
 $$
 d_{\text{ff}} = 4d_{\text{model}}
@@ -1049,21 +1157,37 @@ $$
 
 ![图 3.3-1 d_ff&d_model](images/3-3-1-ffn-model-dim-ratio.png)
 
-*图 3.3-1 截图中的 $d_{\text{ff}}/d_{\text{model}}$ 对照表；其中 "Qwen 14B = 2.67" 一项实际对应 Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`），原版 Qwen-14B 的 `intermediate_size = 27392`、 $d_{\text{ff}}/d_{\text{model}} \approx 5.35$ ，§3.3.1 正文按代际列出原版与各代际具体值*
+*图 3.3-1 截图中的 $d_{\text{ff}}/d_{\text{model}}$ 对照表；其中 "Qwen 14B = 2.67" 一项实际对应 Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`），
+原版 Qwen-14B 的 `intermediate_size = 27392`、 $d_{\text{ff}}/d_{\text{model}} \approx 5.35$ ，
+§3.3.1 正文按代际列出原版与各代际具体值*
 
-以 PaLM 为例，它虽然是 SwiGLU 模型，但把 $d_{\text{ff}}$ 直接设为 $4d_{\text{model}}$，没有做 2/3 缩放。LLaMA-2 70B 与 Mistral-7B v0.1 落在 3.5 倍附近：LLaMA-2 70B 的 `hidden_size = 8192`、`intermediate_size = 28672`，Mistral-7B v0.1 的 `hidden_size = 4096`、`intermediate_size = 14336`，两者都是 $d_{\text{ff}}/d_{\text{model}} = 3.5$。两个模型都用 GQA（`num_key_value_heads = 8`），共享 KV 省下的预算被重新分配给 MLP，于是在 $8/3$ 的基础上再乘约 1.33。
+以 PaLM 为例，它虽然是 SwiGLU 模型，但把 $d_{\text{ff}}$ 直接设为 $4d_{\text{model}}$，没有做 2/3 缩放。LLaMA-2 70B 与 Mistral-7B v0.1 落在 3.5 倍附近：
+LLaMA-2 70B 的 `hidden_size = 8192`、`intermediate_size = 28672`，Mistral-7B v0.1 的 `hidden_size = 4096`、`intermediate_size = 14336`，两者都是 $d_{\text{ff}}/d_{\text{model}} = 3.5$。
+两个模型都用 GQA（`num_key_value_heads = 8`），共享 KV 省下的预算被重新分配给 MLP，于是在 $8/3$ 的基础上再乘约 1.33。
 
-保持 MHA 的模型仍按 $8/3$ 经验值落地。LLaMA-2 7B/13B 用 MHA（`num_key_value_heads = num_attention_heads`），FFN expansion 沿用 $8/3$ 左右而没有 GQA 下的 1.33 倍放大；LLaMA-1 7B 的 `hidden_size = 4096`、`intermediate_size = 11008`， $d_{\text{ff}}/d_{\text{model}} \approx 2.687$。
+保持 MHA 的模型仍按 $8/3$ 经验值落地。LLaMA-2 7B/13B 用 MHA（`num_key_value_heads = num_attention_heads`），FFN expansion 沿用 $8/3$ 左右而没有 GQA 下的 1.33 倍放大；
+LLaMA-1 7B 的 `hidden_size = 4096`、`intermediate_size = 11008`， $d_{\text{ff}}/d_{\text{model}} \approx 2.687$。
 
-GQA 模型则分布在 $2.66\text{–}2.86$ 区间。DeepSeek-LLM-67B-base（[`deepseek-ai/deepseek-llm-67b-base`](https://huggingface.co/deepseek-ai/deepseek-llm-67b-base) 的 `config.json`：`hidden_size = 8192`、`intermediate_size = 22016`、`hidden_act: silu` 即 SwiGLU、`num_key_value_heads = 8` 即 GQA、 $d_{\text{ff}}/d_{\text{model}} \approx 2.687$）与 Yi-34B（`hidden_size = 7168`、`intermediate_size = 20480`、SwiGLU， $d_{\text{ff}}/d_{\text{model}} \approx 2.857$）采用不同的 `hidden_size`，并非「共享同一组维度」。两者都落在 $2.66\text{–}2.86$ 区间但具体值不同，读配置时按各 checkpoint 字段确认。
+GQA 模型则分布在 $2.66\text{–}2.86$ 区间。
+DeepSeek-LLM-67B-base（[`deepseek-ai/deepseek-llm-67b-base`](https://huggingface.co/deepseek-ai/deepseek-llm-67b-base) 的 `config.json`：
+`hidden_size = 8192`、`intermediate_size = 22016`、`hidden_act: silu` 即 SwiGLU、`num_key_value_heads = 8` 即 GQA、
+ $d_{\text{ff}}/d_{\text{model}} \approx 2.687$）落在这个区间。
 
-Qwen 系列在不同代际之间来回摆动而非单调收敛。原版 Qwen-14B（`hidden_size = 5120`、`intermediate_size = 27392`，`hidden_act: silu`，实际为 SwiGLU） $d_{\text{ff}}/d_{\text{model}} \approx 5.35$，Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`，SwiGLU）回到约 $2.675$，Qwen2-7B（`hidden_size = 3584`、`intermediate_size = 18944`，SwiGLU）再次跳到约 $5.29$，明显偏离 $8/3$。原版 Qwen-14B 没有沿用 GLU 的 2/3 缩放，反而把 expansion 推到约 5 倍；Qwen1.5 才把这条经验值拉回 8/3 附近；Qwen2 又回到高 expansion 区段。整体看，Qwen 系列并非单调逼近 $8/3$，而是按代际目标在不同取值之间反复调整，读配置时需要按代核对。
+Yi-34B 用 `hidden_size = 7168`、`intermediate_size = 20480`（SwiGLU， $d_{\text{ff}}/d_{\text{model}} \approx 2.857$），与 DeepSeek-LLM-67B 采用不同的 `hidden_size`，并非「共享同一组维度」。
+两者都落在 $2.66\text{–}2.86$ 区间但具体值不同，读配置时按各 checkpoint 字段确认。
+
+Qwen 系列在不同代际之间来回摆动而非单调收敛。原版 Qwen-14B（`hidden_size = 5120`、`intermediate_size = 27392`，SwiGLU） $d_{\text{ff}}/d_{\text{model}} \approx 5.35$，
+Qwen1.5-14B（`hidden_size = 5120`、`intermediate_size = 13696`，SwiGLU）回到约 $2.675$，Qwen2-7B（`hidden_size = 3584`、`intermediate_size = 18944`，SwiGLU）再次跳到约 $5.29$，明显偏离 $8/3$。
+
+原版 Qwen-14B 没有沿用 GLU 的 2/3 缩放，反而把 expansion 推到约 5 倍；Qwen1.5 才把这条经验值拉回 8/3 附近；Qwen2 又回到高 expansion 区段。整体看，Qwen 系列按代际目标在不同取值之间反复调整，读配置时需要按代核对。
 
 **例外二：T5 模型**
 
-许多语言模型的 FFN expansion ratio 会落在相对集中的范围内，但也存在明显例外。在 110 亿（11B）参数的 T5 模型中，隐藏维度只有 1024，而 $d_{\text{ff}}$ （前馈网络维度）及其向上投影维度是 65536，使 $d_{\text{ff}}$ 与 $d_{\text{model}}$ 的比例达到 64 倍。相比之下，PaLM 的比例因子大约是 4，Gemma 2 等模型也有更大的乘数设置，但整体仍比 T5 的 64 倍温和得多。
+许多语言模型的 FFN expansion ratio 会落在相对集中的范围内，但也存在明显例外。在 110 亿（11B）参数的 T5 模型中，隐藏维度只有 1024，而 $d_{\text{ff}}$ （前馈网络维度）及其向上投影维度是 65536，使 $d_{\text{ff}}$ 与 $d_{\text{model}}$ 的比例达到 64 倍。
+相比之下，PaLM 的比例因子大约是 4，Gemma 2 等模型也有更大的乘数设置，但整体仍比 T5 的 64 倍温和得多。
 
-Kaplan scaling law 论文里也包含有用的超参数研究：他们考察了 $d_{\text{ff}}$ 与 $d_{\text{model}}$ 的比例，并绘制了随该比例变化时损失值的增长曲线。图中显示存在一个较宽的可接受区间，比例从 1 到 10 左右都接近最优；因此 FFN 宽度应被看成工程区间，需要在表达能力、参数分配、kernel 效率和训练设置之间做权衡。
+Kaplan scaling law 论文里也包含有用的超参数研究：他们考察了 $d_{\text{ff}}$ 与 $d_{\text{model}}$ 的比例，并绘制了随该比例变化时损失值的增长曲线。图中显示存在一个较宽的可接受区间，比例从 1 到 10 左右都接近最优；因此 FFN 宽度应被看成工程区间，需要在表达能力、参数分配、
+kernel 效率和训练设置之间做权衡。
 
 ![图 3.3-2 FFN expansion ratio](images/3-3-2-feed-forward-ratio.png)
 
@@ -1075,19 +1199,27 @@ Kaplan scaling law 论文里也包含有用的超参数研究：他们考察了 
 
 ### 3.3.2 注意力头和模型维度的比例
 
-另一个超参数共识是模型维度与头维度乘以头数量的比例。标准做法是保持每个头的维度固定而增加头数量，也可以选择保持单头维度不变来增加注意力部分的参数量，但大多数模型都遵循前一种方案。GPT-3 175B（96 heads × 128 head dim / 12288）和 LLaMA-2 70B（64 × 128 / 8192）在 MHA 假设下的「num_heads × head_dim / d_model」比例都正好是 1；后者实际是 GQA（`num_key_value_heads = 8`），其 K/V 投影维度只有 8 × 128 = 1024，比 MHA 假设下的 64 × 128 小 8 倍（这是经验观察 + Bhojanapalli 2020 低秩瓶颈分析部分理论支撑，非公理推导）：
+另一个超参数共识是模型维度与头维度乘以头数量的比例。标准做法是保持每个头的维度固定而增加头数量，也可以选择保持单头维度不变来增加注意力部分的参数量，但大多数模型都遵循前一种方案。GPT-3 175B（96 heads × 128 head dim / 12288）和 LLaMA-2 70B（64 × 128 / 8192）
+在 MHA 假设下的「num_heads × head_dim / d_model」比例都正好是 1；后者实际是 GQA（`num_key_value_heads = 8`），其 K/V 投影维度只有 8 × 128 = 1024，
+比 MHA 假设下的 64 × 128 小 8 倍（这是经验观察 + Bhojanapalli 2020 低秩瓶颈分析部分理论支撑，非公理推导）：
 
 $$
 \frac{\text{NumHeads} \cdot \text{HeadDim}}{\text{ModelDim}} \approx 1
 $$
 
-T5 和 LaMDA 是明显例外，T5 把这个比例推到 16。PaLM 540B 也不在 1 附近：论文 Table 1 给出 118 层、48 个头、 $d_{\text{model}}=18432$，并注明 attention head size 恒为 256，因此 $48 \times 256 / 18432 \approx 0.67$。这里 $48 \times 256 = 12288 < d_{\text{model}}=18432$，差值来自输出投影 $W^O$ 把拼接后的 head 输出（ $h \times d_k = 12288$ 维）再投到 $d_{\text{model}}=18432$ 维。PaLM 论文 §2.1 所谓「parallel」指的是 block 层面把 attention 与 MLP 并行作用在同一份 `LayerNorm(x)` 输出上（ $y = x + \mathrm{MLP}(\mathrm{LN}(x)) + \mathrm{Attention}(\mathrm{LN}(x))$，Wang & Komatsuzaki 2021 / GPT-J 风格），并非 head 输出按并行相加；head 输出仍按标准方式 Concat 后经 $W^O$ 投影。除这类特殊设计外，1:1 仍是更常见的起点。
+T5 和 LaMDA 是明显例外，T5 把这个比例推到 16。PaLM 540B 也不在 1 附近：论文 Table 1 给出 118 层、48 个头、 $d_{\text{model}}=18432$，并注明 attention head size 恒为 256，因此 $48 \times 256 / 18432 \approx 0.67$。
+这里 $48 \times 256 = 12288 < d_{\text{model}}=18432$，差值来自输出投影 $W^O$ 把拼接后的 head 输出（ $h \times d_k = 12288$ 维）再投到 $d_{\text{model}}=18432$ 维。
+
+PaLM 论文 §2 所谓「parallel」指的是 block 层面把 attention 与 MLP 并行作用在同一份 `LayerNorm(x)` 输出上（ $y = x + \mathrm{MLP}(\mathrm{LN}(x)) + \mathrm{Attention}(\mathrm{LN}(x))$，
+Wang & Komatsuzaki 2021 / GPT-J 风格），并非 head 输出按并行相加；head 输出仍按标准方式 Concat 后经 $W^O$ 投影。除这类特殊设计外，1:1 仍是更常见的起点。
 
 ![图 3.3-3 attention head ratio](images/3-3-3-head-dim-ratio.png)
 
-*图 3.3-3 截图，多数模型让 head 数量乘以 head dim 接近 model dim；其中 PaLM 行 head dim 标注为 258、ratio 1.48 与 PaLM 540B 实际值（head dim 256、 $48 \times 256 / 18432 \approx 0.67$ ，论文 Table 1）不一致，§3.3.2 正文给出正确数字*
+*图 3.3-3 截图，多数模型让 head 数量乘以 head dim 接近 model dim；其中 PaLM 行 head dim 标注为 258、ratio 1.48 与 PaLM 540B 实际值（head dim 256、 $48 \times 256 / 18432 \approx 0.67$ ，论文 Table 1）不一致，
+§3.3.2 正文给出正确数字*
 
-Bhojanapalli 等人在 [*Low-Rank Bottleneck in Multi-head Attention Models*, arXiv:2002.07028](https://arxiv.org/abs/2002.07028) 中提出，如果 head dim 过小而头数继续增加，attention 矩阵会落入低秩瓶颈，限制表达能力。1:1 比例附近则一般没有表现出明显的低秩约束，这是当前主流模型能稳定落在这条经验线上的部分原因。
+Bhojanapalli 等人在 [*Low-Rank Bottleneck in Multi-head Attention Models*, arXiv:2002.07028](https://arxiv.org/abs/2002.07028) 中提出，如果 head dim 过小而头数继续增加，attention 矩阵会落入低秩瓶颈，限制表达能力。
+1:1 比例附近则一般没有表现出明显的低秩约束，这是当前主流模型能稳定落在这条经验线上的部分原因。
 
 ![图 3.3-4 参数比例](images/3-3-4-parameter-ratio.png)
 
@@ -1101,25 +1233,34 @@ Bhojanapalli 等人在 [*Low-Rank Bottleneck in Multi-head Attention Models*, ar
 
 *图 3.3-5 宽深比通常以 $`d_{\text{model}}/n_{\text{layer}}`$ 观察，不同模型族集中在一段经验区间内*
 
-主流 dense decoder-only 模型的宽深比集中在每层约 100–200 个隐藏维度，即 $d_{\text{model}}/n_{\text{layer}} \approx 100\text{–}200$。按各模型官方 config 计算：BLOOM 176B 14336/70 ≈ **205**、T5 v1.1 XXL 4096/24 ≈ **171**、PaLM 540B 18432/118 ≈ **156**、GPT-3 175B 12288/96 = **128**、OPT-6.7B 与 Mistral-7B v0.1 4096/32 = **128**、Qwen-7B 与 OLMo-3-7B 同样是 4096/32 = **128**、Qwen2-7B 3584/28 = **128**、LLaMA-1 7B 4096/32 = **128**、LLaMA-1 65B 与 LLaMA-3 70B 8192/80 ≈ **102**、Gemma 3 27B 5376/62 ≈ **87**、Gemma 4 E2B 1536/35 ≈ **44**、Gemma 4 31B dense 5376/60 ≈ **90**。
+主流 dense decoder-only 模型的宽深比集中在每层约 100–200 个隐藏维度，即 $d_{\text{model}}/n_{\text{layer}} \approx 100\text{–}200$。按各模型官方 config 计算：BLOOM 176B 14336/70 ≈ **205**、
+T5 v1.1 XXL 4096/24 ≈ **171**、PaLM 540B 18432/118 ≈ **156**、GPT-3 175B 12288/96 = **128**、OPT-6.7B 与 Mistral-7B v0.1 4096/32 = **128**、Qwen-7B 与 OLMo-3-7B 同样是 4096/32 = **128**、
+Qwen2-7B 3584/28 = **128**。
 
-encoder-decoder 族整体更窄：T5-11B 的 `d_model = 1024` 配 `num_layers = 24`，比值降到 40 出头。所以这条经验区间只在 dense decoder-only 内部稳定，跨族外推会失效；Gemma 4 的小模型（E2B）落在 decoder-only 区间偏低的一端，而同代际的 31B dense 又回到接近 LLaMA-1 65B / LLaMA-3 70B 的 ~102 区间。
+其余模型：LLaMA-1 7B 4096/32 = **128**、LLaMA-1 65B 与 LLaMA-3 70B 8192/80 ≈ **102**、Gemma 3 27B 5376/62 ≈ **87**、Gemma 4 E2B 1536/35 ≈ **44**、Gemma 4 31B dense 5376/60 ≈ **90**。
+
+encoder-decoder 族整体更窄：T5-11B 的 `d_model = 1024` 配 `num_layers = 24`，比值降到 40 出头。所以这条经验区间只在 dense decoder-only 内部稳定，跨族外推会失效；Gemma 4 的小模型（E2B）落在 decoder-only 区间偏低的一端，
+而同代际的 31B dense 又回到接近 LLaMA-1 65B / LLaMA-3 70B 的 ~102 区间。
 
 宽深比的考量非常重要，它会控制可用并行度。如果采用流水线并行，通常会将不同层切割后分配到不同设备或设备块上；对于特别宽的模型，可以采用张量并行，将矩阵切片分布到多个 GPU 上。不同并行范式会产生不同约束：张量并行需要非常高速的网络，而流水线并行对网络速度或延迟的要求可以稍低。因此网络约束可能反过来影响宽度-深度的决策。
 
-抛开这些限制，宽深比对模型性能仍可通过一组控制实验来观察。Kaplan 等人在固定非嵌入参数量的前提下扫描模型形状（图 5 中分别是 50M 与 25M 两组），横轴是宽深比 $d_{\text{model}}/n_{\text{layer}}$，纵轴是损失相对 $L(N)$ 拟合基线的百分比增幅。结论是形状影响很轻微：宽深比变化 40 倍时损失只抬高几个百分点， $(n_{\text{layer}}, d_{\text{model}}) = (6, 4288)$ 的损失落在 GPT-2 所用 $(48, 1600)$ 配置的 3% 以内。
+抛开这些限制，宽深比对模型性能仍可通过一组控制实验来观察。Kaplan 等人在固定非嵌入参数量的前提下扫描模型形状（图 5 中分别是 50M 与 25M 两组），横轴是宽深比 $d_{\text{model}}/n_{\text{layer}}$，纵轴是损失相对 $L(N)$ 拟合基线的百分比增幅。结论是形状影响很轻微：
+宽深比变化 40 倍时损失只抬高几个百分点， $(n_{\text{layer}}, d_{\text{model}}) = (6, 4288)$ 的损失落在 GPT-2 所用 $(48, 1600)$ 配置的 3% 以内。
 
 ![图 3.3-6 宽深比实验](images/3-3-6-depth-width-experiment.png)
 
 *图 3.3-6 宽深比实验显示 loss 对宽深配置有宽容区间，但下游任务和并行策略会改变最终选择*
 
-Google 的 Yi Tay 等人研究了深度与宽度在上游和下游任务中的影响（*Scale Efficiently: Insights from Pre-training and Fine-tuning Transformers*, [arXiv:2109.10686](https://arxiv.org/abs/2109.10686)）。他们发现：如果仅关注损失值，参数数量比深度本身更关键；但当下游准确率作为评估指标时，情况不那么明确。在相同计算量（FLOPs）下，更深的模型可能在部分下游任务上更有优势。这类结论需要结合任务和训练设置理解，不能只从 loss 曲线外推所有能力。
+Google 的 Yi Tay 等人研究了深度与宽度在上游和下游任务中的影响（*Scale Efficiently: Insights from Pre-training and Fine-tuning Transformers*, [arXiv:2109.10686](https://arxiv.org/abs/2109.10686)）。他们发现：
+如果仅关注损失值，参数数量比深度本身更关键；但当下游准确率作为评估指标时，情况不那么明确。在相同计算量（FLOPs）下，更深的模型可能在部分下游任务上更有优势。这类结论需要结合任务和训练设置理解，不能只从 loss 曲线外推所有能力。
 
 ### 3.3.4 词汇表大小
 
-总体而言，词汇表规模呈现不断扩大的趋势（vocab size 数字是 scaling / 多语言覆盖的工程选择，非公理推导）。这很大程度上是因为大语言模型正在实际部署中投入使用，需要与使用不同语言的人群交互，并处理表情符号等各种近乎模态化或超出预期的语言形式。早期模型（尤其是单语模型）的词汇量通常在 **3 万到 5 万** token 之间，比如早期的 GPT 和 LLaMA 系列。
+总体而言，词汇表规模呈现不断扩大的趋势（vocab size 数字是 scaling / 多语言覆盖的工程选择，非公理推导）。这很大程度上是因为大语言模型正在实际部署中投入使用，需要与使用不同语言的人群交互，并处理表情符号等各种近乎模态化或超出预期的语言形式。早期模型（尤其是单语模型）的词汇量通常在 **3 万到 5 万** token 之间，
+比如早期的 GPT 和 LLaMA 系列。
 
-多语言模型或生产系统模型的词汇量通常会扩展到 **10 万到 25 万** 的范围。以注重多语言处理的 Cohere Command 模型为例，其词汇量就比较大；GPT-4 及后续采用 GPT-4 tokenizer 的模型，词汇量也达到 10 万 token 左右。因此，词表规模增大可以看成服务多语言、低资源语言和复杂输入形态的一种工程选择，不能只理解为追求更大的 vocab size。
+多语言模型或生产系统模型的词汇量通常会扩展到 **10 万到 25 万** 的范围。以注重多语言处理的 Cohere Command 模型为例，其词汇量就比较大；GPT-4 及后续采用 GPT-4 tokenizer 的模型，词汇量也达到 10 万 token 左右。因此，词表规模增大可以看成服务多语言、低资源语言和复杂输入形态的一种工程选择，
+不能只理解为追求更大的 vocab size。
 
 **多语言词表与单一语言性能**
 
@@ -1129,13 +1270,15 @@ Google 的 Yi Tay 等人研究了深度与宽度在上游和下游任务中的�
 
 模型运行前需要设置的两个重要组件：dropout 和其他正则化方法。
 
-预训练看似是最不需要正则化的场景——因为**预训练通常只进行一个训练周期**，由于数据量过大甚至无法完整遍历所有数据，**单轮训练**几乎不可能导致过拟合。这似乎构成了不需要正则化的充分理由。但实际情况却比较复杂。早期研究大量使用 dropout，权重衰减也被广泛采用。虽然现在很多团队不再详细发布训练超参数，但 dropout 已逐渐失宠，而权重衰减**仍被持续使用**。
+预训练看似是最不需要正则化的场景——因为**预训练通常只进行一个训练周期**，由于数据量过大甚至无法完整遍历所有数据，**单轮训练**几乎不可能导致过拟合。这似乎构成了不需要正则化的充分理由。但实际情况却比较复杂。早期研究大量使用 dropout，权重衰减也被广泛采用。虽然现在很多团队不再详细发布训练超参数，但 dropout 已逐渐失宠，
+而权重衰减**仍被持续使用**。
 
 ![图 3.3-7 dropout ratio](images/3-3-7-dropout-weight-decay.png)
 
 *图 3.3-7 各模型预训练 dropout 与 weight decay 设置对照表*
 
-许多旧模型在预训练期间使用了 dropout：原始 Transformer、GPT-2、GPT-3、T5、OPT 与 Qwen 14B 的 dropout 都是 0.1，其中 GPT-2、GPT-3、OPT 与 Qwen 14B 同时配 weight decay 0.1，原始 Transformer 与 T5 的 weight decay 为 0。较新的模型把 dropout 记为 0，只保留 weight decay：T5 v1.1 与 PaLM 的 dropout 为 0，LLaMA 的 dropout 为 0、weight decay 为 0.1；Qwen 14B 是这一趋势里的例外。新模型的训练设置披露也常省略 dropout 这一项。
+许多旧模型在预训练期间使用了 dropout：原始 Transformer、GPT-2、GPT-3、T5、OPT 与 Qwen 14B 的 dropout 都是 0.1，其中 GPT-2、GPT-3、OPT 与 Qwen 14B 同时配 weight decay 0.1，原始 Transformer 与 T5 的 weight decay 为 0。
+较新的模型把 dropout 记为 0，只保留 weight decay：T5 v1.1 与 PaLM 的 dropout 为 0，LLaMA 的 dropout 为 0、weight decay 为 0.1；Qwen 14B 是这一趋势里的例外。新模型的训练设置披露也常省略 dropout 这一项。
 
 这个现象值得单独解释：当使用 SGD 在海量数据上对巨型神经网络进行单轮训练时，为什么还要使用权重衰减？
 
@@ -1151,7 +1294,8 @@ Google 的 Yi Tay 等人研究了深度与宽度在上游和下游任务中的�
 
 ## 3.4 模型的稳定性
 
-这一节给出三类 softmax 稳定化技巧：z-loss 控制输出层 softmax 的归一化项（§3.4.1）；QK norm 控制 attention softmax 的输入范围（§3.4.2）；soft-capping 用 tanh 把 logits 平滑限制在 $[-cap, +cap]$（§3.4.3）。三类技巧都服务于长上下文、大模型或较激进学习率下的稳定训练。
+这一节给出三类 softmax 稳定化技巧：z-loss 控制输出层 softmax 的归一化项（§3.4.1）；QK norm 控制 attention softmax 的输入范围（§3.4.2）；soft-capping 用 tanh 把 logits 平滑限制在 $[-cap, +cap]$（§3.4.3）。三类技巧都服务于长上下文、
+大模型或较激进学习率下的稳定训练。
 
 过去一年的核心架构变化不大，但许多发布版本都突出强调了称之为**稳定性技巧**的内容。这些技巧旨在以更稳定的方式训练模型。随着模型规模不断扩大，训练时间持续延长，这类稳定性问题愈发凸显。
 
@@ -1161,7 +1305,8 @@ Google 的 Yi Tay 等人研究了深度与宽度在上游和下游任务中的�
 
 OLMo2 论文提供了一个很典型的稳定性案例：仅看 loss 曲线时，训练似乎还能继续；但观察梯度 L2 norm 会发现蓝色曲线出现频繁尖峰，说明模型内部的梯度尺度已经不稳定。
 
-这种训练状态很难长期稳定收敛，最终可能因为梯度范数爆炸而中断。稳定性技巧的目标，就是把梯度范数从频繁尖峰的状态拉回更平滑、可控的区间。Transformer 中许多位置都可能失稳，但 softmax 是需要重点关注的模块：指数运算会放大 logits 的极端值，归一化项也可能带来数值问题。Transformer 中有两个关键 softmax：输出层 softmax，以及 self-attention 中归一化 attention weights 的 softmax。
+这种训练状态很难长期稳定收敛，最终可能因为梯度范数爆炸而中断。稳定性技巧的目标，就是把梯度范数从频繁尖峰的状态拉回更平滑、可控的区间。Transformer 中许多位置都可能失稳，但 softmax 是需要重点关注的模块：指数运算会放大 logits 的极端值，归一化项也可能带来数值问题。Transformer 中有两个关键 softmax：
+输出层 softmax，以及 self-attention 中归一化 attention weights 的 softmax。
 
 在 Transformer 的两个 softmax 模块中：
 
@@ -1170,7 +1315,11 @@ OLMo2 论文提供了一个很典型的稳定性案例：仅看 loss 曲线时�
 
 ### 3.4.1 z-loss 技术：解决输出层的 softmax
 
-z-loss 是一种 softmax 归一化器正则化技术，约束 **softmax 分母（归一化因子 Z）过大或过小** 的情况，从而稳定训练过程。它作用在最终 softmax logits 上的形式最早出现在 Mesh TensorFlow 代码库（[Shazeer et al., 2018](https://arxiv.org/abs/1811.02084)）；ST-MoE（[arXiv:2202.08906](https://arxiv.org/abs/2202.08906)）把同一思路改造成用于 router 的 router z-loss，并在论文里写明这是对 Mesh TensorFlow 中 final softmax logits z-loss 的改编。PaLM（Chowdhery et al., 2022, [arXiv:2204.02311](https://arxiv.org/abs/2204.02311)）在训练设置里给出了这条被广泛引用的写法：辅助损失取 $10^{-4} \cdot \log^2 Z$，目标是让 $\log Z$ 保持接近 0。
+z-loss 是一种 softmax 归一化器正则化技术，约束 **softmax 分母（归一化因子 Z）过大或过小** 的情况，从而稳定训练过程。
+它作用在最终 softmax logits 上的形式最早出现在 Mesh TensorFlow 代码库（[Shazeer et al., 2018](https://arxiv.org/abs/1811.02084)）；ST-MoE（[arXiv:2202.08906](https://arxiv.org/abs/2202.08906)）
+把同一思路改造成用于 router 的 router z-loss，并在论文里写明这是对 Mesh TensorFlow 中 final softmax logits z-loss 的改编。
+
+PaLM（Chowdhery et al., 2022, [arXiv:2204.02311](https://arxiv.org/abs/2204.02311)）在训练设置里给出了这条被广泛引用的写法：辅助损失取 $10^{-4} \cdot \log^2 Z$，目标是让 $\log Z$ 保持接近 0。
 
 $$
 \mathcal L_{\text{z-loss}} = \lambda \cdot \log^2 Z
@@ -1190,7 +1339,8 @@ $$
 \mathcal L_{\text{total}} = \mathcal L_{\text{cross-entropy}} + \lambda \cdot \log^2 Z
 $$
 
-它的目的是让 softmax 归一化器保持在良好的区间内。当 $Z$ 接近 1（即 $\log Z$ 接近 0）时，可以认为 softmax 处于较稳定状态。PaLM 之后，Baichuan 2、DCLM、OLMo 2、OLMo 3 等模型也在输出 softmax 上加了 z-loss，其中 OLMo 2 的架构表把 z-loss 权重列为 $10^{-5}$。z-loss 控制输出层 softmax 的归一化项，QK norm 和 soft-capping 则控制 attention softmax 的输入或范围。
+它的目的是让 softmax 归一化器保持在良好的区间内。当 $Z$ 接近 1（即 $\log Z$ 接近 0）时，可以认为 softmax 处于较稳定状态。PaLM 之后，Baichuan 2、DCLM、OLMo 2、OLMo 3 等模型也在输出 softmax 上加了 z-loss，
+其中 OLMo 2 的架构表把 z-loss 权重列为 $10^{-5}$。z-loss 控制输出层 softmax 的归一化项，QK norm 和 soft-capping 则控制 attention softmax 的输入或范围。
 
 ### 3.4.2 解决注意力层的 softmax
 
@@ -1212,9 +1362,11 @@ $$
 
 在进行 **softmax** 点积运算之前，先让**查询向量和键向量通过归一化层**。这是另一种控制 softmax 行为的思路：通过控制 softmax 输入的数值范围来抑制极端 logits。
 
-这个技巧最初来自视觉和多模态模型领域，Dehghani 等人 2023 年关于训练超大视觉 Transformer 的论文（*Scaling Vision Transformers to 22 Billion Parameters*, [arXiv:2302.05442](https://arxiv.org/abs/2302.05442)）采用了相关做法。随后 Meta 的 Chameleon 和 Hugging Face 的 Idefics 在多模态训练组件中采用了这个技巧，Gemma 2、DCLM、OLMo 2、Qwen3、OLMo 3、Gemma 4 等模型也用它稳定训练。
+这个技巧最初来自视觉和多模态模型领域，Dehghani 等人 2023 年关于训练超大视觉 Transformer 的论文（*Scaling Vision Transformers to 22 Billion Parameters*, [arXiv:2302.05442](https://arxiv.org/abs/2302.05442)）采用了相关做法。
+随后 Meta 的 Chameleon 和 Hugging Face 的 Idefics 在多模态训练组件中采用了这个技巧，Gemma 2、DCLM、OLMo 2、Qwen3、OLMo 3、Gemma 4 等模型也用它稳定训练。
 
-QK norm 的核心作用是控制进入 attention softmax 的 logits 范围。它延续了本章前面关于 norm 的经验：如果某处容易出现数值尖峰，可以尝试在非 residual 路径或 logits 相关路径上增加 norm。和 z-loss、soft-capping 一样，QK norm 的目标都是控制 softmax 的输入或归一化项，让模型在更大规模、更长上下文或更激进学习率下减少 loss spike。
+QK norm 的核心作用是控制进入 attention softmax 的 logits 范围。它延续了本章前面关于 norm 的经验：如果某处容易出现数值尖峰，可以尝试在非 residual 路径或 logits 相关路径上增加 norm。和 z-loss、soft-capping 一样，QK norm 的目标都是控制 softmax 的输入或归一化项，
+让模型在更大规模、更长上下文或更激进学习率下减少 loss spike。
 
 LayerNorm 或 RMSNorm 不只是训练期辅助项；推理阶段也会保留。因为 norm 层的缩放参数已经成为模型函数的一部分，移除它会改变 hidden state 的尺度和分布，后续层无法按训练时学到的方式处理这些 activation。
 
@@ -1232,33 +1384,45 @@ $$
 
 **软截断（Gemma 2 采用）**
 
-Gemma 2 在两处分别设置软截断：attention logits 用 $\text{cap} = 50.0$，final layer logits 用 $\text{cap} = 30.0$（对应 `Gemma2Config` 的 `attn_logit_softcapping=50.0` 与 `final_logit_softcapping=30.0`）。attention 路径上的软截断阈值可记为：
+Gemma 2 在两处分别设置软截断：attention logits 用 $\text{cap} = 50.0$，
+final layer logits 用 $\text{cap} = 30.0$（对应 `Gemma2Config` 的 `attn_logit_softcapping=50.0` 与 `final_logit_softcapping=30.0`）。attention 路径上的软截断阈值可记为：
 
 $$
 \text{cap} = 50.0
 $$
 
 $$
-\text{logits}_{\text{clipped}} = \text{cap} \cdot \tanh(\text{logits} / \text{cap})
+\text{logits}' = \text{cap} \cdot \tanh(\text{logits} / \text{cap})
 $$
 
 **范围: (-cap, +cap)**
 
 在完成自注意力机制的内积运算后，将其通过软截断的 softmax 函数处理。`cap · tanh(logits / cap)` 把 logits 同时除以和乘以 `cap`，使输出落在 $(-cap, +cap)$ 之间。
 
-当 logits 大幅超过 soft cap 时，tanh 函数会接近 1，整体输出被限制在 cap 附近。因此，soft-capping 可以看成对 logits 的平滑裁剪。它的采用面比 QK norm 和 z-loss 窄：Gemma 2 同时在 attention 和输出层用了软截断，而 OLMo 2 的稳定性配方是 RMSNorm + 非残差 post-norm + QK norm + z-loss，并没有引入 tanh 软截断。
+当 logits 大幅超过 soft cap 时，tanh 函数会接近 1，整体输出被限制在 cap 附近。因此，soft-capping 可以看成对 logits 的平滑裁剪。它的采用面比 QK norm 和 z-loss 窄：Gemma 2 同时在 attention 和输出层用了软截断，
+而 OLMo 2 的稳定性配方是 RMSNorm + 非残差 post-norm + QK norm + z-loss，并没有引入 tanh 软截断。
 
-另一组证据来自 NVIDIA 关于 LLM 训练稳定性的实验（*Methods of improving LLM training stability*, [arXiv:2410.16682](https://arxiv.org/abs/2410.16682)）：在同一套 bf16 设置下，基线困惑度是 11.19，logit soft cap 单独使用时为 11.24，落在 ±0.1 置信区间内，与基线没有显著差别；QK norm 单独使用把困惑度降到 10.84（表 4 最低），QK-FC norm（QK + Proj + FC2 norm）降到 10.87，QKV norm 降到 10.85，QK norm + cap（同时施加 QK norm 与 logit soft cap）降到 11.00。QKV norm 与 QK norm + cap 的 max stable learning rate 都达到 60e-3，相对 QK norm 单独使用的 40e-3 提升 1.5×；基线的 max stable LR 为 6e-3（8e-3 发散），QK norm 单独用到 40e-3（60e-3 发散）。因此 QK norm + cap 的价值在允许比 QK norm 单独更激进的学习率而不发散；QK norm 单独使用时 perplexity 最佳（10.84）。
+另一组证据来自 NVIDIA 关于 LLM 训练稳定性的实验（*Methods of improving LLM training stability*, [arXiv:2410.16682](https://arxiv.org/abs/2410.16682)）：在同一套 bf16 设置下，基线困惑度是 11.19，
+logit soft cap 单独使用时为 11.24，落在 ±0.1 置信区间内，与基线没有显著差别；QK norm 单独使用把困惑度降到 10.84（表 4 最低），QK-FC norm（QK + Proj + FC2 norm）降到 10.87，QKV norm 降到 10.85，
+QK norm + cap（同时施加 QK norm 与 logit soft cap）降到 11.00。
+
+QKV norm 与 QK norm + cap 的 max stable learning rate 都达到 60e-3，相对 QK norm 单独使用的 40e-3 提升 1.5×；基线的 max stable LR 为 6e-3（8e-3 发散），QK norm 单独用到 40e-3（60e-3 发散）。
+因此 QK norm + cap 的价值在允许比 QK norm 单独更激进的学习率而不发散；QK norm 单独使用时 perplexity 最佳（10.84）。
 
 ## 3.5 总结与下章衔接
 
 到这里应能在「训练稳定性 / 表达能力 / 推理成本 / 长上下文能力」四类判断之间拆解任意 dense decoder 配置。
 
-按四类判断对应到本章骨架：默认骨架（Pre-norm + RMSNorm + no bias + SwiGLU + RoPE）解决稳定性与表达效率；KV cache 共享（MQA / GQA / MLA / CLA）解决推理成本；稀疏读取（SWA / DSA / CSA / HCA）与线性时间替代（linear attention / Mamba-2 / Gated DeltaNet）解决长上下文效率。
+按四类判断对应到本章骨架：默认骨架（Pre-norm + RMSNorm + no bias + SwiGLU + RoPE）解决稳定性与表达效率；KV cache 共享（MQA / GQA / MLA / CLA）解决推理成本；稀疏读取（SWA / DSA / CSA / HCA）
+与线性时间替代（linear attention / Mamba-2 / Gated DeltaNet）解决长上下文效率。
 
 超参数区间（§3.3）与稳定性技巧（§3.4）共同决定这套骨架在给定硬件和训练设置下能否稳定收敛。
 
-把 dense FFN 换成 routed experts 后，同一组 FFN 参数被切成多份，由 router 在每个 token 上挑选 top-k；条件计算与负载均衡的系统视角见[第 4 章 §4.1 分析 MoE](../chapter4/chapter4_混合专家模型.md)。Attention alternatives 的工程实现（FlashAttention、sparse attention）的执行视角在[第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md)展开；PagedAttention 与 serving 调度见[第 9 章 §9.5.2 PagedAttention：把 KV cache 当分页内存管理](../chapter9/chapter9_推理系统.md)；Continuous Batching 的工程取舍见[第 9 章 §9.5.1 Continuous Batching 与 Selective Batching](../chapter9/chapter9_推理系统.md)。
+把 dense FFN 换成 routed experts 后，同一组 FFN 参数被切成多份，由 router 在每个 token 上挑选 top-k；条件计算与负载均衡的系统视角见[第 4 章 §4.1 分析 MoE](../chapter4/chapter4_混合专家模型.md)。
+Attention alternatives 的工程实现（FlashAttention、sparse attention）的执行视角在[第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md)展开。
+
+PagedAttention 与 serving 调度见[第 9 章 §9.5.2 PagedAttention：把 KV cache 当分页内存管理](../chapter9/chapter9_推理系统.md)；
+Continuous Batching 的工程取舍见[第 9 章 §9.5.1 Continuous Batching 与 Selective Batching](../chapter9/chapter9_推理系统.md)。
 
 ## 来源与更新记录
 
@@ -1289,8 +1453,18 @@ $$
 - [Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/en/model_doc/deepseek_v4)
 - [`deepseek-ai/DeepSeek-V4-Pro`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)
 - [`deepseek-ai/DeepSeek-V4-Flash`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/config.json)（`index_topk=512`、`num_hidden_layers=43`、`hidden_size=4096`、`n_routed_experts=256`、`routed_scaling_factor=1.5`、`sliding_window=128`；与 Pro 共用 `index_n_heads=64` / `index_head_dim=128` / `num_experts_per_tok=6`；`compress_ratios` 模式为开头 `0, 0` + 中间 `(4, 128)` 反复 20 对 + 末尾 `4, 0`，列表共 44 项）
+- [Transformers KV Caching Explained, João Lages, 2023-10-09](https://medium.com/@joaolages/kv-caching-explained-276520203249)（`社区观察`：图 3.2-12 分步动画与 GPT-2 / Tesla T4 开关 cache 计时，查阅日期 2026-09-23）
 - 查阅日期：2026-09-15。
 
 ### 本节事实声明的来源指向
 
 - 架构消融与超参数：Narang et al. Table 1（step/s 与 final loss）、Kaplan et al. Figure 5（FFN ratio / aspect ratio / head dim 扫描）、PaLM Table 1 与训练设置、ST-MoE（router z-loss 与 Mesh TensorFlow z-loss 的关系）、OLMo 2 Table 3 稳定性配方、Methods of improving LLM training stability Table 4 困惑度对比、Bhojanapalli et al.（Low-Rank Bottleneck in Multi-head Attention Models）。
+
+## 待核证清单
+
+本章以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
+
+- `chapter3_语言模型架构和训练技术细节.md:L592` — 「GeGLU 出现在 T5 v1.1、mT5、LaMDA、Phi-3」——原因：LaMDA 激活函数未取到一手配置或论文正文（arXiv:2201.08239 未 WebFetch），图 3.2-1 的 LaMDA 单元格为空白；已试：`无 URL`。
+- `chapter3_语言模型架构和训练技术细节.md:L1101` — 「γ_t = exp(−Δ_t·exp(A_log)) 保留为遗忘门 α_t」——原因：该参数化超出已核 Gated DeltaNet §2.1/§3.1 主方程的范围，对应脚注未取全文核对；已试：`https://arxiv.org/html/2412.06464`（仅覆盖 §2.1/§3.1 状态更新式）。
+- `chapter3_语言模型架构和训练技术细节.md:L1164` — 「LLaMA-2 70B hidden_size=8192、intermediate_size=28672」——原因：仅镜像站配置可见，未取得 meta-llama 一手 config.json（权重仓库需授权）；已试：`无 URL`。
+- `chapter3_语言模型架构和训练技术细节.md:L1261` — 「Cohere Command 词汇量比较大（10 万到 25 万区间）」——原因：Cohere 一手 tokenizer/config 未取得，huggingface.co WebFetch 被 sandbox 拦截；已试：`无 URL`。

@@ -12,17 +12,36 @@ LLM 推理能力既是可观察的生成行为，也是消耗系统预算的训�
 - SFT / RLHF / RLVR 等后训练如何重排搜索偏好与奖励风险；
 - 外部工具与搜索如何扩展信息来源与动作空间。
 
-阅读完本专题后，读者可以判断：在给定的预算与服务约束下，某个推理行为改进主要提升的是 `accuracy`、`efficiency` 还是 `resources`；`多路径 CoT` 这类方法的代价来自哪几项 serving 指标；`RLVR` 的能力上限受哪些信号与覆盖范围限制。[第 9 章 §9.1 Inference Workload：为什么推理不同于训练](../chapter9/chapter9_推理系统.md)与[第 13 章 §13.1 为什么需要 RLVR？](../chapter13/chapter13_可验证奖励的强化学习.md)提供工程上下文，本专题聚焦推理行为本身。
+阅读完本专题后，读者可以判断：在给定的预算与服务约束下，某个推理行为改进主要提升的是 `accuracy`、`efficiency` 还是 `resources`；`多路径 CoT` 这类方法的代价来自哪几项 serving 指标；`RLVR` 的能力上限受哪些信号与覆盖范围限制。
+[第 9 章 §9.1 Inference Workload：为什么推理不同于训练](../chapter9/chapter9_推理系统.md)与[第 13 章 §13.1 为什么需要 RLVR？](../chapter13/chapter13_可验证奖励的强化学习.md)
+提供工程上下文，本专题聚焦推理行为本身。
 
 ## 推理能力的研究案例
 
-本节先用三个近期公开案例把"LLM 推理"从抽象能力落到具体研究工件上：三条案例分别覆盖图论与组合（2026 年 Knuth）、理论物理的解析推导（2026 年 Brenner 等）和经典 Lie 群上的特征值计算（2026 年 Feng）三类典型应用，能力、概率与系统代价的拆解见后续 §3 预训练与解码、§4 后训练、§5 CoT、§6 Prompt 与 §7 外部工具搜索。
+本节先用三个近期公开案例把"LLM 推理"从抽象能力落到具体研究工件上：
+三条案例分别覆盖图论与组合（2026 年 Knuth）、理论物理的解析推导（2026 年 Brenner 等）和经典 Lie 群上 eigenweights 的计算（2026 年 Feng）三类典型应用，
+能力、概率与系统代价的拆解见后续 §3 预训练与解码、§4 后训练、§5 CoT、§6 Prompt 与 §7 外部工具搜索。
 
-- Donald Knuth 在 2026 年的 [PDF *Claude's Cycles*](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf) 中记录了 Claude Opus 4.6（Anthropic）求解一个图论开放问题的过程，并把 Claude 构造的 Hamilton 环称为 *Claude's cycle*。
-- Brenner（Cohen-Addad 和 Woodruff 同样属于 Google Research；Brenner 同时挂靠 Harvard SEAS，Woodruff 同时挂靠 Carnegie Mellon CSD）在 [arXiv:2603.04735 *Solving an Open Problem in Theoretical Physics using AI-Assisted Discovery*](https://arxiv.org/abs/2603.04735)（2026-03-05 提交，arXiv v1 02:15:04 UTC）中，结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
-- Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：核心数学内容由内部推理代理 _Aletheia_（基于 Gemini Deep Think 构建）完整生成，论文把 Feng–Yun–Zhang 在 [FYZ25a] 中只覆盖了若干特殊情形的 eigenweights 推到 Type A（ $GL_n$ ）、Type C（ $PSp_{2n}$ ）与 Type D（ $PSO_{2n}$ ）三个群族的一般情形（Type B 结果沿用 FYZ25a），论文正文给出这三个群族的完整证明。人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
+- Donald Knuth 在 2026 年的 [PDF *Claude's Cycles*](https://www-cs-faculty.stanford.edu/~knuth/papers/claude-cycles.pdf) 中记录了
+  Claude Opus 4.6（Anthropic）求解一个图论开放问题的过程，并把 Claude 构造的 Hamilton 环称为 *Claude's cycle*。
 
-三个案例从不同角度展示同一类机制：模型负责生成推理轨迹和数学构造，作者负责设定目标、组织验证与最终叙述。CoT、多路径采样与工具扩展主题随后展开；推理行为既可以由模型直接产生，也可以由作者代理作为中间环节。
+- Brenner（Cohen-Addad 和 Woodruff 同样属于 Google Research；Brenner 同时挂靠 Harvard SEAS，
+  Woodruff 同时挂靠 Carnegie Mellon CSD）在
+  [arXiv:2603.04735 *Solving an Open Problem in Theoretical Physics using AI-Assisted Discovery*](https://arxiv.org/abs/2603.04735)（2026-03-05 提交，arXiv v1 02:15:04 UTC）中，
+  结合 Gemini Deep Think 与 Tree Search 框架及自动化数值反馈，求解宇宙弦引力辐射功率谱的精确解析解，
+  共识别出 6 种解析方法（最优雅的一种以 Gegenbauer 多项式展开核函数）。
+
+- Tony Feng 的 [arXiv:2601.23245 *Eigenweights for arithmetic Hirzebruch Proportionality*](https://arxiv.org/abs/2601.23245) 在 *Declaration of AI Usage* 中写明：
+  核心数学内容由内部推理代理 _Aletheia_（基于 Gemini Deep Think 构建）完整生成。
+
+  论文把 Feng–Yun–Zhang 在 [FYZ25a] 中只覆盖了若干特殊情形的 eigenweights 推到 Type A（ $GL_n$ ）、
+  Type C（ $PSp_{2n}$ ）与 Type D（ $PSO_{2n}$ ）三个群族的一般情形（Type B 结果沿用 FYZ25a），
+  论文正文给出这三个群族的完整证明。
+
+  人类作者负责搭建推理代理、把代理输出重写成论文形式并撰写引言。
+
+三个案例从不同角度展示同一类机制：模型负责生成推理轨迹和数学构造，作者负责设定目标、组织验证与最终叙述。
+推理行为既可以由模型直接产生，也可以由作者代理作为中间环节。
 
 ![专题图 1 简单数值比较中的过度推理示例](images/reasoning-01-api-number-comparison.png)
 
@@ -42,7 +61,8 @@ LLM 推理能力既是可观察的生成行为，也是消耗系统预算的训�
 
 ### 单路径解码与多路径搜索
 
-Denny Zhou 等人在 2024 年的 [CoT 解码研究](https://arxiv.org/pdf/2402.10200)中指出，解码策略会显著影响模型推理能力的可见形式。贪心解码每一步只选择当前条件概率最大的 token，容易得到局部最优轨迹；多路径解码保留若干候选轨迹，再用置信度、logits 或答案一致性筛选更可靠的路径。
+Xuezhi Wang 与 Denny Zhou 在 2024 年的 [CoT 解码研究](https://arxiv.org/pdf/2402.10200)中指出，解码策略会显著影响模型推理能力的可见形式。
+贪心解码每一步只选择当前条件概率最大的 token，容易得到局部最优轨迹；多路径解码保留若干候选轨迹，再用置信度、logits 或答案一致性筛选更可靠的路径。
 
 ![专题图 3 预训练模型的 CoT 解码示意图](images/reasoning-03-cot-decoding-overview.png)
 
@@ -50,7 +70,7 @@ Denny Zhou 等人在 2024 年的 [CoT 解码研究](https://arxiv.org/pdf/2402.1
 
 专题图 3 展示了预训练模型在无需额外 prompt 的情况下，也可能在候选解码路径中包含显式推理链。颜色越深表示模型对最终答案的置信度越高。单一路径只看到 top-1 token 连成的轨迹，多路径搜索则把 top-k 候选展开成若干 candidate trace，从而提高正确轨迹被保留下来的机会。
 
-在自回归生成中，贪心解码每一步选择：
+在自回归生成中， $x_t$ 表示第 $t$ 步要生成的 token， $x_{\lt t}$ 表示已生成的前缀；贪心解码每一步选择：
 
 $$
 \arg\max P(x_t \mid x_{\lt t})
@@ -110,13 +130,22 @@ $$
 
 *专题图 5 多路径 CoT 解码过程*
 
-专题图 5 比较了在不同解码步引入备选 token 的效果：从第一步的 top-k 候选继续生成，能展开出互不相同的推理路径，越靠后的分支越受已生成前缀的牵制。论文默认在第一步保留 $k = 10$ 个候选、之后按贪心解码走完，再按答案 token 上的平均置信度差给路径排序。多路径 CoT 解码适合零训练地挖掘预训练模型的潜在能力，代价是需要维护更多 candidate trace，增加 generation token、KV cache 和调度压力。
+专题图 5 比较了在不同解码步引入备选 token 的效果：从第一步的 top-k 候选继续生成，能展开出
+互不相同的推理路径，越靠后的分支越受已生成前缀的牵制。
+
+论文默认在第一步保留 $k = 10$ 个候选、之后按贪心解码走完，再按答案 token 上的平均置信度差给
+路径排序。
+
+多路径 CoT 解码适合零训练地挖掘预训练模型的潜在能力，代价是需要维护更多 candidate trace，
+增加 generation token、KV cache 和调度压力。
 
 从系统侧看，多路径 CoT 会把一次问题求解变成多条 candidate trace 的生成与筛选。能力侧关注正确率和稳定性；系统侧关注候选条数、平均长度、接受规则、是否共享前缀缓存，以及这些请求能否在 continuous batching 中高效合并。
 
 ### Pass@k：基座模型也包含正确轨迹
 
-[Yue 等人在 2025 年的研究](https://arxiv.org/pdf/2504.13837)对 Qwen、LLaMA 等基础模型及其 RLVR 变体进行了比较。当 $k$ 较小时，强化学习模型的 *Pass@k* 通常更高；随着 $k$ 增大，基础模型的 *Pass@k* 会逐渐逼近强化学习模型，部分任务上还会出现反超。这说明基础模型分布中已经存在一些正确轨迹，只是这些轨迹的原始概率较低，小规模采样时不容易被触发。
+[Yue 等人在 2025 年的研究](https://arxiv.org/pdf/2504.13837)对 Qwen、LLaMA 等基础模型及其 RLVR 变体进行了比较。
+当 $k$ 较小时，强化学习模型的 *Pass@k* 通常更高；随着 $k$ 增大，基础模型的 *Pass@k* 会逐渐逼近强化学习模型，部分任务上还会出现反超。
+这说明基础模型分布中已经存在一些正确轨迹，只是这些轨迹的原始概率较低，小规模采样时不容易被触发。
 
 ![专题图 6 基础模型与 RLVR 变体的 Pass@k 曲线](images/reasoning-06-base-vs-rlvr-pass-at-k.png)
 
@@ -132,7 +161,10 @@ $$
 
 *专题图 7 语言模型作为压缩器的实验结果*
 
-专题图 7 比较了不同 1GB 数据集上的压缩率，数值越小代表压缩效果越好。序列预测器、Llama 2 和 Chinchilla 都可以通过算术编码被用作无损压缩器。图上的关键关系是：大型语言模型在多类数据上表现出较强压缩能力，而从头训练的小型 Transformer 在单一数据集上容易过拟合。这个结果支持“语言建模即压缩”的视角，同时也说明需要区分训练集记忆和可迁移结构。
+专题图 7 比较了不同 1GB 数据集上的压缩率，数值越小代表压缩效果越好。
+序列预测器、Llama 2 和 Chinchilla 都可以通过算术编码被用作无损压缩器。
+图上的关键关系是：大型语言模型在多类数据上表现出较强压缩能力，而从头训练的小型 Transformer 在单一数据集上容易过拟合。
+这个结果支持“语言建模即压缩”的视角，同时也说明需要区分训练集记忆和可迁移结构。
 
 > [!NOTE]
 > 假设真实分布是 $p(x)$，模型预测分布是 $q(x)$，最优前缀编码中符号 $x$ 的理想编码长度满足
@@ -156,7 +188,9 @@ $$
 
 专题图 8 把压缩问题拉回 tokenizer。BPE 合并规则和词表大小会改变同一段文本被切成多少 token，进而影响训练 token 数、上下文占用和推理成本。tokenizer 只能决定输入输出的离散化方式；语言模型参数承担的是更高层的分布压缩，例如语义关系、程序结构和数学模板。
 
-表示学习的经典线索可以追溯到反向传播早期研究。Rumelhart、Hinton 和 Williams 等人在 [Nature 论文（*Learning Representations by Back-propagating Errors*, 1986）](https://www.cs.toronto.edu/~hinton/absps/naturebp.pdf)中展示了家谱实验：研究者构建人物与亲属关系数据集，训练一个多层神经网络根据输入人物和关系预测目标人物。
+表示学习的经典线索可以追溯到反向传播早期研究。
+Rumelhart、Hinton 和 Williams 在 [Nature 论文（*Learning Representations by Back-propagating Errors*, 1986）](https://www.cs.toronto.edu/~hinton/absps/naturebp.pdf)中展示了家谱实验：
+研究者构建人物与亲属关系数据集，训练一个多层神经网络根据输入人物和关系预测目标人物。
 
 $$
 (\text{Person}, \text{Relation}) \to \text{Target Person}
@@ -168,7 +202,9 @@ $$
 
 *专题图 9 FFN 层的 key-value memory 视角*
 
-Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。Mor Geva 等人在 [2021 年研究](https://aclanthology.org/2021.emnlp-main.446/)中，把 FFN 层神经元视为一种 key-value memory：输入上下文先经过 attention 汇聚信息，再激活 FFN 中与当前模式匹配的神经元，这些神经元输出会影响下一 token 的概率分布。
+Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。
+Mor Geva 等人在 [2021 年研究](https://aclanthology.org/2021.emnlp-main.446/)中，把 FFN 层神经元视为一种 key-value memory：
+输入上下文先经过 attention 汇聚信息，再激活 FFN 中与当前模式匹配的神经元，这些神经元输出会影响下一 token 的概率分布。
 
 专题图 9 展示了这种 key-value memory 解释。较浅层 FFN 更容易响应固定短语、词形模式和局部上下文；较深层 FFN 更容易响应实体类型、语义关系和抽象语法模式。Attention 更偏向信息路由，FFN 更偏向非线性特征加工；残差连接让浅层表层线索和深层抽象线索逐层叠加。
 
@@ -182,7 +218,10 @@ Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。Mor Ge
 
 *专题图 10 类比推理提示对推理任务求解的帮助*
 
-专题图 10 展示了类比推理的使用方式。直接要求模型解复杂任务时，模型可能找不到合适路径；先要求模型回忆一个相关问题，再求解当前问题，可以把参数中已有的相似结构调出来。这个机制是在检索和重组内部模式：prompt 改变了模型进入解题空间的位置，后续解码再把相似模板迁移到当前问题。作者在 GSM8K、MATH、Codeforces 和 BIG-Bench 推理任务上评估了这一提示。
+专题图 10 展示了类比推理的使用方式。
+直接要求模型解复杂任务时，模型可能找不到合适路径；先要求模型回忆一个相关问题，再求解当前问题，可以把参数中已有的相似结构调出来。
+这个机制是在检索和重组内部模式：prompt 改变了模型进入解题空间的位置，后续解码再把相似模板迁移到当前问题。
+作者在 GSM8K、MATH、Codeforces 和 BIG-Bench 推理任务上评估了这一提示。
 
 综合这些线索，LLM 的问题求解能力未必来自单一机制。模型既会记住具体片段，也会在参数里形成可迁移结构；解码、prompt 和后训练决定这些结构能否被稳定触发，并把它们转化为可见的推理行为。
 
@@ -190,7 +229,8 @@ Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。Mor Ge
 
 后训练的作用是改变模型行为分布。常见 post-training 路线可以拆成 imitation（SFT）和 reinforcement（RLHF）两条线：SFT 用示范数据抽取更符合指令的数据分布，RLHF/DPO 等方法用偏好信号优化输出。RLVR 把奖励信号换成更可验证的正确性反馈，用在数学、代码和 agentic 任务中。
 
-更强的基座模型通常更容易从 RL 或偏好优化中获益。后训练依赖基座模型先提供足够好的初始策略；如果底座能力太弱，奖励信号也很难把采样轨迹推到高质量解题区域。
+更强的基座模型通常更容易从 RL 或偏好优化中获益。后训练依赖基座模型先提供足够好的初始策略：
+RLVR 的梯度只来自当前策略采样到的轨迹，若底座几乎采不到正确解法，奖励信号就没有可以放大的方向。
 
 读到这里，读者应能区分 imitation、preference 与 verifiable 三类目标，并理解后训练的成功条件建立在预训练能力之上。
 
@@ -204,7 +244,9 @@ Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。Mor Ge
 
 这与 §3.3 Pass@k：基座模型也包含正确轨迹 部分的结论一致——RLVR 的能力上限仍由基座模型的分布决定，它主要重排并稳定调用已有轨迹，副作用是在覆盖范围和平均性能之间做权衡。
 
-RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度偏差，还包括这一类能力边界收缩；与 [第 13 章 §13.4.1 R1-Zero：纯 GRPO 起点](../chapter13/chapter13_可验证奖励的强化学习.md) 案例中"aha moment 在 base 模型中已出现"的观察共同指向同一个结论：基座模型已经把可解题的上限写在分布里，后训练主要是重排触达概率。
+RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度偏差，还包括这一类能力边界收缩；
+与 [第 13 章 §13.4.1 R1-Zero：纯 GRPO 起点](../chapter13/chapter13_可验证奖励的强化学习.md) 案例中"aha moment 在 base 模型中已出现"的观察共同指向同一个结论：
+基座模型已经把可解题的上限写在分布里，后训练主要是重排触达概率。
 
 后训练常见方法包括：
 
@@ -221,7 +263,11 @@ RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度
 
 在 RL 微调过程中，若使用奖励模型或 AI judge 动态打分，就可能出现 reward hacking：模型学会利用奖励漏洞获取高分，输出质量却没有同步提高。常见缓解方式是在优化目标中加入 $D_{\mathrm{KL}}$ 惩罚，使新策略不要过度偏离参考策略。
 
-偏好优化的关键风险来自实验条件依赖性。偏好评估容易受长度、风格和标注者分布影响；同一份回答在长版本下往往获得更高偏好分。RLVR 的系统代价主要来自 on-policy 训练需要的大量 rollout：每条 rollout 都要执行慢速 generation，训练框架与推理框架之间的切换、长 CoT 造成的 ragged batch，以及 verifier 打分都会成为系统瓶颈。
+偏好优化的关键风险来自实验条件依赖性。偏好评估容易受长度、风格和标注者分布影响；
+同一份回答在长版本下往往获得更高偏好分。
+
+RLVR 的系统代价主要来自 on-policy 训练需要的大量 rollout：每条 rollout 都要执行慢速 generation，
+训练框架与推理框架之间的切换、长 CoT 造成的 ragged batch，以及 verifier 打分都会成为系统瓶颈。
 
 后训练可以理解为三件事的组合：提高好轨迹的采样概率，约束输出格式和风格，降低错误轨迹的表面吸引力。这些调整建立在预训练提供的能力基础上，重排能力被调用、搜索和呈现的方式。
 
@@ -240,7 +286,11 @@ RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度
 
 专题图 12 展示了 CoT 长度与准确率之间的倒 U 型关系。短 CoT 可能没有足够中间状态来完成自我检查；适度延长 CoT 可以提供草稿空间，让模型分解问题、记录局部结论并修正错误；超过任务需要后，额外 token 可能稀释关键信息，增加自相矛盾和反复修改的机会。
 
-2025 年，Wu / Wang / Ye / Du / Jegelka / Wang（[arXiv:2502.07266](https://arxiv.org/pdf/2502.07266)）通过控制实验构造不同长度的推理链，在多个难度梯度任务上绘制长度与准确率曲线。结果说明，最佳 CoT 长度会随任务难度移动：更难任务通常需要更长中间步骤，但最优长度依然存在。专题图 12(b) 还展示了 RL 训练过程中 CoT 长度的演化：随着训练推进，平均 CoT 长度从约 350 token 收敛到约 220 token，验证准确率却稳定在 0.8 左右。这说明准确率提升并不要求更长 CoT，模型在学会正确路径后倾向于用更短表达，这与上文的"长度—准确率倒 U 型"结论互为印证。
+2025 年，Wu / Wang / Ye / Du / Jegelka / Wang（[arXiv:2502.07266](https://arxiv.org/pdf/2502.07266)）通过控制实验构造不同长度的推理链，在多个难度梯度任务上绘制长度与准确率曲线。
+结果说明，最佳 CoT 长度会随任务难度移动：更难任务通常需要更长中间步骤，但最优长度依然存在。
+
+专题图 12(b) 还展示了 RL 训练过程中 CoT 长度的演化：随着训练推进，平均 CoT 长度从约 350 token 收敛到约 220 token，验证准确率却稳定在 0.8 左右。
+这说明准确率提升并不要求更长 CoT，模型在学会正确路径后倾向于用更短表达，这与上文的"长度—准确率倒 U 型"结论互为印证。
 
 2026 年 2 月，论文 [Think Deep, Not Just Long](https://arxiv.org/pdf/2602.13517) 提出 DTR（deep-thinking ratio，深度思考率）。DTR 试图衡量生成序列中有多少 token 需要较深层网络计算后才收敛。
 
@@ -248,9 +298,17 @@ RLVR 的工程风险除了奖励信号覆盖不足、格式奖励过强和长度
 
 *专题图 13 DTR 与任务准确率的关系*
 
-专题图 13 的机制是比较 Transformer 各层对同一 token 的预测分布变化。若某个 token 在浅层就基本稳定，它通常承担语法、模板或填充表达；若预测分布到深层才稳定，它更可能承担关键计算或推断。DTR 与准确率正相关，说明有效推理不只看输出长度，还要看生成 token 是否真的调用了更深层计算。
+DTR 的计算机制是比较 Transformer 各层对同一 token 的预测分布变化。若某个 token 在浅层就基本稳定，
+它通常承担语法、模板或填充表达；若预测分布到深层才稳定，它更可能承担关键计算或推断。
+专题图 13 中 DTR 与准确率正相关（右图平均 $r = 0.828$），说明有效推理不只看输出长度，
+还要看生成 token 是否真的调用了更深层计算。
 
-DTR 仍然是统计性指标。完整推理链需要浅层组织语言，也需要深层完成关键判断；未来如果要用 DTR 控制 CoT，还需要结合 token 置信度、路径一致性、外部验证器和任务难度。[Qwen 3 技术报告（arXiv:2505.09388）](https://arxiv.org/abs/2505.09388) 公开的混合思维模式（hybrid thinking modes）也沿着这条线索前进：通过 thinking 与 non-thinking 数据混合、特殊终止标记和 thinking budget，让模型在不同任务上调节推理长度。
+DTR 仍然是统计性指标。完整推理链需要浅层组织语言，也需要深层完成关键判断；
+未来如果要用 DTR 控制 CoT，还需要结合 token 置信度、路径一致性、外部验证器和任务难度。
+
+[Qwen 3 技术报告（arXiv:2505.09388）](https://arxiv.org/abs/2505.09388) 公开的混合思维模式
+（hybrid thinking modes）也沿着这条线索前进：通过 thinking 与 non-thinking 数据混合、特殊终止标记和
+thinking budget，让模型在不同任务上调节推理长度。
 
 到这里，读者应能区分 CoT 长度、有效深度和外部奖励信号对最终行为的不同影响。
 
@@ -302,13 +360,22 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 > 检索增强和工具调用可以被理解为用“外部记忆”和“外部动作空间”扩展模型能力边界，
 > 使模型不再只依赖训练阶段写入参数的静态知识。
 
-工具搜索也会增加系统成本。一次回答可能包含多段 prompt prefill、多次 generation、长上下文 KV cache、工具返回内容压缩、引用去重和 scheduler 排队。能力上它接近”推理 + 搜索 + 验证”的组合；系统上则回到 [第 9 章 §9.5 Dynamic Serving：Continuous Batching 与 PagedAttention](../chapter9/chapter9_推理系统.md) 的 serving 账本。
+工具搜索也会增加系统成本。
+一次回答可能包含多段 prompt prefill、多次 generation、长上下文 KV cache、工具返回内容压缩、引用去重和 scheduler 排队。
+能力上它接近“推理 + 搜索 + 验证”的组合；
+系统上则回到 [第 9 章 §9.5 Dynamic Serving：Continuous Batching 与 PagedAttention](../chapter9/chapter9_推理系统.md) 的 serving 账本。
 
 ## 本专题小结
 
-读完五条主线后，需要把能力、成本和工程判断放回同一张账本：CoT 增加 generation tokens，多路径采样增加 candidate trace，RLVR 需要大量 rollout，工具搜索会引入多轮调用和长上下文。能力提升和系统成本必须一起评估：正确率、稳定性、latency、throughput、KV cache、batching 和验证信号质量属于同一条工程链路。判断一条推理改进是否成立，至少要回答两件事：它激活的是哪一类预训练结构？它把什么代价压到了哪一段服务预算上？
+读完五条主线后，需要把能力、成本和工程判断放回同一张账本：CoT 增加 generation tokens，多路径采样增加 candidate trace，RLVR 需要大量 rollout，工具搜索会引入多轮调用和长上下文。
+能力提升和系统成本必须一起评估：正确率、稳定性、latency、throughput、KV cache、batching 和验证信号质量属于同一条工程链路。
+判断一条推理改进是否成立，至少要回答两件事：它激活的是哪一类预训练结构？它把什么代价压到了哪一段服务预算上？
 
-随着高质量人类文本逐渐接近可获取上限，合成数据和自我改进会继续成为重要方向。这条路线可以借鉴 AlphaGo Zero 的闭环思想，但语言模型面对的大多数开放式任务没有完美规则验证器。
+业界普遍把高质量人类文本视为接近可获取上限，并把合成数据和自我改进当作下一阶段的重要方向：
+[神经细胞自动机生成非语言合成数据，用于语言模型预训练](https://arxiv.org/pdf/2603.10055)把合成数据
+前置到了标准预训练之前。
+
+这条路线可以借鉴 AlphaGo Zero 的闭环思想，但语言模型面对的大多数开放式任务没有完美规则验证器。
 
 数学、代码等可验证任务可以接入客观验证器，把对错信号直接喂给 RL；开放式任务缺乏稳定奖励函数，反复用自身生成数据训练时，reward hacking、分布收窄和模型坍塌三类失效模式都可能出现，能力随训练步数常呈先升后降的经验曲线。
 
@@ -343,8 +410,17 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 ### 官方来源
 
 - 本专题引用的论文、技术报告、官方文档与 CS336 课程主页链接统一列在[参考资料](#参考资料)；查阅日期 `2026-09-22`，状态：论文 / 官方 / 课程材料。
-- 本专题与第 9 章 serving / inference systems 分工互补；rollout、训练 infra 与 serving 成本等系统侧细节由 [第 9 章 §9.1 Inference Workload](../chapter9/chapter9_推理系统.md) 与 [第 9 章 §9.5 Dynamic Serving](../chapter9/chapter9_推理系统.md) 承载，本专题直接引用其结论。
+- 本专题与第 9 章 serving / inference systems 分工互补；rollout、训练 infra 与 serving 成本等系统侧细节由 [第 9 章 §9.1 Inference Workload：为什么推理不同于训练](../chapter9/chapter9_推理系统.md) 与 [第 9 章 §9.5 Dynamic Serving：Continuous Batching 与 PagedAttention](../chapter9/chapter9_推理系统.md) 承载，本专题直接引用其结论。
 
 ### 本节事实声明的来源指向
 
-- [第 13 章 §13.4.1 R1-Zero：纯 GRPO 起点](../chapter13/chapter13_可验证奖励的强化学习.md) 与 [第 13 章 §13.3.1 GRPO：去掉了价值函数的 PPO](../chapter13/chapter13_可验证奖励的强化学习.md) / [§13.3.2 GRPO 的两类偏差：问题难度与响应长度](../chapter13/chapter13_可验证奖励的强化学习.md) 与本专题 [§4 后训练：奖励信号如何改变搜索偏好](#后训练奖励信号如何改变搜索偏好) 中的 RLVR 副作用部分共享同一组证据（"RL 不必然增加新能力，更可能重排基座模型的轨迹概率"），对应一手论文 [Does Reinforcement Learning Really Incentivize Reasoning Capacity in LLMs Beyond the Base Model? (arXiv:2504.13837)](https://arxiv.org/abs/2504.13837) 与 [On the Interplay of Pre-Training, Mid-Training, and RL on Reasoning Language Models (arXiv:2512.07783)](https://arxiv.org/abs/2512.07783)；[第 14 章 本章总结与下章衔接](../chapter14/chapter14_多模态模型.md) 在章末把多模态 agent trace 与 RLVR 验证指向本专题；其余外部论文按 arXiv 提交日期记录于[参考资料](#参考资料)。
+- [第 13 章 §13.4.1 R1-Zero：纯 GRPO 起点](../chapter13/chapter13_可验证奖励的强化学习.md) 与 [第 13 章 §13.3.1 GRPO：去掉了价值函数的 PPO](../chapter13/chapter13_可验证奖励的强化学习.md) / [第 13 章 §13.3.2 GRPO 的两类偏差：问题难度与响应长度](../chapter13/chapter13_可验证奖励的强化学习.md) 与本专题 [§4 后训练：奖励信号如何改变搜索偏好](#后训练奖励信号如何改变搜索偏好) 中的 RLVR 副作用部分共享同一组证据（"RL 不必然增加新能力，更可能重排基座模型的轨迹概率"），对应一手论文 [Does Reinforcement Learning Really Incentivize Reasoning Capacity in LLMs Beyond the Base Model? (arXiv:2504.13837)](https://arxiv.org/abs/2504.13837) 与 [On the Interplay of Pre-Training, Mid-Training, and RL on Reasoning Language Models (arXiv:2512.07783)](https://arxiv.org/abs/2512.07783)；[第 14 章 本章总结与下章衔接](../chapter14/chapter14_多模态模型.md) 在章末把多模态 agent trace 与 RLVR 验证指向本专题；其余外部论文按 arXiv 提交日期记录于[参考资料](#参考资料)。
+
+## 待核证清单
+
+本文件以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
+
+- `reasoning_behavior.md:L199` — 「隐藏层单元的激活模式开始对应国籍、代际、家族分支」——原因：
+  Nature 1986 PDF 无文本层（pdftotext 仅得版权行），Nature 页面与 Crossref / Semantic Scholar 接口只有标题、作者，
+  摘要被出版方 elide，正文引文不可得；已试：
+  `https://www.cs.toronto.edu/~hinton/absps/naturebp.pdf`、`https://api.semanticscholar.org/graph/v1/paper/DOI:10.1038/323533a0?fields=title,abstract,year,authors`。

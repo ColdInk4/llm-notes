@@ -21,14 +21,18 @@ GPU 高性能编程先从一条可复用的排查链开始：
 
 $$T_{\text{kernel}} = \max\!\left( T_{\text{memory}},\; T_{\text{compute}} \right) + T_{\text{launch}} + T_{\text{sync}}$$
 
-其中 $T_{\text{memory}}$ 是 HBM / shared memory / register 三级存储的访存上限， $T_{\text{compute}}$ 是 Tensor Core 与 CUDA core 的算术上限， $T_{\text{launch}}$ 是 host 端 launch 开销（与算子复杂度无关）， $T_{\text{sync}}$ 是 block / grid 之间的同步开销。benchmark 固定输入形状与 warm-up 后测端到端时间，profiler 将时间拆回具体 kernel，Triton / PTX 实验再检验线程映射、向量化和内存复用是否改变瓶颈；因此每个优化结论都绑定到测量变量和适用 workload。
+其中 $T_{\text{memory}}$ 是 HBM / shared memory / register 三级存储的访存上限， $T_{\text{compute}}$ 是 Tensor Core 与 CUDA core 的算术上限， $T_{\text{launch}}$ 是 host 端 launch 开销（与算子复杂度无关），
+$T_{\text{sync}}$ 是 block / grid 之间的同步开销。benchmark 固定输入形状与 warm-up 后测端到端时间，profiler 将时间拆回具体 kernel，Triton / PTX 实验再检验线程映射、向量化和内存复用是否改变瓶颈；因此每个优化结论都绑定到测量变量和适用 workload。
 
 > [!IMPORTANT]
-> 上述公式是 roofline 的标准结构：kernel 实际性能不会超过 $\max(T_{\text{memory}}, T_{\text{compute}})$ 这条上界，下界由 $T_{\text{launch}} + T_{\text{sync}}$ 给出。判断一个 kernel 是 memory-bound 还是 compute-bound，等价于比较 $T_{\text{memory}}$ 与 $T_{\text{compute}}$ 谁占优——这正是 §6.1 末尾「算术强度」段的物理意义。
+> 上述公式是 roofline 的标准结构：kernel 的执行时间至少是 $\max(T_{\text{memory}}, T_{\text{compute}})$——访存与算术各自的物理下界，也至少是 $T_{\text{launch}} + T_{\text{sync}}$——调度固定开销；
+> 把时间换成吞吐，kernel 实际性能不会超过「工作量 / $\max(T_{\text{memory}}, T_{\text{compute}})$」这条上界。
+> 判断一个 kernel 是 memory-bound 还是 compute-bound，等价于比较 $T_{\text{memory}}$ 与 $T_{\text{compute}}$ 谁占优——这正是 §6.1 末尾「算术强度」段的物理意义。
 
 读完本章后，应当能把一段高层 PyTorch 代码拆成三层问题：Python 表达式触发了哪些 kernel；这些 kernel 在 GPU 上受哪些硬件约束；需要下探时，Triton program、thread block 和 PTX 信号如何对应到实际执行。
 
-硬件基础参见 [第 5 章 §5.2 GPU 的执行模型 SM（流式多处理器）](../chapter5/chapter5_GPU和GPU相关优化.md) 与 [第 5 章 §5.3 GPU 的内存模型](../chapter5/chapter5_GPU和GPU相关优化.md)；本章侧重编程模型、benchmark / profile 流程和 Triton / PTX 的工程落点。
+硬件基础参见 [第 5 章 §5.2 GPU 的执行模型 SM（流式多处理器）](../chapter5/chapter5_GPU和GPU相关优化.md) 与 [第 5 章 §5.3 GPU 的内存模型](../chapter5/chapter5_GPU和GPU相关优化.md)；
+本章侧重编程模型、benchmark / profile 流程和 Triton / PTX 的工程落点。
 
 正文中的代码片段保留核心结构，省略的 import、helper 和检查函数不影响主线。
 
@@ -49,14 +53,22 @@ $$T_{\text{kernel}} = \max\!\left( T_{\text{memory}},\; T_{\text{compute}} \righ
 | SM 数 | 108 | 132 | 148 |
 | 每 SM register | 256 KB | 256 KB | 256 KB |
 | 每 SM L1 + shared memory | 192 KB | 256 KB | 256 KB |
-| L2 cache | 40 MB | 50 MB | 126 MB（[NVIDIA Blackwell tuning guide §1.4.2.2](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html) 公布的全封装 L2；B200 单封装内含 2 颗 Blackwell die 共 148 SMs，每 die 约 63 MB） |
-| HBM 容量与类型 | 80 GB HBM2e | 80 GB HBM3 | 192 GB HBM3e（物理容量；[NVIDIA Blackwell tuning guide §1.4.2.1](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html) 写 "up to 180 GB"，与 NVIDIA DGX B200 系统规格按 1,440 GB / 8 卡的口径一致，两种口径的对应见来源记录「来源对齐」） |
+| L2 cache | 40 MB | 50 MB | 126 MB |
+| HBM 容量与类型 | 80 GB HBM2e | 80 GB HBM3 | 192 GB HBM3e |
 | HBM 带宽量级 | 2 TB/s | 3.35 TB/s | 8 TB/s |
 
 *表 6.1 A100/H100/B200 硬件数量级*
 
+表 6.1 中 B200 两栏带口径说明：
+L2 一栏的 126 MB 是 [NVIDIA Blackwell tuning guide §1.4.2.2](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html) 公布的全封装 L2——B200 单封装内含 2 颗 Blackwell die 共 148 SMs，每 die 约
+63 MB。
+
+HBM 一栏取物理容量 192 GB HBM3e，[NVIDIA Blackwell tuning guide §1.4.2.1](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html) 写 "up to 180 GB"，与 NVIDIA DGX B200 系统规格按 1,440 GB
+/ 8 卡的口径一致，两种口径的对应见来源记录「来源对齐」。
+
 > [!NOTE]
-> 表里的“每 SM register 256 KB”指 SM 内部 register file 的物理容量：每个 SM 有 64K 个 32-bit register，即 $65536 \times 4\ \text{B} = 256\ \text{KB}$ 。它和“每个 thread 最多使用 255 个 32-bit register”是两个不同维度的上限——前者决定一个 SM 上能并发驻留多少 thread block，后者决定单个 thread 的寄存器压力。
+> 表里的“每 SM register 256 KB”指 SM 内部 register file 的物理容量：每个 SM 有 64K 个 32-bit register，即 $65536 \times 4\ \text{B} = 256\ \text{KB}$ 。
+> 它和“每个 thread 最多使用 255 个 32-bit register”是两个不同维度的上限——前者决定一个 SM 上能并发驻留多少 thread block，后者决定单个 thread 的寄存器压力。
 >
 > “每 SM L1 + shared memory”一行是统一 cache 的总容量。在 B200（compute capability 10.0）上，这 256 KB 中能配置成 shared memory 的部分是 228 KB，单个 thread block 最多申请 227 KB。
 
@@ -79,11 +91,14 @@ Registers 局部性最强，shared memory 适合一个 thread block 内协作，
 *表 6.2 A100/H100/B200 内存带宽数量级*
 
 \* Register bandwidth 是按 SM 数、时钟频率和寄存器端口宽度换算出来的量级估计，用于和下面三级带宽做数量级对比。
+
 > [!NOTE]
 > Hopper 与 Blackwell 在 memory hierarchy 上各新增一层上表未列出的资源：
 >
-> - **Tensor Memory（TMEM，Blackwell 数据中心型号 B200 / GB200）**：在 Tensor Core 旁新增的张量专用内存，位于 register 与 shared memory 之间，`tcgen05.mma` 的累加器可以直接驻留其上。TMEM 256 KB/SM、按 128 lane × 512 column 的 32-bit 单元组织（ $128 \times 512 \times 4\ \text{B} = 256\ \text{KB}$）；CUDA C++ 与 Triton 路径下编译器自动管理，写 PTX 时 alloc / dealloc 指令才直接暴露给程序员。
-> - **Thread Block Cluster（Hopper 引入，Blackwell 沿用）**：把多个 thread block 编为一个 cluster，cluster 内 block 可跨 SM 直接访问彼此的 distributed shared memory；portable cluster size 最多 8 个 thread block，Blackwell B200 在显式设置 `cudaFuncAttributeNonPortableClusterSizeAllowed` 后可扩展到 16 个 thread block。写 PTX 时 cluster 指令直接暴露给程序员。
+> - **Tensor Memory（TMEM，Blackwell 数据中心型号 B200 / GB200）**：在 Tensor Core 旁新增的张量专用内存，位于 register 与 shared memory 之间，`tcgen05.mma` 的累加器可以直接驻留其上。
+>   TMEM 256 KB/SM、按 128 lane × 512 column 的 32-bit 单元组织（ $128 \times 512 \times 4\ \text{B} = 256\ \text{KB}$）；CUDA C++ 与 Triton 路径下编译器自动管理，写 PTX 时 alloc / dealloc 指令才直接暴露给程序员。
+> - **Thread Block Cluster（Hopper 引入，Blackwell 沿用）**：把多个 thread block 编为一个 cluster，cluster 内 block 可跨 SM 直接访问彼此的 distributed shared memory；
+>   portable cluster size 最多 8 个 thread block，Blackwell B200 在显式设置 `cudaFuncAttributeNonPortableClusterSizeAllowed` 后可扩展到 16 个 thread block。写 PTX 时 cluster 指令直接暴露给程序员。
 
 CUDA / Triton 的基础并行模型可以写成三层：
 
@@ -97,7 +112,12 @@ grid（一次 kernel launch 的所有工作）
 
 Elementwise GeLU 这类操作几乎可以按元素独立处理，thread 视角已经够用：每个 thread 读一个元素、做一组算术、写回一个元素，thread 之间没有通信，访存账本就是「输入读 + 输出写」各一次。
 
-Softmax 和 matmul 会立刻需要 block 视角。第一性原理：softmax 的输出 $y_i = \exp(x_i - \max_j x_j) / \sum_j \exp(x_j - \max_j x_j)$ 需要整行最大值与整行分母，这两个 reduction 必须经过 warp / block 内的通信（warp shuffle 或 shared memory），单 thread 视角无法完成；matmul 的输出 $C[m, n]$ 依赖整行 $A[m, :]$ 与整列 $B[:, n]$，如果不做 tile 复用，朴素路径的访存账本是 $O(MNK)$ reads + $MN$ writes，每个 thread block 必须把数据保留在片上才能把访存降到 $O(MK + KN)$。这两类算子的共同点是 block 内的 thread 必须共享状态，因此 thread block / CTA 成为最自然的编程单位。
+Softmax 和 matmul 会立刻需要 block 视角。第一性原理：
+softmax 的输出 $y_i = \exp(x_i - \max_j x_j) / \sum_j \exp(x_j - \max_j x_j)$ 需要整行最大值与整行分母，这两个 reduction 必须经过 warp / block 内的通信（warp shuffle 或 shared memory），单 thread 视角无法完成。
+
+matmul 的输出 $C[m, n]$ 依赖整行 $A[m, :]$ 与整列 $B[:, n]$，如果不做 tile 复用，朴素路径的访存账本是 $O(MNK)$ reads + $MN$ writes，每个 thread block 必须把数据保留在片上才能把访存降到 $O(MK + KN)$。
+
+这两类算子的共同点是 block 内的 thread 必须共享状态，因此 thread block / CTA 成为最自然的编程单位。
 
 Triton 的自然思维单位是“一个 program 负责一个 block 级任务”——把 reduction 通信与 tile 复用直接收进 program 内。
 
@@ -105,18 +125,26 @@ Warp 是硬件执行层最重要的补充抽象。一个 warp 由 32 个 thread 
 
 Occupancy 有两个常见含义：
 
-- **Warp occupancy**：一个 SM 上同时驻留多少 warp。寄存器、shared memory 和线程数都会限制它。从物理约束推导：每 SM register file 容量 = $64\,\text{K} \times 4\,\text{B} = 256\,\text{KB}$ 是常数；每个 thread 占用的 register 数 × 驻留 thread 数 = register 上限；因此高 register 占用直接降低 warp 数。低 occupancy 不自动代表坏结果：如果 thread coarsening 让每个 thread 做更多有效工作，每个 warp 独立完成的指令更多，较低 occupancy 也可能换来更高吞吐。Occupancy 是 latency hiding 的必要条件，不是充分条件——没有足够多 warp，HBM 等长延迟无法被其他 warp 的算术指令掩盖；反之，warp 多并不保证吞吐高。
-- **Block occupancy**：thread block 分批调度到 SM 上时的均衡度。block 只会完整地驻留在一个 SM 上，block 内 thread 共享该 SM 的全部资源，因此调度按波次进行，一波最多同时容纳 SM 数个 block。B200 有 148 个 SM，若只启动 160 个 block，第一波填满 148 个，第二波只剩 12 个，其余 136 个 SM 空转；block 数超过 SM 数又不是 SM 数的整数倍时，最后一波排不满，出现尾波。
+- **Warp occupancy**：一个 SM 上同时驻留多少 warp。寄存器、shared memory 和线程数都会限制它。从物理约束推导：每 SM register file 容量 = $64\,\text{K} \times 4\,\text{B} = 256\,\text{KB}$ 是常数；
+  每个 thread 占用的 register 数 × 驻留 thread 数 = register 上限；因此高 register 占用直接降低 warp 数。
+- **Block occupancy**：thread block 分批调度到 SM 上时的均衡度。block 只会完整地驻留在一个 SM 上，block 内 thread 共享该 SM 的全部资源；当 block 吃满 SM 资源、每个 SM 一次只驻留一个 block 时，调度按波次进行，一波最多容纳 SM 数个 block。
+  B200 有 148 个 SM，若只启动 160 个 block，第一波填满 148 个，第二波只剩 12 个，其余 136 个 SM 空转；block 数超过 SM 数又不是 SM 数的整数倍时，最后一波排不满，出现尾波。
 
-一个小算例可以把 warp occupancy 的含义固定下来。假设一个 thread block 有 128 个 thread，每个 thread 使用 160 个 registers，那么一个 block 需要 $128 \times 160 = 20480$ 个 registers。若一个 SM 大约有 65536 个 registers 可用（A100 / H100 / B200 公开数值一致），同一个 SM 最多同时驻留 $\lfloor 65536 / 20480 \rfloor = 3$ 个 block。
+低 occupancy 不自动代表坏结果：如果 thread coarsening 让每个 thread 做更多有效工作，每个 warp 独立完成的指令更多，较低 occupancy 也可能换来更高吞吐。
+Occupancy 是 latency hiding 的必要条件，不是充分条件——没有足够多 warp，HBM 等长延迟无法被其他 warp 的算术指令掩盖；反之，warp 多并不保证吞吐高。
 
-每个 block 有 $128 / 32 = 4$ 个 warps，所以一共是 12 个 resident warps。若硬件上限是 64 个 warps/SM，这个 kernel 的 warp occupancy 约为 $12 / 64 \approx 18.75\%$。这个数说明寄存器用量已经限制了并发 warp 数；后续优化判断还要结合每个 thread 做了多少有效工作、是否能隐藏 HBM 访问延迟，以及 Tensor Core 是否吃满。
+一个小算例可以把 warp occupancy 的含义固定下来。假设一个 thread block 有 128 个 thread，每个 thread 使用 160 个 registers，那么一个 block 需要 $128 \times 160 = 20480$ 个 registers。
+若一个 SM 大约有 65536 个 registers 可用（A100 / H100 / B200 公开数值一致），同一个 SM 最多同时驻留 $\lfloor 65536 / 20480 \rfloor = 3$ 个 block。
+
+每个 block 有 $128 / 32 = 4$ 个 warps，所以一共是 12 个 resident warps。若硬件上限是 64 个 warps/SM，这个 kernel 的 warp occupancy 约为 $12 / 64 \approx 18.75\%$。这个数说明寄存器用量已经限制了并发 warp 数；
+后续优化判断还要结合每个 thread 做了多少有效工作、是否能隐藏 HBM 访问延迟，以及 Tensor Core 是否吃满。
 
 ![图 6.1-2 wave quantization](images/6-1-2-wave-quantization.png)
 
 *图 6.1-2 wave quantization*
 
-图 6.1-2 的横轴是矩阵尺寸，两条散点是同一 GEMM 在各尺寸下的实测性能，曲线呈周期性锯齿。取 $256 \times 128$ 的输出 tile：尺寸为 1792 时 tile 数是 $(1792 / 256) \times (1792 / 128) = 7 \times 14 = 98$ ；尺寸增到 1793 后两个方向都要向上取整，tile 数跳到 $8 \times 15 = 120$ 。
+图 6.1-2 的横轴是矩阵尺寸，两条散点给出 GEMM 在各尺寸下的两组实测性能，曲线呈周期性锯齿。取 $256 \times 128$ 的输出 tile：尺寸为 1792 时 tile 数是 $(1792 / 256) \times (1792 / 128) = 7 \times 14 = 98$ ；
+尺寸增到 1793 后两个方向都要向上取整，tile 数跳到 $8 \times 15 = 120$ 。
 
 A100 有 108 个 SM，120 个 tile 无法在一波内全部执行，尾波只剩 12 个 block，其余 SM 空转，性能曲线上就出现周期性的下跌。
 
@@ -124,22 +152,28 @@ A100 有 108 个 SM，120 个 tile 无法在一波内全部执行，尾波只剩
 
 Shared memory 和 HBM 还有两类不同的访存坑：
 
-- **Bank conflict** 发生在 shared memory。从硬件结构推导：shared memory 分成 32 个 bank，每个 bank 宽 4 B，每周期每个 bank 只能被一个 thread 访问（不同地址时），即仲裁上限 = $32 \times 4\ \text{B} = 128\ \text{B/cycle}$；同地址可走广播路径，不构成冲突。bank 映射每 128 B 循环一次，连续 float32 元素的 bank 编号是 $\mathrm{bank}(i) = i \bmod 32$。若一个 warp 的多个线程在同一周期访问同一个 bank 的不同地址，这些访问会被串行化，等效吞吐按冲突倍数下降。
-- **Memory coalescing** 发生在 global memory / HBM 访问。物理依据：HBM cache line = 128 B = 32 threads × 4 B / thread，warp 内 32 个线程各取 4 B 连续地址时，正好凑成 128 B，硬件可以合并成一条 cache-line transaction；若同一拍访问矩阵不同 row 的同一列，地址跨度通常很大，一次 load 会拆成多条 transaction，cache-line 利用率下降，有效带宽随之降低。
+- **Bank conflict** 发生在 shared memory。从硬件结构推导：shared memory 分成 32 个 bank，每个 bank 宽 4 B，每周期每个 bank 只能被一个 thread 访问（不同地址时），即仲裁上限 = $32 \times 4\ \text{B} = 128\ \text{B/cycle}$；
+  同地址可走广播路径，不构成冲突。bank 映射每 128 B 循环一次，连续 float32 元素的 bank 编号是 $\mathrm{bank}(i) = i \bmod 32$。若一个 warp 的多个线程在同一周期访问同一个 bank 的不同地址，这些访问会被串行化，等效吞吐按冲突倍数下降。
+- **Memory coalescing** 发生在 global memory / HBM 访问。物理依据：HBM cache line = 128 B = 32 threads × 4 B / thread，warp 内 32 个线程各取 4 B 连续地址时，正好凑成 128 B，硬件可以合并成一条 cache-line transaction；
+  若同一拍访问矩阵不同 row 的同一列，地址跨度通常很大，一次 load 会拆成多条 transaction，cache-line 利用率下降，有效带宽随之降低。
 
-Bank conflict 常出现在 tile 被写入 shared memory 后又按另一种方向读取时。按行连续写入通常很顺，但转置读取或按列读取可能让同一个 warp 的多个 thread 落到同一个 bank。常见缓解方式是 swizzling：保持逻辑坐标不变，只改变 shared memory 中的物理下标，例如把某一维映射成 `row ^ col` 这类按位异或形式。这样相邻 thread 的访问会被打散到更多 bank；读取时使用同一套映射还原逻辑位置。
+Bank conflict 常出现在 tile 被写入 shared memory 后又按另一种方向读取时。按行连续写入通常很顺，但转置读取或按列读取可能让同一个 warp 的多个 thread 落到同一个 bank。常见缓解方式是 swizzling：
+保持逻辑坐标不变，只改变 shared memory 中的物理下标，例如把某一维映射成 `row ^ col` 这类按位异或形式。这样相邻 thread 的访问会被打散到更多 bank；读取时使用同一套映射还原逻辑位置。
 
 算术强度（arithmetic intensity）把这些硬件约束压成一个判断：
 
 $$I = \frac{\text{FLOPs}}{\text{bytes}}$$
 
-它是 roofline 模型的核心变量。当 $I > I_{\text{ridge}} = \text{peak FLOP/s} / \text{peak bandwidth}$ 时，kernel 是 compute-bound， $T_{\text{compute}}$ 主导 wall-clock；当 $I < I_{\text{ridge}}$ 时是 memory-bound， $T_{\text{memory}}$ 主导。
+它是 roofline 模型的核心变量。当 $I > I_{\text{ridge}} = \text{peak FLOP/s} / \text{peak bandwidth}$ 时，kernel 是 compute-bound， $T_{\text{compute}}$ 主导 wall-clock；
+当 $I < I_{\text{ridge}}$ 时是 memory-bound， $T_{\text{memory}}$ 主导。
 
-按这一判据：逐元素算子通常 $I$ 极低——ReLU、加法每元素约 1 FLOP，GeLU 的 `tanh` 链每元素几十 FLOP，而每元素读写是 4–8 B， $I$ 只有个位数 FLOP/B，容易被 HBM 往返和 kernel launch 限制；matmul 通过 tile 复用可以把 $I$ 提高到与 tile size 相关——tile 越大，每个 HBM 读入的字节服务更多乘加， $I$ 越高，向 compute-bound 边界靠拢。这是为什么 §6.5 的 matmul tiling 直接决定了算子落到 roofline 的哪个象限。
+按这一判据：逐元素算子通常 $I$ 极低——ReLU、加法每元素约 1 FLOP，对上每元素 4–8 B 的读写， $I$ 只有 0.125–0.25 FLOP/B；GeLU 的 `tanh` 链每元素几十 FLOP， $I$ 也只到个位数 FLOP/B，都容易被 HBM 往返和 kernel launch 限制。
+matmul 通过 tile 复用可以把 $I$ 提高到与 tile size 相关——tile 越大，每个 HBM 读入的字节服务更多乘加， $I$ 越高，向 compute-bound 边界靠拢。这是为什么 §6.5 的 matmul tiling 直接决定了算子落到 roofline 的哪个象限。
 
 ## 6.2 Benchmark 和 profiler 的工作流
 
-本节走完一次最小排查循环：先写一个可复用的 benchmark 函数测端到端时间，再用 `torch.profiler` 把这段端到端时间拆到具体 CUDA kernel。读完应能解释为什么 benchmark 和 profiler 必须成对使用，以及 `cutlass3x_sm100_simt_sgemm_64x64x16` 这类 kernel 名字里每一段分别对应什么信息。
+本节走完一次最小排查循环：先写一个可复用的 benchmark 函数测端到端时间，再用 `torch.profiler` 把这段端到端时间拆到具体 CUDA kernel。
+读完应能解释为什么 benchmark 和 profiler 必须成对使用，以及 `cutlass3x_sm100_simt_sgemm_64x64x16` 这类 kernel 名字里每一段分别对应什么信息。
 
 ### 6.2.1 Benchmark 流程
 
@@ -198,11 +232,19 @@ for dim in [256, 512, 1024, 2048, 4096, 8192]:
 
 $$T(N) = T_{\text{launch}} + T_{\text{dispatch}} + c \cdot N^3$$
 
-$T_{\text{launch}}$ 是 CPU 端 kernel launch 开销（与算子复杂度无关，约几 μs 量级）， $T_{\text{dispatch}}$ 是 cuBLAS heuristic / kernel 选择与第一次调度的固定开销， $c$ 是与算子实现、SM 数、Tensor Core 利用率相关的常数。当 $N^3$ 小时（如 $N = 256$）， $T_{\text{launch}} + T_{\text{dispatch}}$ 占主导， $T(N) \approx T_{\text{launch}}$；当 $N^3$ 充分大（如 $N = 8192$）， $c \cdot N^3$ 占主导，曲线逼近三次方。
+$T_{\text{launch}}$ 是 CPU 端 kernel launch 开销（与算子复杂度无关，约几 μs 量级）， $T_{\text{dispatch}}$ 是 cuBLAS heuristic / kernel 选择与第一次调度的固定开销， $c$ 是与算子实现、SM 数、Tensor Core 利用率相关的常数。
+当 $N^3$ 小时（如 $N = 256$）， $T_{\text{launch}} + T_{\text{dispatch}}$ 占主导， $T(N) \approx T_{\text{launch}} + T_{\text{dispatch}}$；当 $N^3$ 充分大（如 $N = 8192$）， $c \cdot N^3$ 占主导，曲线逼近三次方。
 
-尺寸变大后， $T_{\text{launch}}$ 占比迅速衰减， $T(N)$ 的斜率逐步与 $c \cdot N^3$ 的导数对齐：表 6.3 中 $4096 \to 8192$ 实测 $2.56\ \text{ms} \to 17.6\ \text{ms}$，约 6.9 倍，接近理论的 8 倍。端到端从 $0.61\ \text{ms}$（ $N = 256$ ）到 $17.6\ \text{ms}$ 只跨约 29 倍，与 $(8192/256)^3 = 32^3 = 32768$ 倍理论放大之间的差额落在小尺寸端：按表中 $4096$ 的耗时扣除固定开销反推， $c \cdot 256^3$ 不到 $1\ \mu\text{s}$， $N = 256$ 测得的 $0.61\ \text{ms}$ 几乎全部是 $T_{\text{launch}} + T_{\text{dispatch}}$。
+尺寸变大后， $T_{\text{launch}}$ 占比迅速衰减， $T(N)$ 的斜率逐步与 $c \cdot N^3$ 的导数对齐：表 6.3 中 $4096 \to 8192$ 实测 $2.56\ \text{ms} \to 17.6\ \text{ms}$，约 6.9 倍，接近理论的 8 倍。
 
-大尺寸端的瓶颈按 §6.1 的 roofline 判据检查。 $N = 8192$ 的方阵乘法把 $A$、 $B$、 $C$ 各过一遍 HBM 的理想访存是 $3N^2 \times 4\ \text{B} \approx 0.8\ \text{GB}$，对应 $T_{\text{memory}} \ge 0.8\ \text{GB} / 8\ \text{TB/s} \approx 0.1\ \text{ms}$；实测 $17.6\ \text{ms}$ 是这个下界的约 170 倍，所以该尺寸由 $T_{\text{compute}}$ 主导，落在 compute-bound 区。作为参照，此时算术强度 $I = 2N^3 / (3N^2 \times 4\ \text{B}) = N / 6 \approx 1365\ \text{FLOP/B}$，远在拐点之上。Benchmark 给出真实机器上的拐点，把 $N^3$ 的复杂度公式落到具体硬件常量上。
+端到端从 $0.61\ \text{ms}$（ $N = 256$ ）到 $17.6\ \text{ms}$ 只跨约 29 倍，与 $(8192/256)^3 = 32^3 = 32768$ 倍理论放大之间的差额落在小尺寸端：
+按表中 $4096$ 的耗时扣除固定开销反推， $c \cdot 256^3$ 不到 $1\ \mu\text{s}$， $N = 256$ 测得的 $0.61\ \text{ms}$ 几乎全部是 $T_{\text{launch}} + T_{\text{dispatch}}$。
+
+大尺寸端的瓶颈按 §6.1 的 roofline 判据检查。
+$N = 8192$ 的方阵乘法把 $A$、 $B$、 $C$ 各过一遍 HBM 的理想访存是 $3N^2 \times 4\ \text{B} \approx 0.8\ \text{GB}$，对应 $T_{\text{memory}} \ge 0.8\ \text{GB} / 8\ \text{TB/s} \approx 0.1\ \text{ms}$；
+实测 $17.6\ \text{ms}$ 是这个下界的约 170 倍，所以该尺寸由 $T_{\text{compute}}$ 主导，落在 compute-bound 区。
+
+作为参照，此时算术强度 $I = 2N^3 / (3N^2 \times 4\ \text{B}) = N / 6 \approx 1365\ \text{FLOP/B}$，远在拐点之上。Benchmark 给出真实机器上的拐点，把 $N^3$ 的复杂度公式落到具体硬件常量上。
 
 ### 6.2.2 Profiler 看到实际 kernel
 
@@ -245,7 +287,8 @@ def profile(run: Callable, num_warmups: int = 1):
 
 *表 6.5 矩阵乘法 profiler 摘要（单卡 B200）*
 
-`cutlass3x` 指 CUTLASS 3.x（NVIDIA 维护的 CUDA 线性代数模板库），`sm100` 表示目标架构是 Blackwell 数据中心 SKU（即 B200 / GB200），`simt` 表示该 kernel 走 SIMT 路径，由普通 CUDA core 执行逐元素乘加，`sgemm` 表示单精度 float32 GEMM，`64x64x16` 或 `32x32x16` 是 tile 形状。相同 Python 表达式在不同形状下可能调用不同 kernel，因此性能分析不能只停在 `a @ b` 这一层。
+`cutlass3x` 指 CUTLASS 3.x（NVIDIA 维护的 CUDA 线性代数模板库），`sm100` 表示目标架构是 Blackwell 数据中心 SKU（即 B200 / GB200），`simt` 表示该 kernel 走 SIMT 路径，由普通 CUDA core 执行逐元素乘加，`sgemm` 表示单精度 float32
+GEMM，`64x64x16` 或 `32x32x16` 是 tile 形状。相同 Python 表达式在不同形状下可能调用不同 kernel，因此性能分析不能只停在 `a @ b` 这一层。
 
 ## 6.3 Kernel fusion：GeLU 作为最小案例
 
@@ -282,16 +325,28 @@ check_equal_1d(naive_gelu, compiled_gelu)
 
 逐元素链条太碎时，先找 PyTorch builtin；没有合适 builtin 时，试 `torch.compile`。在这个案例里，编译器把朴素计算图收敛成一个 Triton fused kernel，性能接近内置实现，维护成本远低于手写 kernel。内置 GeLU 仍然更快——自动编译提供的是强基线，不保证总能超过专门优化过的库 kernel。
 
-Fusion 的收益来自数据路径的物理约束。从朴素 GeLU 的 op 链出发（`0.5 * x * (1 + tanh(0.79788456 * (x + 0.044715 * x * x * x)))`），eager 执行会把它拆成 9 个逐元素 kernel：立方项 `0.044715 * x * x * x` 占 3 个乘法 kernel，接着 `x + 立方项` 1 个加法 kernel、 `0.79788456 *` 1 个乘法 kernel、 `tanh` 1 个 kernel、 `1 + tanh` 1 个加法 kernel，外加 `0.5 * x` 与最终相乘 2 个乘法 kernel。每个 kernel 把一个 $N^2$ 张量写回 HBM（9 次写），读侧 6 个乘法中 3 个是双张量读（各 $2N^2$ ）、3 个是标量乘（各 $N^2$ ），2 个加法分别读 $2N^2$ 与 $N^2$ ， `tanh` 读 $N^2$ ，合计 13 次读。整条链的 HBM 访问是 $13 N^2 + 9 N^2 = 22 N^2$；理想 fused kernel 每个元素只读一次 $x$、只写一次 $y$，即 $2 N^2$。访存账本给出的加速上限是 $22 / 2 = 11$ 倍——与 §6.4.2 softmax 的访存账本属于同一类推理。
+Fusion 的收益来自数据路径的物理约束。从朴素 GeLU 的 op 链出发（`0.5 * x * (1 + tanh(0.79788456 * (x + 0.044715 * x * x * x)))`），eager 执行会把它拆成 9 个逐元素 kernel：
+立方项 `0.044715 * x * x * x` 占 3 个乘法 kernel，接着 `x + 立方项` 1 个加法 kernel、 `0.79788456 *` 1 个乘法 kernel、 `tanh` 1 个 kernel、 `1 + tanh` 1 个加法 kernel，外加 `0.5 * x` 与最终相乘 2 个乘法 kernel。
 
-表 6.6 的 profiler 列直接验证这笔账：kernel-only 口径下 `naive_gelu` 相对 `builtin_gelu` 是 $3.385\ \text{ms} / 305.409\ \mu\text{s} \approx 11$ 倍，相对 `compiled_gelu` 是 $3.385\ \text{ms} / 342.848\ \mu\text{s} \approx 10$ 倍，与 $22 N^2$ 对 $2 N^2$ 的访存上限一致。benchmark 列的 5.6× / 4.0× 更小，因为 event 时间除 kernel 执行外还包含 kernel 之间的 launch 与调度间隙：同表内 benchmark 与 Self CUDA time 之差在 `naive_gelu` 上约 $0.37\ \text{ms}$、`builtin_gelu` 约 $0.36\ \text{ms}$、`compiled_gelu` 约 $0.60\ \text{ms}$，这部分时间同时加到比值的分子与分母上，把端到端比值压向 1。
+每个 kernel 把一个 $N^2$ 张量写回 HBM（9 次写），读侧 6 个乘法中 3 个是双张量读（各 $2N^2$ ）、3 个是标量乘（各 $N^2$ ），2 个加法分别读 $2N^2$ 与 $N^2$ ， `tanh` 读 $N^2$ ，合计 13 次读。
+
+整条链的 HBM 访问是 $13 N^2 + 9 N^2 = 22 N^2$；理想 fused kernel 每个元素只读一次 $x$、只写一次 $y$，即 $2 N^2$。访存账本给出的加速上限是 $22 / 2 = 11$ 倍——与 §6.4.2 softmax 的访存账本属于同一类推理。
+
+表 6.6 的 profiler 列直接验证这笔账：
+kernel-only 口径下 `naive_gelu` 相对 `builtin_gelu` 是 $3.385\ \text{ms} / 305.409\ \mu\text{s} \approx 11$ 倍，相对 `compiled_gelu` 是 $3.385\ \text{ms} / 342.848\ \mu\text{s} \approx 10$ 倍，
+与 $22 N^2$ 对 $2 N^2$ 的访存上限一致。
+
+benchmark 列的 5.6× / 4.0× 更小，因为 event 时间除 kernel 执行外还包含 kernel 之间的 launch 与调度间隙：
+同表内 benchmark 与 Self CUDA time 之差在 `naive_gelu` 上约 $0.37\ \text{ms}$、`builtin_gelu` 约 $0.36\ \text{ms}$、`compiled_gelu` 约 $0.60\ \text{ms}$，这部分时间同时加到比值的分子与分母上，把端到端比值压向 1。
 
 ## 6.4 Triton：从 elementwise 到 row-overflow
 
-本节用三个递进的 Triton 例子展示 block 级 program 的写法：GeLU（§6.4.1，一段连续向量一个 program）、softmax（§6.4.2，一行一个 program，reduction 在 program 内完成）、row sum（§6.4.3，一行太长时 program 内循环 tile）。读完后应能用 `tl.program_id` / `tl.arange` / mask 三件套解释不同模式的 program 划分策略；matmul 把这套二维 tile 思想推到矩阵乘，在 §6.5 展开。
+本节用三个递进的 Triton 例子展示 block 级 program 的写法：GeLU（§6.4.1，一段连续向量一个 program）、softmax（§6.4.2，一行一个 program，reduction 在 program 内完成）、row sum（§6.4.3，一行太长时 program 内循环 tile）。
+读完后应能用 `tl.program_id` / `tl.arange` / mask 三件套解释不同模式的 program 划分策略；matmul 把这套二维 tile 思想推到矩阵乘，在 §6.5 展开。
 
 > [!TIP]
-> **Triton program 与 CUDA 线程的对应**：在 Triton 里写 `tl.program_id(axis=0)` 拿到的就是 CUDA PTX 中的 `%ctaid.x`（block id）；`tl.arange(0, BLOCK)` 是该 program 内部要处理的一段 tile；kernel 编译时 Triton 会自动把这段 tile 拆成 warp × thread 的向量化指令，程序员不必直接管 thread id（对应 `%tid.x`）。这是 Triton 与手写 CUDA 的最大区别——把 block 级逻辑显式写出，把 thread 级调度交给编译器。
+> **Triton program 与 CUDA 线程的对应**：在 Triton 里写 `tl.program_id(axis=0)` 拿到的就是 CUDA PTX 中的 `%ctaid.x`（block id）；`tl.arange(0, BLOCK)` 是该 program 内部要处理的一段 tile；
+> kernel 编译时 Triton 会自动把这段 tile 拆成 warp × thread 的向量化指令，程序员不必直接管 thread id（对应 `%tid.x`）。这是 Triton 与手写 CUDA 的最大区别——把 block 级逻辑显式写出，把 thread 级调度交给编译器。
 
 ### 6.4.1 Triton GeLU：一段连续向量一个 program
 
@@ -408,11 +463,13 @@ Kernel 内部和朴素 softmax 的数学结构很像，但访存结构完全不�
 
 合计访存 $5MN + 2M + 3MN + 2M = 8MN + 4M$。理想情况下每个元素只读一次、写一次，只需 $2MN$ 次，两者相差约 4 倍——这就是朴素 softmax 在访存账本上的理论加速上限。
 
-Triton fused softmax 把一行读入后，把 max / sum reduction 和 normalize 都留在同一个 program 内完成，把整条流水线收敛到每行约一次读加一次写。这 4 倍就是它的理论加速上限：实际加速取决于 reduction 是否被 warp shuffle / shared memory 高效实现、是否触发 register spilling，以及最后一次 store 是否真的只有 $MN$ 次写。
+Triton fused softmax 把一行读入后，把 max / sum reduction 和 normalize 都留在同一个 program 内完成，把整条流水线收敛到每行约一次读加一次写。这 4 倍就是它的理论加速上限：
+实际加速取决于 reduction 是否被 warp shuffle / shared memory 高效实现、是否触发 register spilling，以及最后一次 store 是否真的只有 $MN$ 次写。
 
 ### 6.4.3 Triton row sum：行太长时分 tile 累加
 
-一行能放进一个 block 时，softmax 写法很直接。若一行长于 block size，就需要让同一个 program 在行内循环多个 tile。本小节用 row sum 作为最小例子：每个 lane 保持一个 accumulator，遍历 tile 后再用 `tl.sum` 做一次 reduction；这里的 tile 在 program 内部循环，和 grid 中的多个 block 是两层概念。
+一行能放进一个 block 时，softmax 写法很直接。若一行长于 block size，就需要让同一个 program 在行内循环多个 tile。本小节用 row sum 作为最小例子：每个 lane 保持一个 accumulator，遍历 tile 后再用 `tl.sum` 做一次 reduction；
+这里的 tile 在 program 内部循环，和 grid 中的多个 block 是两层概念。
 
 ![图 6.4-2 Triton row sum tiled accumulation](images/6-4-2-triton-row-sum.png)
 
@@ -440,21 +497,33 @@ GeLU 的 block 之间完全独立；softmax 的一行必须在一个 program 内
 
 ## 6.5 Matmul tiling、PTX 和工具选择
 
-本节先把前面的 block / tile 思想推到矩阵乘：用一个 program 负责 $C$ 的一个 $(\mathrm{BLOCK\\_M}, \mathrm{BLOCK\\_N})$ 输出 tile，沿 $K$ 维循环加载 $A$ 和 $B$ 的 tile 累加；然后把编译后的 Triton kernel 对照 PTX 文本，读出 `.target` / `.reqntid` / `%ctaid.x` / `%tid.x` / `ld.global.v4.b32` 这些执行模型信号。读完后应能解释 thread coarsening 在 PTX 层体现为几条向量化指令。最后给出一条工具选择链：PyTorch builtin → `torch.compile` → Triton → CUDA C++ / PTX / SASS。
+本节先把前面的 block / tile 思想推到矩阵乘：用一个 program 负责 $C$ 的一个 $(\mathrm{BLOCK\\_M}, \mathrm{BLOCK\\_N})$ 输出 tile，沿 $K$ 维循环加载 $A$ 和 $B$ 的 tile 累加；
+然后把编译后的 Triton kernel 对照 PTX 文本，读出 `.target` / `.reqntid` / `%ctaid.x` / `%tid.x` / `ld.global.v4.b32` 这些执行模型信号。读完后应能解释 thread coarsening 在 PTX 层体现为几条向量化指令。最后给出一条工具选择链：
+PyTorch builtin → `torch.compile` → Triton → CUDA C++ / PTX / SASS。
 
 理想路径是把 $A$ 和 $B$ 都放进 shared memory 后再计算 $C$，这样读次数能从 $O(MKN)$ 降到接近 $O(MK + KN)$。
 
-访存账本可以严格推导。**朴素路径**：固定一个输出元素 $C[m, n]$，对每个 $k$ 读一次 $A[m, k]$ 与 $B[k, n]$，共 $K$ 次读；遍历所有 $(m, n)$ 共 $MN$ 个输出元素，总 reads = $M \cdot N \cdot K = O(MNK)$，writes = $MN$。每个 $A[m, k]$ 在 $N$ 个不同的 $n$ 处被读 $N$ 次，每个 $B[k, n]$ 在 $M$ 个不同的 $m$ 处被读 $M$ 次——大量重复访存。
+访存账本可以严格推导。**朴素路径**：固定一个输出元素 $C[m, n]$，对每个 $k$ 读一次 $A[m, k]$ 与 $B[k, n]$，共 $K$ 次读；遍历所有 $(m, n)$ 共 $MN$ 个输出元素，总 reads = $M \cdot N \cdot K = O(MNK)$，writes = $MN$。
+每个 $A[m, k]$ 在 $N$ 个不同的 $n$ 处被读 $N$ 次，每个 $B[k, n]$ 在 $M$ 个不同的 $m$ 处被读 $M$ 次——大量重复访存。
 
-**理想路径（全部进 shared memory）**：把 $A$ 和 $B$ 整体放进 shared memory，每个 $A[m, k]$ 只读一次，每个 $B[k, n]$ 只读一次。Reads = $MK + KN$，writes = $MN$，因此 arithmetic intensity 从 $O(1)$（朴素）提到 $O(N)$（理想），跨过 roofline 的 $I_{\text{ridge}}$ 边界。
+**理想路径（全部进 shared memory）**：把 $A$ 和 $B$ 整体放进 shared memory，每个 $A[m, k]$ 只读一次，每个 $B[k, n]$ 只读一次。
+Reads = $MK + KN$，writes = $MN$，因此 arithmetic intensity 从 $O(1)$（朴素）提到 $O(N)$（理想），跨过 roofline 的 $I_{\text{ridge}}$ 边界。
 
-现实中矩阵太大，shared memory 放不下完整矩阵，所以采用 **tiling**：一个 program 负责 $C$ 的一个 $(\mathrm{BLOCK\\_M}, \mathrm{BLOCK\\_N})$ 输出 tile，沿 $K$ 维逐段加载 $A$ tile 和 $B$ tile，累加 partial sum，最后写回 HBM。复用发生在两层。片上：一个 $A$ tile 在 $\mathrm{BLOCK\\_N}$ 个输出列间复用，一个 $B$ tile 在 $\mathrm{BLOCK\\_M}$ 个输出行间复用，tile 内每个读入字节服务 $\mathrm{O}(\text{tile})$ 次乘加。HBM 层：每个 program 独立拉取整段 $K$ 的面板，总 reads $= (N / \mathrm{BLOCK\\_N}) \cdot MK + (M / \mathrm{BLOCK\\_M}) \cdot KN$——每个 $A$ 元素被读 $N / \mathrm{BLOCK\\_N}$ 次（每个列带一次），每个 $B$ 元素被读 $M / \mathrm{BLOCK\\_M}$ 次（每个行带一次），外加 $MN$ 次写回。以 $64 \times 64$ 输出 tile 为例，这比朴素的 $O(MNK)$ reads 低约 32 倍，比理想下界 $MK + KN$ 高出的跨带重读由 L2 吸收。这是 tiled matmul 优于朴素 matmul 的根本原因，也是 §6.1 末段算术强度提升的具体落点。
+现实中矩阵太大，shared memory 放不下完整矩阵，所以采用 **tiling**：一个 program 负责 $C$ 的一个 $(\mathrm{BLOCK\\_M}, \mathrm{BLOCK\\_N})$ 输出 tile，沿 $K$ 维逐段加载 $A$ tile 和 $B$ tile，累加 partial sum，最后写回 HBM。
+复用发生在两层。
+
+片上：一个 $A$ tile 在 $\mathrm{BLOCK\\_N}$ 个输出列间复用，一个 $B$ tile 在 $\mathrm{BLOCK\\_M}$ 个输出行间复用，tile 内每个读入字节服务 $\mathrm{O}(\text{tile})$ 次乘加。HBM 层：
+每个 program 独立拉取整段 $K$ 的面板，总 reads $= (N / \mathrm{BLOCK\\_N}) \cdot MK + (M / \mathrm{BLOCK\\_M}) \cdot KN$——每个 $A$ 元素被读 $N / \mathrm{BLOCK\\_N}$ 次（每个列带一次），每个 $B$
+元素被读 $M / \mathrm{BLOCK\\_M}$ 次（每个行带一次），外加 $MN$ 次写回。
+
+以 $64 \times 64$ 输出 tile 为例，这比朴素的 $O(MNK)$ reads 低约 32 倍，比理想下界 $MK + KN$ 高出的跨带重读由 L2 吸收。这是 tiled matmul 优于朴素 matmul 的根本原因，也是 §6.1 末段算术强度提升的具体落点。
 
 ![图 6.5-1 GEMM tiling data reuse](images/6-5-1-gemm-tiling.png)
 
 *图 6.5-1 GEMM tiling data reuse*
 
-图 6.5-1 右侧橙色块是当前输出 tile；为计算它，kernel 沿 $K$ 维读取左侧 $A$ 的行 tile 和中间 $B$ 的列 tile。紫色块表示外层 tile 扫描，绿色块表示内层元素乘加。tile 越大，每次 HBM 读入后能服务更多乘加，算术强度越高；tile 太大会增加 shared memory 和 register 压力，降低可驻留 block 数。
+图 6.5-1 右侧橙色块是当前输出 tile；为计算它，kernel 沿 $K$ 维读取左侧 $A$ 的行 tile 和中间 $B$ 的列 tile。紫色块表示外层 tile 扫描，绿色块表示内层元素乘加。tile 越大，每次 HBM 读入后能服务更多乘加，算术强度越高；
+tile 太大会增加 shared memory 和 register 压力，降低可驻留 block 数。
 
 Triton 版 matmul + ReLU 的 wrapper 先确定 $M$、 $K$、 $N$，再启动二维 grid。每个 program 对应 $C$ 的一个 $(\mathrm{BLOCK\\_M}, \mathrm{BLOCK\\_N})$ tile。
 
@@ -510,17 +579,23 @@ Triton 代码最终会编译到 PTX（Parallel Thread Execution）。`triton_gel
 
 *表 6.8 Triton GeLU PTX 中的执行模型信号*
 
-这几个信号合起来能算出 thread coarsening 的倍数：`BLOCK_SIZE` 是 1024，而 `.reqntid 128` 说明一个 block 只有 128 个 thread，因此每个 thread 要处理 $1024 / 128 = 8$ 个元素。PTX 把这 8 个元素合并成 `ld.global.v4.b32`（每条 load / store 4 个 32-bit 值）形式的向量化指令：编译器把相邻元素合并进同一个 thread 的向量 load / store，减少指令数与调度开销，同时提高每个 thread 的工作量。`triton_gelu-ptx.txt` 中每个 thread 恰好由 2 条 `ld.global.v4.b32` 读入 8 个元素、2 条 `st.global.v4.b32` 写回 8 个元素。
+这几个信号合起来能算出 thread coarsening 的倍数：`BLOCK_SIZE` 是 1024，而 `.reqntid 128` 说明一个 block 只有 128 个 thread，因此每个 thread 要处理 $1024 / 128 = 8$ 个元素。
+PTX 把这 8 个元素合并成 `ld.global.v4.b32`（每条 load / store 4 个 32-bit 值）形式的向量化指令：
+编译器把相邻元素合并进同一个 thread 的向量 load / store，减少指令数与调度开销，同时提高每个 thread 的工作量。`triton_gelu-ptx.txt` 中每个 thread 恰好由 2 条 `ld.global.v4.b32` 读入 8 个元素、2 条 `st.global.v4.b32` 写回 8 个元素。
 
 PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微架构细节要继续下探到 profiler 或 SASS 才能确认。
 
-本章的工具选择可以压缩成一条工程判断链：PyTorch builtin 优先；逐元素链条先试 `torch.compile`；需要改变计算组织、显式控制 tile、mask、访存和片上复用时使用 Triton；只有在需要更细粒度硬件控制或复用已有 CUDA 生态时，才继续下探到 CUDA C++、PTX 或 SASS。这条判断链来自维护成本与可读性的工程权衡，不是从公理推导得到的——经验规则，依赖硬件版本与团队熟悉度。
+本章的工具选择可以压缩成一条工程判断链：PyTorch builtin 优先；逐元素链条先试 `torch.compile`；需要改变计算组织、显式控制 tile、mask、访存和片上复用时使用 Triton；只有在需要更细粒度硬件控制或复用已有 CUDA 生态时，才继续下探到 CUDA C++、PTX 或 SASS。
+这条判断链来自维护成本与可读性的工程权衡，不是从公理推导得到的——经验规则，依赖硬件版本与团队熟悉度。
 
 ## 本章总结与下章衔接
 
-读完本章后应能做到：写一个可复用的 benchmark 和 `torch.profiler` 排查流程，在 Triton 里覆盖 elementwise / reduction / row-overflow / matmul tiling 四类 block 级 kernel，并在 PTX 文本中读出执行模型与 thread coarsening 信号。硬件数量级与优化原则见 [第 5 章 §5.1.3 A100/H100/H200/B200 四代硬件量级](../chapter5/chapter5_GPU和GPU相关优化.md) 与 [第 5 章 §5.6 性能优化技术](../chapter5/chapter5_GPU和GPU相关优化.md)，本章把同一套判断落到具体 kernel 和工具选择链上。
+读完本章后应能做到：写一个可复用的 benchmark 和 `torch.profiler` 排查流程，在 Triton 里覆盖 elementwise / reduction / row-overflow / matmul tiling 四类 block 级 kernel，并在 PTX 文本中读出执行模型与 thread coarsening 信号。
+硬件数量级与优化原则见 [第 5 章 §5.1.3 A100/H100/H200/B200 四代硬件量级](../chapter5/chapter5_GPU和GPU相关优化.md) 与 [第 5 章 §5.6 性能优化技术](../chapter5/chapter5_GPU和GPU相关优化.md)，本章把同一套判断落到具体 kernel 和工具选择链上。
 
-下章进入 [第 7 章 §7.2 通信编程模型](../chapter7/chapter7_分布式训练.md)：单卡账本成立之后，把同一组账本扩展到跨卡——collective 语义、NCCL / torch.distributed 的实际接口、ZeRO / FSDP 的状态分片，以及 TP / PP / SP / CP / EP 在混合并行中的组合（EP 在 [第 7 章 §7.9 SP / CP / EP：Activation 与长上下文 / MoE 维度的并行](../chapter7/chapter7_分布式训练.md) 与 [第 4 章 §4.4 MoE 与深度学习](../chapter4/chapter4_混合专家模型.md) 章节交叉）。
+下章进入 [第 7 章 §7.2 通信编程模型](../chapter7/chapter7_分布式训练.md)：
+单卡账本成立之后，把同一组账本扩展到跨卡——collective 语义、NCCL / torch.distributed 的实际接口、ZeRO / FSDP 的状态分片，以及 TP / PP / SP / CP / EP 在混合并行中的组合（EP
+在 [第 7 章 §7.9 SP / CP / EP：Activation 与长上下文 / MoE 维度的并行](../chapter7/chapter7_分布式训练.md) 与 [第 4 章 §4.4 MoE 与深度学习](../chapter4/chapter4_混合专家模型.md) 章节交叉）。
 
 ## 思考
 
@@ -531,7 +606,8 @@ PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微�
 
 ## 参考文献
 
-- Philippe Tillet, H. T. Kung, David Cox. [Triton: An Intermediate Language and Compiler for Tiled Neural Network Computations](https://www.eecs.harvard.edu/~htk/publication/2019-mapl-tillet-kung-cox.pdf)，MAPL 2019
+- Philippe Tillet, H. T. Kung, David Cox.
+  [Triton: An Intermediate Language and Compiler for Tiled Neural Network Computations](https://www.eecs.harvard.edu/~htk/publication/2019-mapl-tillet-kung-cox.pdf)，MAPL 2019
 - [Triton 官方文档](https://triton-lang.org/)
 - [PyTorch `torch.compile` 文档](https://pytorch.org/docs/stable/generated/torch.compile.html)
 - [NVIDIA CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/)
@@ -561,5 +637,10 @@ PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微�
 
 ### 来源对齐
 
-- **B200 HBM 容量 192 GB vs 180 GB**：课程硬件表与 NVIDIA datasheet（HGX B200 / GB200 NVL72 product brief 等）写 192 GB HBM3e 物理容量；NVIDIA Blackwell Tuning Guide §1.4.2.1 写 "capacity up to 180 GB"，NVIDIA DGX B200 系统规格写 8 卡合计 1,440 GB（即 180 GB/卡）、64 TB/s = 8 TB/s/卡，与 tuning guide 同口径。192 GB 是物理容量口径，180 GB 是 tuning guide 与 DGX 系统规格采用的软件可见口径，两者对应同一硬件的不同计数方式。表 6.1 记 192 GB 物理容量并标注 tuning guide 的 180 GB 口径；引用单卡容量给 192 GB（物理）或 180 GB（软件可见），引用系统容量给 NVIDIA 页面的 1,440 GB。
-- **B200 L2 容量 126 MB**：NVIDIA Blackwell Tuning Guide §1.4.2.2 原文把 126 MB 归到 "GB200 GPU"；课程硬件表给 B200 写 96–126 MB。126 MB 对应双 die 全封装：B200 单封装含 2 颗 Blackwell die 共 148 SMs，每 die 约 63 MB，GB200 superchip 的两颗 die 即此配置。表 6.1 取全封装上界 126 MB；引用时给 126 MB（全封装）或 63 MB（单 die），并注明 tuning guide 把该条目命名为 GB200。
+- **B200 HBM 容量 192 GB vs 180 GB**：课程硬件表与 NVIDIA datasheet（HGX B200 / GB200 NVL72 product brief 等）写 192 GB HBM3e 物理容量；
+  NVIDIA Blackwell Tuning Guide §1.4.2.1 写 "capacity up to 180 GB"，NVIDIA DGX B200 系统规格写 8 卡合计 1,440 GB（即 180 GB/卡）、64 TB/s = 8 TB/s/卡，与 tuning guide 同口径。
+- **B200 HBM 两种口径的对应**：192 GB 是物理容量口径，180 GB 是 tuning guide 与 DGX 系统规格采用的软件可见口径，两者对应同一硬件的不同计数方式。表 6.1 记 192 GB 物理容量并标注 tuning guide 的 180 GB 口径；
+  引用单卡容量给 192 GB（物理）或 180 GB（软件可见），引用系统容量给 NVIDIA 页面的 1,440 GB。
+- **B200 L2 容量 126 MB**：NVIDIA Blackwell Tuning Guide §1.4.2.2 原文把 126 MB 归到 "GB200 GPU"；课程硬件表给 B200 写 96–126 MB。126 MB 对应双 die 全封装：
+  B200 单封装含 2 颗 Blackwell die 共 148 SMs，每 die 约 63 MB，GB200 superchip 的两颗 die 即此配置。表 6.1 取全封装上界 126 MB；引用时给 126 MB（全封装）或 63 MB（单 die），并注明 tuning guide 把该条目命名为 GB200。
+

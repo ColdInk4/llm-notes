@@ -10,6 +10,8 @@ $$
 
 四个待求梯度按反向传播顺序计算：先 `h2.grad`、再 `w2.grad`、再 `h1.grad`、最后 `w1.grad`。下文统一用 $G_z = \partial L / \partial z$ 表示损失对张量 $z$ 的梯度。
 
+维度记号与主章节 §2.4.1 的线性模型一致： $x$ 形状 $(B, D)$ 、 $W_1$ 形状 $(D, D)$ 、 $W_2$ 形状 $(D, K)$ 、 $h_2$ 形状 $(B, K)$ ，即 $B$ 为 batch size、 $D$ 为输入 / 隐藏维度、 $K$ 为输出维度。
+
 ## §A.1 `h2.grad`
 
 $L = \mathrm{mean}(h_2^2) = (1 / (BK)) \sum_{i,k} h_2[i,k]^2$ 对 $h_2$ 的每个元素独立求导：
@@ -70,4 +72,5 @@ $$
 G_{h_{\text{in}}} = G_{h_{\text{out}}} W^{\mathrm{T}}, \qquad G_W = h_{\text{in}}^{\mathrm{T}} G_{h_{\text{out}}} .
 $$
 
-两层都按 $h_{\text{in}}^{\mathrm{T}} G_{h_{\text{out}}}$ 这一矩阵乘算 weight grad，按 $G_{h_{\text{out}}} W^{\mathrm{T}}$ 算 activation grad；两者 FLOPs 均为 $2 \cdot (\text{batch 维度}) \cdot (\text{输入维度}) \cdot (\text{输出维度})$，对应该层前向的 2 倍。
+两层都按 $h_{\text{in}}^{\mathrm{T}} G_{h_{\text{out}}}$ 这一矩阵乘算 weight grad，按 $G_{h_{\text{out}}} W^{\mathrm{T}}$ 算 activation grad；
+两者 FLOPs 各为 $2 \cdot (\text{batch 维度}) \cdot (\text{输入维度}) \cdot (\text{输出维度})$，每个都等于该层前向的 FLOPs，两者相加才是该层前向的 2 倍。

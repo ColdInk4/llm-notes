@@ -12,7 +12,8 @@
 
 推理系统是语言模型把能力交给用户和下游系统的工程层。训练决定模型学到了什么，推理系统决定这些能力能以多高吞吐、多低延迟、多少显存和多少服务成本被释放出来。对话、代码补全、搜索、智能体调用、批量数据处理、评测和 RL rollout 都在消耗推理预算。
 
-本章的认识链从自回归分解 $p(x_{1:T})=\prod_t p(x_t\mid x_{<t})$ 和硬件带宽约束出发：prefill 一次处理整段输入，generation 每步读取权重与历史 KV cache。由此推导 TTFT、latency、throughput 和 KV cache 的账本；每种压缩、speculative 或 serving 调度方法都通过 workload 对照实验验证它减少了哪类数据搬运，同时记录输出分布和质量边界。
+本章的认识链从自回归分解 $p(x_{1:T})=\prod_t p(x_t\mid x_{<t})$ 和硬件带宽约束出发：prefill 一次处理整段输入，generation 每步读取权重与历史 KV cache。由此推导 TTFT、latency、throughput 和 KV cache 的账本；
+每种压缩、speculative 或 serving 调度方法都通过 workload 对照实验验证它减少了哪类数据搬运，同时记录输出分布和质量边界。
 
 推理系统里有一个很直接的账本：生成 token 就是在花 compute。聊天产品里，人类阅读速度常常是瓶颈；但 agent、代码执行、搜索增强、RL rollout 和合成数据生成会产生大量中间 trace，许多 token 甚至不会被最终用户看到。因此推理优化不只是“让一个回答更快”，还包括控制系统里所有可见和不可见 token 的成本。
 
@@ -76,7 +77,8 @@
 
 *图 9.1-1 Inference overview*
 
-图 9.1-1 把一次推理请求抽象成三个方块：model 与 prompt 进入 Inference，产出 response。聊天、代码补全、agent、批处理、evaluation 和 RL rollout 都在反复调用这同一个方块；差别在于哪些 token 会被人读到，哪些 token 只是系统内部为了搜索、验证或打分而产生。推理优化要同时服务交互体验和大规模 token 产出成本。
+图 9.1-1 把一次推理请求抽象成三个方块：model 与 prompt 进入 Inference，产出 response。聊天、代码补全、agent、批处理、evaluation 和 RL rollout 都在反复调用这同一个方块；差别在于哪些 token 会被人读到，哪些 token 只是系统内部为了搜索、验证或打分而产生。
+推理优化要同时服务交互体验和大规模 token 产出成本。
 
 ### 9.1.1 训练看全序列，推理逐 token 生成
 
@@ -111,7 +113,8 @@ $$
 
 这四个指标并不等价。`TTFT` 决定用户什么时候看到第一个输出，主要受 prompt prefill 和调度排队影响；per-token latency 决定后续回答流得是否顺畅；end-to-end latency 还会累积回答长度带来的 generation 时间；throughput 决定整套服务能处理多少 token。
 
-高 throughput 系统完全可能让单条请求等很久，因为在线服务还要同时处理上下文长度差异、请求到达时间差异、KV cache 占用和调度排队。交互式聊天更关心 `TTFT` 和 per-request latency；离线批量处理更关心 throughput。Agent workload 同时关心两者，因为它会产生大量中间 token，而且下一步动作常依赖上一段生成结果。
+高 throughput 系统完全可能让单条请求等很久，因为在线服务还要同时处理上下文长度差异、请求到达时间差异、KV cache 占用和调度排队。交互式聊天更关心 `TTFT` 和 per-request latency；离线批量处理更关心 throughput。
+Agent workload 同时关心两者，因为它会产生大量中间 token，而且下一步动作常依赖上一段生成结果。
 
 ### 9.1.3 prefill 与 generation
 
@@ -124,9 +127,12 @@ $$
 
 *图 9.1-2 Transformer decoder block*
 
-图 9.1-2 给出一个 Transformer decoder block 的通用结构：底部 token embedding 与 absolute position embeddings 拼成输入张量（shape `(batch_size, seq_len, d_model)`），向上经过若干 Transformer Block（每个 block 内含 causal multi-head self-attention、add & dropout、position-wise feed-forward、add & dropout），最终经过 norm、output embedding、softmax 得到输出概率。现代 decoder-only LLM 常把 absolute position embeddings 换成 RoPE 等相对位置机制；图中位置编码仅用于说明张量流。
+图 9.1-2 给出一个 Transformer decoder block 的通用结构：底部 token embedding 与 absolute position embeddings 拼成输入张量（shape `(batch_size, seq_len, d_model)`）
+，向上经过若干 Transformer Block（每个 block 内含 causal multi-head self-attention、add & dropout、position-wise feed-forward、add & dropout），最终经过 norm、output embedding、softmax 得到输出概率。
+现代 decoder-only LLM 常把 absolute position embeddings 换成 RoPE 等相对位置机制；图中位置编码仅用于说明张量流。
 
-中间张量的形状记号采用 `B` (batch size)、`S` (已有上下文 token 数)、`T` (本次要处理或生成的 token 数)、`D` (model dim)、`F = 4D` (MLP up-projection dim)、`H` (head dim)、`N` (query head 数)。`B`、`S`、`T` 在张量里是 batch 维度，`D` / `F` / `H` 在张量里是 contracting / model 维度。
+中间张量的形状记号采用 `B` (batch size)、`S` (已有上下文 token 数)、`T` (本次要处理或生成的 token 数)、`D` (model dim)、`F = 4D` (MLP up-projection dim)、`H` (head dim)、`N` (query head 数)。
+`B`、`S`、`T` 在张量里是 batch 维度，`D` / `F` / `H` 在张量里是 contracting / model 维度。
 
 注意力头记号采用 $N = K_{\mathrm{kv}} G$： $K_{\mathrm{kv}}$ 是 KV head 数， $G$ 是每个 KV head 对应的 query heads 数。下文把 key 张量仍记作 $K$，把 KV head 数固定写作 $K_{\mathrm{kv}}$，避免混淆。
 
@@ -150,7 +156,8 @@ $$
 
 *图 9.1-4 KV cache incremental inference*
 
-KV cache 的观察很简单：在 causal Transformer 里，过去 token 的 key/value 不会因为未来追加 token 而改变。因此 `prefill` 阶段先为 prompt 写入 KV cache；后续 `generation` 阶段每步只计算新 token 的 query/key/value，把新 key/value 追加进 cache，并让 query 读历史 cache。
+KV cache 的观察很简单：在 causal Transformer 里，过去 token 的 key/value 不会因为未来追加 token 而改变。因此 `prefill` 阶段先为 prompt 写入 KV cache；
+后续 `generation` 阶段每步只计算新 token 的 query/key/value，把新 key/value 追加进 cache，并让 query 读历史 cache。
 
 注意力仍然是：
 
@@ -172,11 +179,13 @@ $$
 
 图 9.1-5 把两阶段差异画出来：`prefill` 像训练的一次前向，prompt token 都已知；`generation` 像一个循环，每次只追加一个 token。后面所有推理优化都可以放回这个两阶段账本里理解：要么减少每步读的权重和 KV cache，要么让更多请求一起摊薄权重读取，要么用小模型先起草再让大模型并行检查。
 
-KV cache 用显存换重复计算，让自回归推理可以流式部署；代价是长上下文和高并发会把瓶颈转移到 HBM bandwidth 与显存管理上。它适用于过去 token 表示不会被未来 token 改写的 causal generation。若输入上下文频繁被编辑、模型使用双向 attention，或者生成范式需要多轮重写同一批位置，缓存的 key/value 通常需要重新计算，或改用完全不同的缓存机制。
+KV cache 用显存换重复计算，让自回归推理可以流式部署；代价是长上下文和高并发会把瓶颈转移到 HBM bandwidth 与显存管理上。它适用于过去 token 表示不会被未来 token 改写的 causal generation。
+若输入上下文频繁被编辑、模型使用双向 attention，或者生成范式需要多轮重写同一批位置，缓存的 key/value 通常需要重新计算，或改用完全不同的缓存机制。
 
 ## 9.2 Arithmetic Intensity：为什么 generation 常常 memory-bound
 
-本节把上一节的「`prefill` 与 `generation` 资源约束不同」落到一条可计算的账本上：把每一步 FLOPs 除以每一步搬运的字节数，得到 `arithmetic intensity` $I$；把它和硬件 FLOP/s ÷ HBM bandwidth 这一比值对比，就能判断一段推理究竟被算力还是带宽卡住。本节先给 MLP 层，再给 attention 层，最后回到 latency / throughput 取舍；读完后，读者应能把任意一段 LLM 推理判断成 `compute-bound` 或 `memory-bound`，并指出瓶颈在权重读取、KV cache 还是两者。
+本节把上一节的「`prefill` 与 `generation` 资源约束不同」落到一条可计算的账本上：把每一步 FLOPs 除以每一步搬运的字节数，得到 `arithmetic intensity` $I$；把它和硬件 FLOP/s ÷ HBM bandwidth 这一比值对比，就能判断一段推理究竟被算力还是带宽卡住。
+本节先给 MLP 层，再给 attention 层，最后回到 latency / throughput 取舍；读完后，读者应能把任意一段 LLM 推理判断成 `compute-bound` 或 `memory-bound`，并指出瓶颈在权重读取、KV cache 还是两者。
 
 `arithmetic intensity` 衡量每搬运 1 byte 数据做多少 FLOPs：
 
@@ -184,11 +193,19 @@ $$
 I = \frac{\mathrm{FLOPs}}{\mathrm{Bytes\ Transferred}}
 $$
 
-若计算的 `arithmetic intensity` 高于硬件的 FLOP/s 与 HBM bandwidth 比值，就更可能 compute-bound；若低于这个比值，就更可能 memory-bound。以 H100/Hopper 的 BF16 数量级示例看，峰值 FLOP/s 除以 HBM bandwidth 大约是几百 FLOPs/byte；换硬件或换 kernel 时按该硬件的 FLOP/s 与 HBM bandwidth 重算这个比值。
+若计算的 `arithmetic intensity` 高于硬件的 FLOP/s 与 HBM bandwidth 比值，就更可能 compute-bound；若低于这个比值，就更可能 memory-bound。以 H100/Hopper 的 BF16 数量级示例看，峰值 FLOP/s 除以 HBM bandwidth 大约是几百 FLOPs/byte；
+换硬件或换 kernel 时按该硬件的 FLOP/s 与 HBM bandwidth 重算这个比值。
 
-以 H100 的 dense BF16 为例，判据可以写成显式数字：**989.5 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs/byte**。NVIDIA H100 datasheet 把 BF16 Tensor Core 标为 1,979 TFLOPS（含结构化稀疏），dense 取一半即 989.5；jax-ml scaling-book roofline 章节用 9.89 × 10¹⁴ bfloat16 FLOPs/s 表示同一值（[NVIDIA H100 datasheet](https://www.nvidia.com/en-us/data-center/h100/) / [JAX Scaling Book roofline](https://jax-ml.github.io/scaling-book/roofline/)）。对矩阵乘法 $X(B \times D) \cdot W(D \times F)$，当 $D, F \gg B$ 时 arithmetic intensity 收敛到 $B$，因此 compute-bound 的条件是 $B > 295$。
+以 H100 的 dense BF16 为例，判据可以写成显式数字：**989.5 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs/byte**。NVIDIA H100 datasheet 把 BF16 Tensor Core 标为 1,979 TFLOPS（含结构化稀疏），dense 取一半即 989.5；
+jax-ml scaling-book roofline 章节用 9.89 × 10¹⁴ bfloat16 FLOPs/s 表示同一值（[NVIDIA H100 datasheet](https://www.nvidia.com/en-us/data-center/h100/) /
+[JAX Scaling Book roofline](https://jax-ml.github.io/scaling-book/roofline/)）。
 
-把这条阈值落到具体 batch 上：Llama 2 13B 单步运算量大致随 $B$ 线性增长，所以 MLP generation 在 $B > 295$ 时进入 compute-bound 区间；实际服务系统常见 batch size 远小于 295，generation 因此长期 memory-bound。但 batch 继续增大后会撞上显存容量上限：Llama 2 13B 在 BF16 下参数约 26.0 GB，单条请求 KV cache 约 0.84 GB，参数 + KV cache 总内存 = $26.0 + 0.84 \cdot B$ GB。B=64 时约 79.7 GB（仍可装下单卡 80 GB H100）；B=256 时约 240.8 GB（已超过 80 GB 容量）。80 GB 是显存容量上限，与 295 FLOPs/byte 的 compute-bound 判据是两条独立约束；§9.2.3 用更完整的 latency / throughput 账本说明这条 tradeoff。
+对矩阵乘法 $X(B \times D) \cdot W(D \times F)$，当 $D, F \gg B$ 时 arithmetic intensity 收敛到 $B$，因此 compute-bound 的条件是 $B > 295$。
+
+把这条阈值落到具体 batch 上：Llama 2 13B 单步运算量大致随 $B$ 线性增长，所以 MLP generation 在 $B > 295$ 时进入 compute-bound 区间；实际服务系统常见 batch size 远小于 295，generation 因此长期 memory-bound。
+
+但 batch 继续增大后会撞上显存容量上限：Llama 2 13B 在 BF16 下参数约 26.0 GB，单条请求 KV cache 约 0.84 GB，参数 + KV cache 总内存 = $26.0 + 0.84 \cdot B$ GB。B=64 时约 79.7 GB（仍可装下单卡 80 GB H100）；
+B=256 时约 240.8 GB（已超过 80 GB 容量）。80 GB 是显存容量上限，与 295 FLOPs/byte 的 compute-bound 判据是两条独立约束；§9.2.3 用更完整的 latency / throughput 账本说明这条 tradeoff。
 
 ### 9.2.1 MLP 层：batch 和 token 数能摊薄权重读取
 
@@ -204,11 +221,14 @@ $$
 I_{\mathrm{MLP}} \approx B T
 $$
 
-`prefill` 时 $T = S$ ，prompt 可以一次处理，所以 $B S$ 往往足够大；`generation` 时 $T = 1$ ，算术强度退化到 $B$ 。因此 MLP generation 要靠 concurrent requests 来摊薄权重读取。可以把这件事理解成“多条请求共同分摊一次权重读取”：权重矩阵对 batch 中所有请求相同，读到片上后可以服务多个 token，batch 越大，每搬运 1 byte 权重能做的矩阵乘法越多。
+`prefill` 时 $T = S$ ，prompt 可以一次处理，所以 $B S$ 往往足够大；`generation` 时 $T = 1$ ，算术强度退化到 $B$ 。因此 MLP generation 要靠 concurrent requests 来摊薄权重读取。可以把这件事理解成“多条请求共同分摊一次权重读取”：
+权重矩阵对 batch 中所有请求相同，读到片上后可以服务多个 token，batch 越大，每搬运 1 byte 权重能做的矩阵乘法越多。
 
 ### 9.2.2 Attention 层：batch 不能同样摊薄 KV cache
 
-attention generation 更难。attention 的核心是两个矩阵乘： $Q (B \times T \times D) \cdot K (B \times S \times D)$ 计算 attention logits（ $2 B S T D$ FLOPs），随后 $\mathrm{softmax}(\cdot) \cdot V (B \times S \times D)$ 计算加权和（ $2 B S T D$ FLOPs）。HBM 读写方面，K 与 V 都是 $B \times S \times D$ 张量，各需 $2 B S D$ 字节；Q 与输出 Y 都是 $B \times T \times D$ 张量，各需 $2 B T D$ 字节。合计：
+attention generation 更难。attention 的核心是两个矩阵乘： $Q (B \times T \times D) \cdot K (B \times S \times D)$ 计算 attention logits（ $2 B S T D$ FLOPs）
+，随后 $\mathrm{softmax}(\cdot) \cdot V (B \times S \times D)$ 计算加权和（ $2 B S T D$ FLOPs）。HBM 读写方面，K 与 V 都是 $B \times S \times D$ 张量，各需 $2 B S D$ 字节；
+Q 与输出 Y 都是 $B \times T \times D$ 张量，各需 $2 B T D$ 字节。合计：
 
 $$
 \mathrm{FLOPs} = 4 B S T D,\quad \mathrm{Bytes} = 4 B S D + 4 B T D
@@ -234,7 +254,8 @@ $$
 I_{\mathrm{attention,generation}} \approx \frac{S}{S + 1} \lt 1
 $$
 
-这里的关键是 batch size 并没有像 MLP 那样进入公式。原因是 MLP 权重对 batch 中所有请求共享，读一次权重可以服务多个 sequence；但 attention 里的 KV cache 是每个请求自己的历史， $B$ 个请求就有 $B$ 份不同 KV cache。把更多请求合到一起，确实增加总工作量，却不能像共享权重那样复用同一份 KV。
+这里的关键是 batch size 并没有像 MLP 那样进入公式。原因是 MLP 权重对 batch 中所有请求共享，读一次权重可以服务多个 sequence；但 attention 里的 KV cache 是每个请求自己的历史， $B$ 个请求就有 $B$ 份不同 KV cache。
+把更多请求合到一起，确实增加总工作量，却不能像共享权重那样复用同一份 KV。
 
 表格化看就是：
 
@@ -247,7 +268,8 @@ $$
 
 这张表给出两个不同的工程方向。MLP generation 的低算术强度可以通过更大的并发 batch 缓解，因为大家共享同一份权重；attention generation 的低算术强度来自每个请求私有的 KV cache。
 
-在标准 Transformer 上，单纯增加 batch 并不能把 attention generation 变成高复用的大矩阵乘法——每多一个请求就多一份不同历史，权重读取的复用无法延伸到 KV cache 上。更直接的优化方向是减少 KV cache 体积、改善 KV 布局或改变 attention 结构，对应 §9.3 模型与 KV cache 压缩的 GQA、MLA、CLA、local / sparse attention 与 quantization / pruning / distillation。
+在标准 Transformer 上，单纯增加 batch 并不能把 attention generation 变成高复用的大矩阵乘法——每多一个请求就多一份不同历史，权重读取的复用无法延伸到 KV cache 上。
+更直接的优化方向是减少 KV cache 体积、改善 KV 布局或改变 attention 结构，对应 §9.3 模型与 KV cache 压缩的 GQA、MLA、CLA、local / sparse attention 与 quantization / pruning / distillation。
 
 ### 9.2.3 Latency 与 Throughput 的取舍
 
@@ -271,9 +293,11 @@ $$
 - 大 batch：系统 throughput 更高，但单请求等待和 per-token latency 可能变差。
 - 更小 KV cache：可能同时改善 latency 和 throughput，因为它直接减少 memory traffic。
 
-batch size 是 throughput 的燃料，也有直接成本。更大的 batch 会让权重读取被更多请求分摊，也会让每一步需要管理的 KV cache 总量变大；服务系统通常会给 `prefill` 和 `generation` 使用不同调度策略，用小一点的 prefill batch 控制 `TTFT`，用更大的 generation batch 提高总体 throughput。
+batch size 是 throughput 的燃料，也有直接成本。更大的 batch 会让权重读取被更多请求分摊，也会让每一步需要管理的 KV cache 总量变大；
+服务系统通常会给 `prefill` 和 `generation` 使用不同调度策略，用小一点的 prefill batch 控制 `TTFT`，用更大的 generation batch 提高总体 throughput。
 
-一个 Llama 2 13B 的带宽估算把这条 tradeoff 具体化。设权重使用 BF16、隐藏维度 $D = 5120$、MLP 上投影维度 $F = 13824$、query head 数 $N = 40$、KV head 数 $K_{\mathrm{kv}} = 40$、head dim $H = 128$、层数 $L = 40$、vocab $V = 32000$，上下文长度 $S = 1024$，并假设 H100 的 HBM bandwidth 为 $3.35\ \mathrm{TB/s}$。
+一个 Llama 2 13B 的带宽估算把这条 tradeoff 具体化。设权重使用 BF16、隐藏维度 $D = 5120$、MLP 上投影维度 $F = 13824$、query head 数 $N = 40$、KV head 数 $K_{\mathrm{kv}} = 40$、head dim $H = 128$、层数 $L = 40$、
+vocab $V = 32000$，上下文长度 $S = 1024$，并假设 H100 的 HBM bandwidth 为 $3.35\ \mathrm{TB/s}$。
 
 模型参数量来自 embedding、attention 投影和 MLP 三部分（不含 layer norm 与 bias）：
 
@@ -281,7 +305,9 @@ $$
 N_{\mathrm{param}} = 2 V D + D F \cdot 3 L + (2 D N H + 2 D K_{\mathrm{kv}} H) L
 $$
 
-代入上述值得到 $N_{\mathrm{param}} \approx 13.02 \times 10^9$；BF16 权重对应约 $2 \times 13.02 \approx 26.0\ \mathrm{GB}$。单条请求的 KV cache 大小为 $S \times K_{\mathrm{kv}} \times H \times L \times 2 \times 2$ 字节（2 是 K + V 两份，2 是 BF16 字节数），代入 $1024 \cdot 40 \cdot 128 \cdot 40 \cdot 4 = 838{,}860{,}800$ 字节 $\approx 0.84\ \mathrm{GB}$。
+代入上述值得到 $N_{\mathrm{param}} \approx 13.02 \times 10^9$；BF16 权重对应约 $2 \times 13.02 \approx 26.0\ \mathrm{GB}$。
+单条请求的 KV cache 大小为 $S \times K_{\mathrm{kv}} \times H \times L \times 2 \times 2$ 字节（2 是 K + V 两份，2 是 BF16 字节数）
+，代入 $1024 \cdot 40 \cdot 128 \cdot 40 \cdot 4 = 838{,}860{,}800$ 字节 $\approx 0.84\ \mathrm{GB}$。
 
 把这些量代入上面的带宽下界，得到：
 
@@ -295,11 +321,14 @@ $$
 
 ## 9.3 模型与 KV cache 压缩：减少每步数据搬运
 
-本节解决「attention generation 的算术强度低于 1」这一硬约束。GQA / MQA 减少 KV head 数；MLA 把 KV 压到低维 latent 再按需展开；CLA 把共享维度从 head 之间推到 layer 之间；local / sparse attention 直接减少每步需要读取的历史 token；quantization / pruning / distillation 则同时压缩权重、activation 和 KV cache 的 dtype 或规模。每条路径都同时改变 memory traffic、模型表示和输出质量，因此本节每个小节末尾都回到「速度 / 显存 vs 质量」这条单一权衡上。
+本节解决「attention generation 的算术强度低于 1」这一硬约束。GQA / MQA 减少 KV head 数；MLA 把 KV 压到低维 latent 再按需展开；CLA 把共享维度从 head 之间推到 layer 之间；local / sparse attention 直接减少每步需要读取的历史 token；
+quantization / pruning / distillation 则同时压缩权重、activation 和 KV cache 的 dtype 或规模。每条路径都同时改变 memory traffic、模型表示和输出质量，因此本节每个小节末尾都回到「速度 / 显存 vs 质量」这条单一权衡上。
 
 前面已经看到，inference 的关键瓶颈通常是 memory traffic，尤其是 generation attention 的 KV cache。本节的共同目标是让每一步搬运更少数据，并同时检查质量。
 
-GQA、MLA、CLA 和 local / sparse attention 会改变 attention 的结构。已有 MHA checkpoint 换成这些结构需要额外训练，但通常远低于从头训练的成本：GQA 论文给出的 uptraining 方案是先把每组内的 key/value 投影矩阵做 mean pooling 得到转换后的 checkpoint，再按原始预训练配方续训，预算为原始预训练 compute 的 5%。quantization、pruning 和 distillation 则从既有模型出发压缩权重或模型本体，也需要校准数据、专用 kernel 或修复训练才能把字节数减少转化为实际加速。
+GQA、MLA、CLA 和 local / sparse attention 会改变 attention 的结构。已有 MHA checkpoint 换成这些结构需要额外训练，但通常远低于从头训练的成本：
+GQA 论文给出的 uptraining 方案是先把每组内的 key/value 投影矩阵做 mean pooling 得到转换后的 checkpoint，再按原始预训练配方续训，预算为原始预训练 compute 的 5%。
+quantization、pruning 和 distillation 则从既有模型出发压缩权重或模型本体，也需要校准数据、专用 kernel 或修复训练才能把字节数减少转化为实际加速。
 
 ### 9.3.1 GQA / MQA：减少 KV head 数
 
@@ -333,13 +362,15 @@ KV cache 大小大致与 $K_{\mathrm{kv}} \times H$ 成正比，所以从 MHA �
 
 *图 9.3-3 MLA schema*
 
-普通 attention 的 KV cache 存的是 $\mathbf{k} = W_K h$ 和 $\mathbf{v} = W_V h$。MLA 存的是压缩向量 $c = W_c h$，使用时再从 $c$ 投影出 key/value。这样 KV cache 的存储维度可以明显下降。一个工程细节是 RoPE 通常直接作用在 key/query 相关维度上，所以 MLA 还要为 RoPE 保留额外维度；即便如此，总 KV cache 仍可大幅缩小。
+普通 attention 的 KV cache 存的是 $\mathbf{k} = W_K h$ 和 $\mathbf{v} = W_V h$。MLA 存的是压缩向量 $c = W_c h$，使用时再从 $c$ 投影出 key/value。这样 KV cache 的存储维度可以明显下降。
+一个工程细节是 RoPE 通常直接作用在 key/query 相关维度上，所以 MLA 还要为 RoPE 保留额外维度；即便如此，总 KV cache 仍可大幅缩小。
 
 ![图 9.3-4 Dense 7B 上 MHA / GQA / MQA 质量对照](images/9-3-4-mla-accuracy-mha-gqa.png)
 
 *图 9.3-4 Dense 7B 上 MHA / GQA / MQA 质量对照*
 
-图 9.3-4 是同一 Dense 7B 设置下 MHA / GQA / MQA 的质量对照（DeepSeek-V2 论文 Appendix D.1 Table 8）。MHA 保留完整 KV 表示，cache 成本最高，质量也最强；GQA 与 MQA 用更少的 KV heads 换更小 cache，KV cache 只有 MHA 的一小部分，但论文在该消融里判定它们的质量不敌 MHA。MLA 与 MHA 的直接对照在图 9.3-5。横向比较时要同时看 cache 缩小比例和 eval 变化，只看速度会忽略结构改动带来的质量风险。
+图 9.3-4 是同一 Dense 7B 设置下 MHA / GQA / MQA 的质量对照（DeepSeek-V2 论文 Appendix D.1 Table 8）。MHA 保留完整 KV 表示，cache 成本最高，质量也最强；
+GQA 与 MQA 用更少的 KV heads 换更小 cache，KV cache 只有 MHA 的一小部分，但论文在该消融里判定它们的质量不敌 MHA。MLA 与 MHA 的直接对照在图 9.3-5。横向比较时要同时看 cache 缩小比例和 eval 变化，只看速度会忽略结构改动带来的质量风险。
 
 ![图 9.3-5 MLA accuracy](images/9-3-5-mla-accuracy.png)
 
@@ -349,7 +380,9 @@ KV cache 大小大致与 $K_{\mathrm{kv}} \times H$ 成正比，所以从 MHA �
 
 ### 9.3.3 CLA：跨层共享 KV
 
-`CLA` 把共享维度从“head 之间”扩展到“layer 之间”。正常 Transformer 每层都有自己的 key/value；CLA 只在部分层计算 KV，其他层复用相邻层（adjacent layers）的 KV。论文 [Reducing Transformer Key-Value Cache Size with Cross-Layer Attention](https://arxiv.org/abs/2405.12981) 把这一思路推到 MQA 之上，在 1B 与 3B 规模上验证了“近似 MQA 准确率下额外 2× KV cache 压缩”的 Pareto 改进。
+`CLA` 把共享维度从“head 之间”扩展到“layer 之间”。正常 Transformer 每层都有自己的 key/value；CLA 只在部分层计算 KV，其他层复用相邻层（adjacent layers）的 KV。
+论文 [Reducing Transformer Key-Value Cache Size with Cross-Layer Attention](https://arxiv.org/abs/2405.12981) 把这一思路推到 MQA 之上，
+在 1B 与 3B 规模上验证了“近似 MQA 准确率下额外 2× KV cache 压缩”的 Pareto 改进。
 
 ![图 9.3-6 CLA diagram](images/9-3-6-cla-diagram.png)
 
@@ -373,7 +406,8 @@ KV cache 大小大致与 $K_{\mathrm{kv}} \times H$ 成正比，所以从 MHA �
 
 `local attention` / `sliding-window attention` 只看最近窗口里的 token。窗口宽度为 $W$ 时，单层 attention 每步读取的历史 KV 可以限制在 $O(W)$ ，不再随完整上下文长度增长。多层堆叠后，信息可以逐层传播到更远位置，但模型仍然可能丢失需要精确检索的远距离信息。
 
-cache 存储量取决于实现方式。rolling buffer（循环缓冲区）会把窗口外的 KV 覆盖或回收，让单层 KV cache 的容量固定在窗口大小附近。只修改 attention mask、持续保留全部历史 KV 的实现，cache 占用仍会随序列长度增长。Mistral 的 sliding-window attention 使用 rolling buffer。
+cache 存储量取决于实现方式。rolling buffer（循环缓冲区）会把窗口外的 KV 覆盖或回收，让单层 KV cache 的容量固定在窗口大小附近。只修改 attention mask、持续保留全部历史 KV 的实现，cache 占用仍会随序列长度增长。
+Mistral 的 sliding-window attention 使用 rolling buffer。
 
 这类结构保留局部高分辨率历史，适合近期 token 最重要的生成场景；linear attention、SSM 或递推层更像把长历史压成摘要。很多模型采用 hybrid 结构，把 local / global / recurrent 记忆放在不同层里组合，避免只优化某一种访问模式。
 
@@ -381,9 +415,11 @@ cache 存储量取决于实现方式。rolling buffer（循环缓冲区）会把
 
 *图 9.3-9 Native Sparse Attention*
 
-图 9.3-9 展示 Native Sparse Attention (NSA) 的结构。三条并行分支都从同一组 query 和 hidden state 出发：compression 分支把连续 token 块通过可学习 MLP（ $\phi$）聚合成 block-level 表示，并叠加 block 内位置编码；selection 分支基于压缩后的 key 与 query 计算 block 级 importance scores，在 GQA group 内对分数求和后选 top-n 重要 block；sliding window 分支保留最近 $w$ 个 token 的局部 KV。
+图 9.3-9 展示 Native Sparse Attention (NSA) 的结构。三条并行分支都从同一组 query 和 hidden state 出发：compression 分支把连续 token 块通过可学习 MLP（ $\phi$）聚合成 block-level 表示，并叠加 block 内位置编码；
+selection 分支基于压缩后的 key 与 query 计算 block 级 importance scores，在 GQA group 内对分数求和后选 top-n 重要 block；sliding window 分支保留最近 $w$ 个 token 的局部 KV。
 
-三条分支各自维护一份独立的 KV，分别与 query 做 attention 之后，由一个作用于输入特征的 MLP + sigmoid 输出的门控分数做加权求和（论文 Equation 5），而不是把三路 key/value 拼接后再过一次共享 attention。这一选择把三路信息保留到 attention 之后的线性组合里，避免拼接带来的维度膨胀，也让 gate 权重可端到端联合优化。
+三条分支各自维护一份独立的 KV，分别与 query 做 attention 之后，由一个作用于输入特征的 MLP + sigmoid 输出的门控分数做加权求和（论文 Equation 5），而不是把三路 key/value 拼接后再过一次共享 attention。
+这一选择把三路信息保留到 attention 之后的线性组合里，避免拼接带来的维度膨胀，也让 gate 权重可端到端联合优化。
 
 GQA、MLA、CLA、local attention 和 sparse attention 都在重写 KV cache 账本；它们能换速度和显存，也会改变模型保留长程信息的方式，所以需要和具体任务质量一起评估。
 
@@ -401,7 +437,8 @@ GQA、MLA、CLA、local attention 和 sparse attention 都在重写 KV cache 账
 
 量化的核心收益是减少 memory traffic 和显存占用。`QAT` 在训练时模拟量化误差，质量更稳但成本高；`PTQ` 在训练后校准或重构权重，部署成本低；`GPTQ` 利用近似二阶信息修正逐列量化误差。
 
-`AWQ` 观察到少数 activation channel 的幅值明显更大，与这些 channel 相乘的权重对量化误差更敏感。把这 0.1%-1% 的显著权重单独留在 FP16 会引入混合精度，硬件实现代价高；AWQ 改用 per-channel 的等价缩放，在量化前放大显著通道，让全部权重都保持低比特并且不依赖反向传播或重构。校准数据决定了哪些 channel、layer 或 tensor 被认为重要，和目标任务分布不匹配时，压缩后的模型可能在关键场景里掉点。
+`AWQ` 观察到少数 activation channel 的幅值明显更大，与这些 channel 相乘的权重对量化误差更敏感。把这 0.1%-1% 的显著权重单独留在 FP16 会引入混合精度，硬件实现代价高；AWQ 改用 per-channel 的等价缩放，在量化前放大显著通道，让全部权重都保持低比特并且不依赖反向传播或重构。
+校准数据决定了哪些 channel、layer 或 tensor 被认为重要，和目标任务分布不匹配时，压缩后的模型可能在关键场景里掉点。
 
 > [!WARNING]
 > 量化减少字节数，不等于端到端 latency 必然按同样比例下降。dequantization、分组 scale、kernel 支持、batch size、KV cache dtype 和 memory layout 都会影响真实收益。
@@ -418,7 +455,8 @@ pruning 更像“先切掉，再修复”。通常先用校准数据估计 layer
 
 *图 9.3-12 Pruning and distillation results*
 
-图 9.3-12 把 pruning / distillation 放到压缩比例、修复训练成本和质量损失之间权衡。distillation 也不只服务最终小模型，它还可以训练 speculative sampling 的 draft model。所有会改变模型表示或压缩数值的方案都要同时看两件事：质量是否还能接受，以及 kernel、dtype 和硬件是否真的把参数或 activation 的减少转化成 wall-clock 收益。
+图 9.3-12 把 pruning / distillation 放到压缩比例、修复训练成本和质量损失之间权衡。distillation 也不只服务最终小模型，它还可以训练 speculative sampling 的 draft model。所有会改变模型表示或压缩数值的方案都要同时看两件事：
+质量是否还能接受，以及 kernel、dtype 和硬件是否真的把参数或 activation 的减少转化成 wall-clock 收益。
 
 ## 9.4 Speculative Sampling：先起草，再验证
 
@@ -447,7 +485,9 @@ $$
 
 当 draft model 过度偏向某个 token 时，第一次拒绝后从归一化的残差分布 $r_i(y) \propto \max(q_i(y) - p_i(y), 0)$ 采样一个 token。若 $k$ 个候选全部被接受，再从 target model 采样一个额外 token。接受与残差采样共同补偿 proposal distribution 的偏差。
 
-分布保持成立：设两元素词表 $\{A, B\}$，target 概率 $[q(A), q(B)]$，draft 概率 $[p(A), p(B)]$，且 $p(A) > q(A)$（draft 偏向 $A$），于是 $p(B) < q(B)$。输出 $A$ 只有一条路径：draft 提议 $A$ 且被接受，概率为 $p(A) \cdot \min(1, q(A)/p(A)) = q(A)$。输出 $B$ 有两条路径：draft 提议 $B$，因 $p(B) < q(B)$ 接受率取 1，贡献 $p(B)$；draft 提议 $A$ 后被拒绝（概率 $p(A) \cdot (1 - q(A)/p(A)) = p(A) - q(A)$），再从残差分布（此处只剩 $B$）采样，同样贡献 $p(A) - q(A)$。两条路径相加，利用 $p(A) + p(B) = 1$：
+分布保持成立：设两元素词表 $\{A, B\}$，target 概率 $[q(A), q(B)]$，draft 概率 $[p(A), p(B)]$，且 $p(A) > q(A)$（draft 偏向 $A$），于是 $p(B) < q(B)$。输出 $A$ 只有一条路径：
+draft 提议 $A$ 且被接受，概率为 $p(A) \cdot \min(1, q(A)/p(A)) = q(A)$。输出 $B$ 有两条路径：draft 提议 $B$，因 $p(B) < q(B)$ 接受率取 1，贡献 $p(B)$；
+draft 提议 $A$ 后被拒绝（概率 $p(A) \cdot (1 - q(A)/p(A)) = p(A) - q(A)$），再从残差分布（此处只剩 $B$）采样，同样贡献 $p(A) - q(A)$。两条路径相加，利用 $p(A) + p(B) = 1$：
 
 $$
 P(B) = p(B) + p(A) - q(A) = 1 - q(A) = q(B)
@@ -477,13 +517,16 @@ $$
 
 *图 9.4-4 Speculative Sampling、Lookahead、Medusa 与 EAGLE*
 
-图 9.4-4 把四种 draft 方式并排对照：Speculative Sampling 用小模型起草，Lookahead 用 2-gram / Jacobi 迭代起草，Medusa 给 target model 加多 token 预测头，让候选生成更贴近目标模型，EAGLE 用 target model 的高层特征来构造更好的 draft。四条路线的差别集中在候选从哪里来，验收环节共用同一套接受 / 残差数学。
+图 9.4-4 把四种 draft 方式并排对照：Speculative Sampling 用小模型起草，Lookahead 用 2-gram / Jacobi 迭代起草，Medusa 给 target model 加多 token 预测头，让候选生成更贴近目标模型，EAGLE 用 target model 的高层特征来构造更好的 draft。
+四条路线的差别集中在候选从哪里来，验收环节共用同一套接受 / 残差数学。
 
 它们的共同目标是提高候选质量和接受率，从而让 target model 更少做串行 generation。只要验收数学正确，speculative sampling 就可以保持 target distribution，同时减少 target model 的串行瓶颈。
 
 ## 9.5 Dynamic Serving：Continuous Batching 与 PagedAttention
 
-本节把前 4 节「单请求视角」的优化搬到真实在线服务上。ragged workload（请求到达、长度、结束时间各异，还可能共享前缀）让静态 batching 既拖慢首请求又浪费显存。本节依次给出三件工程基础设施：`continuous batching` 让每个 generation step 都重排 batch；`PagedAttention` 把 KV cache 像 OS 虚拟内存一样按固定大小的 block 管理，块等大消除了外部碎片，按需分配把内部碎片限制在每个请求的最后一个 block 内；`prefix sharing` 配合 `copy-on-write` 让共享前缀按 block 粒度复用、写入时分叉。读完后，读者应能把单请求算术强度和显存账本平移到「同时跑几千条请求」的服务系统，并指出 block 粒度调度对 attention kernel 的影响。
+本节把前 4 节「单请求视角」的优化搬到真实在线服务上。ragged workload（请求到达、长度、结束时间各异，还可能共享前缀）让静态 batching 既拖慢首请求又浪费显存。本节依次给出三件工程基础设施：`continuous batching` 让每个 generation step 都重排 batch；
+`PagedAttention` 把 KV cache 像 OS 虚拟内存一样按固定大小的 block 管理，块等大消除了外部碎片，按需分配把内部碎片限制在每个请求的最后一个 block 内；`prefix sharing` 配合 `copy-on-write` 让共享前缀按 block 粒度复用、写入时分叉。
+读完后，读者应能把单请求算术强度和显存账本平移到「同时跑几千条请求」的服务系统，并指出 block 粒度调度对 attention kernel 的影响。
 
 真实在线服务更像不断变化的请求流。请求到达时间不同、prompt 长度不同、generation 长度不同、结束时间不同，还可能共享 system prompt 或对同一 prompt 采样多条回答。这种 workload 是 ragged 的。
 
@@ -510,7 +553,8 @@ PagedAttention 面向在线服务中 KV cache 的生命周期管理。传统做�
 
 PagedAttention 论文 Figure 2 报告，按最大长度预留的现有系统实际有效内存只占总分配 KV cache 的 20%–38%，其余显存浪费在预留槽位、内部碎片与外部碎片上，batch 因此装不下更多请求。
 
-这份账本给出 block-based allocation 的设计要求：把 KV cache 切成固定大小的 block 按需分配后，单请求的内部碎片只剩最后一个未填满的 block，平均约半个 block；等大 block 让外部碎片消失，任何空闲显存块都能被重新使用。剩余代价是 block table 的间接寻址：attention kernel 按 block 逐块 gather，访存模式从整段连续读取变成分块读取。
+这份账本给出 block-based allocation 的设计要求：把 KV cache 切成固定大小的 block 按需分配后，单请求的内部碎片只剩最后一个未填满的 block，上界是一个 block，填充位置近似均匀时平均约半个 block；等大 block 让外部碎片消失，任何空闲显存块都能被重新使用。
+剩余代价是 block table 的间接寻址：attention kernel 按 block 逐块 gather，访存模式从整段连续读取变成分块读取。
 
 KV cache 的硬件预算与 HBM 容量约束已在 [第 5 章 §5.8 KV cache：HBM 上的另一笔账](../chapter5/chapter5_GPU和GPU相关优化.md) 给出，本节继续讲服务侧的调度问题。
 
@@ -524,13 +568,15 @@ vLLM 的 PagedAttention 借鉴操作系统分页思想，把每个序列的 KV c
 
 *图 9.5-3 PagedAttention blocks*
 
-图 9.5-3 展示单个请求的 KV 分块：10 个 token 的历史按固定大小切成 Block 0（Four score and seven）、Block 1（years ago our fathers）、Block 2（brought forth）三段，计算第 10 个 token 的 attention 时 query “forth” 逐块读取 key/value。块内 token 连续存放，块间位置由 block table 记录，attention kernel 按块 gather 出完整历史。
+图 9.5-3 展示单个请求的 KV 分块：10 个 token 的历史按固定大小切成 Block 0（Four score and seven）、Block 1（years ago our fathers）、Block 2（brought forth）
+三段，计算第 10 个 token 的 attention 时 query “forth” 逐块读取 key/value。块内 token 连续存放，块间位置由 block table 记录，attention kernel 按块 gather 出完整历史。
 
 ![图 9.5-4 PagedAttention logical and physical blocks](images/9-5-4-paged-attention-logical-blocks.png)
 
 *图 9.5-4 PagedAttention logical and physical blocks*
 
-图 9.5-4 展开了 block table 的作用。左侧与右侧分别是 Request A、Request B 各自的 logical blocks，按 token 顺序编号，表示请求自己看到的连续上下文；中间是共享的 physical KV block 池，物理块按需分配、散落在不同位置。推理 kernel 通过 block table 找到每个 logical block 对应的 physical block，于是服务端既能按需复用零散显存，又能让模型逻辑上看到连续的历史 token。
+图 9.5-4 展开了 block table 的作用。左侧与右侧分别是 Request A、Request B 各自的 logical blocks，按 token 顺序编号，表示请求自己看到的连续上下文；中间是共享的 physical KV block 池，物理块按需分配、散落在不同位置。
+推理 kernel 通过 block table 找到每个 logical block 对应的 physical block，于是服务端既能按需复用零散显存，又能让模型逻辑上看到连续的历史 token。
 
 ### 9.5.3 Prefix Sharing 与 Copy-on-Write
 
@@ -540,13 +586,15 @@ vLLM 的 PagedAttention 借鉴操作系统分页思想，把每个序列的 KV c
 
 *图 9.5-5 PagedAttention prefix sharing*
 
-图 9.5-5 里 Sequence A 与 Sequence B 共享同一段 few-shot 前缀：shared prompt 的 KV block 只存一份，两条请求从各自的 task input（“cheese” 与 “I love you”）开始分别追加。system prompt、多轮对话的公共历史、同一 prompt 的多条采样都能按这个方式复用，KV cache 占用随共享前缀比例下降。
+图 9.5-5 里 Sequence A 与 Sequence B 共享同一段 few-shot 前缀：shared prompt 的 KV block 只存一份，两条请求从各自的 task input（“cheese” 与 “I love you”）开始分别追加。
+system prompt、多轮对话的公共历史、同一 prompt 的多条采样都能按这个方式复用，KV cache 占用随共享前缀比例下降。
 
 ![图 9.5-6 PagedAttention copy-on-write](images/9-5-6-paged-attention-copy-on-write.png)
 
 *图 9.5-6 PagedAttention copy-on-write*
 
-图 9.5-6 展示分叉处的 `copy-on-write`：两条路径原本共享尚未填满的 Block 1（ref count = 2），要在同一 block 里写入不同 token（“fathers” 与 “mothers”）时，服务端先把 Block 1 复制到空闲的 Block 3（ref count 降为 1），再让两条路径各自写入；已经填满的完整共享 block（如 Block 7，即两条路径都已完成填写的 “Four score and seven”）继续共享。分叉从新 block 开始时，各请求只需分配自己的新 block。
+图 9.5-6 展示分叉处的 `copy-on-write`：两条路径原本共享尚未填满的 Block 1（ref count = 2），要在同一 block 里写入不同 token（“fathers” 与 “mothers”）时，服务端先把 Block 1 复制到空闲的 Block 3（ref count 降为 1），再让两条路径各自写入；
+已经填满的完整共享 block（如 Block 7，即两条路径都已完成填写的 “Four score and seven”）继续共享。分叉从新 block 开始时，各请求只需分配自己的新 block。
 
 PagedAttention 和 FlashAttention 的层级不同：
 
@@ -561,39 +609,50 @@ SGLang 的 `RadixAttention` 可以看成另一类 prefix / KV cache 复用策略
 PagedAttention 更强调显存分页和碎片管理，RadixAttention 更强调 prefix cache 命中和调度；两者都服务于同一个 dynamic serving 问题：不断变化的一群请求怎样共享权重、共享前缀、少浪费 KV cache，并保持合理 latency。
 
 > [!NOTE]
-> Disaggregated Serving 思路在 Step-3（[arXiv:2507.19427](https://arxiv.org/abs/2507.19427)）之前由 DistServe / Splitwise 等工作给出 prefill-decode 分离部署方案：让擅长高吞吐矩阵乘的硬件专门承担 prefill，让单 token latency 敏感的硬件专门承担 decode。代价是 prefill 阶段写入的 KV cache 必须跨 prefill → decode 边界搬运或重算，跨单元网络与调度策略因此成为新的系统瓶颈。
+> Disaggregated Serving 思路在 Step-3（[arXiv:2507.19427](https://arxiv.org/abs/2507.19427)）之前由 DistServe / Splitwise 等工作给出 prefill-decode 分离部署方案：
+> 让擅长高吞吐矩阵乘的硬件专门承担 prefill，让单 token latency 敏感的硬件专门承担 decode。代价是 prefill 阶段写入的 KV cache 必须跨 prefill → decode 边界搬运或重算，跨单元网络与调度策略因此成为新的系统瓶颈。
 >
-> Step-3 进一步做的是 **Attention-FFN Disaggregation (AFD)**——按 attention 层与 FFN 层这条维度把模型解耦到两套专用 GPU 子系统上，prefill/decode disaggregation 假设已在外部完成。这两条线都以拆分换部署灵活性，但拆分维度不同：prefill/decode 拆分优化 latency / throughput 的资源分配，AFD 优化 attention 与 FFN 这两类算子的硬件匹配。
+> Step-3 进一步做的是 **Attention-FFN Disaggregation (AFD)**——按 attention 层与 FFN 层这条维度把模型解耦到两套专用 GPU 子系统上，prefill/decode disaggregation 假设已在外部完成。这两条线都以拆分换部署灵活性，但拆分维度不同：
+> prefill/decode 拆分优化 latency / throughput 的资源分配，AFD 优化 attention 与 FFN 这两类算子的硬件匹配。
 >
 > 是否拆分是和硬件配置绑定的工程选择，单一硬件 / 负载下只有相对优解，没有跨场景的统一答案。
 
 ## 9.6 扩展研究：更换输入、记忆和生成范式
 
-本节收束四类与 §9.1–§9.5 主线不同的扩展研究：prompt compression 改输入长度；SSM / linear attention / hybrid attention 改记忆结构，从「显式保存所有历史 KV」换成「递推状态 + 周期性 softmax attention」；diffusion language model 改生成范式，从逐 token 自回归换成块内并行去噪；speculative cascades 改大小模型协作策略，从保持 target distribution 换成风险感知路由。
+本节收束四类与 §9.1–§9.5 主线不同的扩展研究：prompt compression 改输入长度；SSM / linear attention / hybrid attention 改记忆结构，从「显式保存所有历史 KV」换成「递推状态 + 周期性 softmax attention」；
+diffusion language model 改生成范式，从逐 token 自回归换成块内并行去噪；speculative cascades 改大小模型协作策略，从保持 target distribution 换成风险感知路由。
 
-四条方向与主线共享「优化哪个瓶颈、留下什么质量风险」这把尺，分别在 §9.6.1 prompt compression、§9.6.2 SSM / linear attention、§9.6.3 diffusion language model 与 §9.6.4 speculative cascades 里和 §9.4 的 speculative sampling、§9.5 的 prefix sharing 形成对照。
+四条方向与主线共享「优化哪个瓶颈、留下什么质量风险」这把尺，分别在 §9.6.1 prompt compression、§9.6.2 SSM / linear attention、
+§9.6.3 diffusion language model 与 §9.6.4 speculative cascades 里和 §9.4 的 speculative sampling、§9.5 的 prefix sharing 形成对照。
 
 ### 9.6.1 Prompt Compression
 
-prompt 也会消耗推理预算。长 prompt 会增加 `prefill` 时间，也会写入更多 KV cache；若后续 generation 很长，还会让每步 attention 读取更多历史。过多冗余信息还可能稀释注意力，让模型在无关上下文里寻找线索。因此 prompt compression 的目标是：尽量保留任务相关信息，同时减少输入 token 或压缩输入表示。
+prompt 也会消耗推理预算。长 prompt 会增加 `prefill` 时间，也会写入更多 KV cache；若后续 generation 很长，还会让每步 attention 读取更多历史。过多冗余信息还可能稀释注意力，让模型在无关上下文里寻找线索。因此 prompt compression 的目标是：
+尽量保留任务相关信息，同时减少输入 token 或压缩输入表示。
 
 ![图 9.6-1 Hard prompt compression](images/9-6-1-hard-prompt-compression.png)
 
 *图 9.6-1 Hard prompt compression*
 
-hard prompt compression 直接在离散文本上做选择、摘要或改写。图 9.6-1 对照 Original 与 SelectiveContext、LLMLingua、Nano-Capsulator 三条离散压缩管线，差别在用通用 LLM 还是 LoRA 小模型估计 token 重要性；常见做法还包括按 query 相关性筛选段落、摘要长文档、改写冗长指令，或者根据任务难度动态控制 token 数。它通常更可解释，也更容易和检索、重排、摘要系统结合；风险是删掉看似冗余但实际关键的上下文。
+hard prompt compression 直接在离散文本上做选择、摘要或改写。图 9.6-1 对照 Original 与 SelectiveContext、LLMLingua、Nano-Capsulator 三条离散压缩管线：
+SelectiveContext 用自信息衡量词汇单元的信息量、删除冗余部分，LLMLingua 用 GPT-2 这样的小语言模型算自信息做同样的筛选，两者都不改动原文本；Nano-Capsulator 则由带 LoRA 的底部 LLM 把 prompt 改写成精简版本。
+常见做法还包括按 query 相关性筛选段落、摘要长文档、改写冗长指令，或者根据任务难度动态控制 token 数。
+它通常更可解释，也更容易和检索、重排、摘要系统结合；风险是删掉看似冗余但实际关键的上下文。
 
 ![图 9.6-2 Soft prompt compression](images/9-6-2-soft-prompt-compression.png)
 
 *图 9.6-2 Soft prompt compression*
 
-soft prompt compression 使用连续向量替代或补充自然语言 prompt。图 9.6-2 对照 CC、GIST、AutoComp、ICAE、500xCompressor、xRAG、UniICL 等方案：压缩器把 instruction / context 编码成少量 embedding 或 compression token 再喂给 LLM。它可以把任务信息压到少量 embedding 中，适合固定任务或固定模板下的压缩；代价是可解释性较弱，跨任务泛化更依赖训练数据。只要这些向量仍作为 prefix 进入模型，就仍会参与前向和 attention，因此它减少的是文本 token 表达负担，不必然减少所有推理成本。
+soft prompt compression 使用连续向量替代或补充自然语言 prompt。图 9.6-2 对照 CC、GIST、AutoComp、ICAE、500xCompressor、xRAG、UniICL 等方案：
+压缩器把 instruction / context 编码成少量 embedding 或 compression token 再喂给 LLM。它可以把任务信息压到少量 embedding 中，适合固定任务或固定模板下的压缩；代价是可解释性较弱，跨任务泛化更依赖训练数据。
+只要这些向量仍作为 prefix 进入模型，就仍会参与前向和 attention，因此它减少的是文本 token 表达负担，不必然减少所有推理成本。
 
 ![图 9.6-3 DeepSeek-OCR prompt compression](images/9-6-3-deepseek-ocr.png)
 
 *图 9.6-3 DeepSeek-OCR prompt compression*
 
-视觉层面的 prompt compression 把长文本转成视觉表示或图像 token，再由多模态编码器读取。它的优势是可能绕开纯文本 token 数限制；风险是引入 OCR / vision encoder 误差，并且会改变模型看到的信息通道。三类 prompt compression 优化的都是输入长度、`prefill` 时间和 KV cache 压力，使用时要把压缩率和任务质量一起评估。
+视觉层面的 prompt compression 把长文本转成视觉表示或图像 token，再由多模态编码器读取。它的优势是可能绕开纯文本 token 数限制；风险是引入 OCR / vision encoder 误差，并且会改变模型看到的信息通道。
+三类 prompt compression 优化的都是输入长度、`prefill` 时间和 KV cache 压力，使用时要把压缩率和任务质量一起评估。
 
 ### 9.6.2 SSM、Linear Attention 与 Hybrid Attention
 
@@ -609,19 +668,23 @@ SSM / Mamba / GatedDeltaNet 这类模型可以被看作更适合流式推理的�
 
 *图 9.6-5 MiniMax hybrid attention*
 
-MiniMax-01（MiniMax 团队，arXiv [2501.08313](https://arxiv.org/abs/2501.08313)，2025 年 1 月）是这条路线的代表：每 7 个 lightning attention 层接 1 个 softmax attention 层，共 80 层，图 9.6-5 与图 9.6-6 来自该论文。图 9.6-5 是它的 hybrid attention 结构动机：标准 softmax attention 擅长精确检索历史 token，但 KV cache 和长上下文成本高；linear attention、SSM 或递推层把历史压成低维状态，流式推理更友好，但可能丢失精确长程检索能力。Hybrid 结构把这些机制放在不同层或不同模块里组合，目标是在保留一部分全局检索能力的同时降低长序列 generation 成本。
+MiniMax-01（MiniMax 团队，arXiv [2501.08313](https://arxiv.org/abs/2501.08313)，2025 年 1 月）是这条路线的代表：每 7 个 lightning attention 层接 1 个 softmax attention 层，共 80 层，图 9.6-5 与图 9.6-6 来自该论文。
+图 9.6-5 是它的 hybrid attention 结构动机：标准 softmax attention 擅长精确检索历史 token，但 KV cache 和长上下文成本高；linear attention、SSM 或递推层把历史压成低维状态，流式推理更友好，但可能丢失精确长程检索能力。
+Hybrid 结构把这些机制放在不同层或不同模块里组合，目标是在保留一部分全局检索能力的同时降低长序列 generation 成本。
 
 ![图 9.6-6 MiniMax inference time](images/9-6-6-minimax-inference-time.png)
 
 *图 9.6-6 MiniMax inference time*
 
-图 9.6-6 把这种 architecture choice 落到 inference time 上。随着上下文变长，完整 attention 的 KV cache 读取和 attention 计算会持续增长；替换成更多线性或递推层后，长序列 generation 的成本曲线可以变平。这里仍然要保留质量账本：如果任务需要 needle-in-a-haystack 式精确检索，过度压缩历史可能让速度收益换来能力损失。
+图 9.6-6 把这种 architecture choice 落到 inference time 上。随着上下文变长，完整 attention 的 KV cache 读取和 attention 计算会持续增长；替换成更多线性或递推层后，长序列 generation 的成本曲线可以变平。这里仍然要保留质量账本：
+如果任务需要 needle-in-a-haystack 式精确检索，过度压缩历史可能让速度收益换来能力损失。
 
 ![图 9.6-7 Global attention vs linear attention](images/9-6-7-global-vs-linear-attention.png)
 
 *图 9.6-7 Global attention vs linear attention*
 
-linear attention 需要注意因果性。若直接使用整段序列的全局 $K^\top V$ 汇总，当前位置会看到未来 token；自回归 generation 必须使用前缀累加，只允许当前 token 读已经出现的历史。这样可以把某些计算变成递推，但也限制了表达形式。SSM 和 linear attention 优化的是“如何表示历史”：它们可能比 KV cache 更适合 streaming，但长程精确检索和最终质量仍决定能否替代标准 attention。
+linear attention 需要注意因果性。若直接使用整段序列的全局 $K^\top V$ 汇总，当前位置会看到未来 token；自回归 generation 必须使用前缀累加，只允许当前 token 读已经出现的历史。这样可以把某些计算变成递推，但也限制了表达形式。SSM 和 linear attention 优化的是“如何表示历史”：
+它们可能比 KV cache 更适合 streaming，但长程精确检索和最终质量仍决定能否替代标准 attention。
 
 ### 9.6.3 Diffusion Language Models
 
@@ -637,7 +700,8 @@ diffusion language model 试图把文本生成从严格逐 token 自回归，改
 
 *图 9.6-9 LLaDA2.0 training*
 
-LLaDA 2.0 这类工作把扩散语言模型推到更大规模：LLaDA2.0-mini 16B 与 LLaDA2.0-flash 100B 都是 MoE，并且从已有 AR checkpoint 转换而来，而非从零训练。它用 Warmup-Stable-Decay 调度 block diffusion 的 block size：warmup 阶段把 block size 从 1 经 4/32/64 等离散档提到 4096，stable 阶段固定在 4096 做全序列扩散，decay 阶段再从 4096 收回，经 2048 降到紧凑 block（如 32）以适配部署。扩散路线还没有取代自回归 Transformer，但非自回归和块内并行生成已经成为值得关注的推理效率方向。
+LLaDA 2.0 这类工作把扩散语言模型推到更大规模：LLaDA2.0-mini 16B 与 LLaDA2.0-flash 100B 都是 MoE，并且从已有 AR checkpoint 转换而来，而非从零训练。它用 Warmup-Stable-Decay 调度 block diffusion 的 block size：
+warmup 阶段把 block size 从 1 经 4/32/64 等离散档提到 4096，stable 阶段固定在 4096 做全序列扩散，decay 阶段再从 4096 收回，经 2048 降到紧凑 block（如 32）以适配部署。扩散路线还没有取代自回归 Transformer，但非自回归和块内并行生成已经成为值得关注的推理效率方向。
 
 ### 9.6.4 Speculative Cascades
 
@@ -655,11 +719,13 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 
 图 9.6-11 把流程动态化：小模型生成 candidate block，验证器或更大模型判断是否接受；若片段通过，就继续沿低成本路径前进，若不通过，则升级到更强模型重算或修正。这个方向优化的是质量、成本和延迟之间的产品取舍，通常不承诺保持 target model 的逐 token 精确采样分布，因此更适合作为扩展研究处理。
 
-![图 9.6-12 Speculative cascades quality and rejection](images/9-6-12-speculative-cascades-quality-rejection.png)
+![图 9.6-12 Speculative cascades quality vs tokens per call](images/9-6-12-speculative-cascades-quality-vs-tokens.png)
 
-*图 9.6-12 Speculative cascades quality and rejection*
+*图 9.6-12 Speculative cascades quality vs tokens per call*
 
-图 9.6-12 展示质量与拒绝率的取舍：拒绝率越高，大模型参与越多，质量更稳但成本更高；拒绝率越低，小模型承担更多工作，latency 和成本可能更好但质量风险更高。标准 speculative sampling 通过接受与残差采样保持 target distribution；speculative cascades 是产品质量约束下的风险路由，两者相似但目标函数不同。
+图 9.6-12 在 GSM8K Accuracy 与 CNN/DailyMail ROUGE-L 两个质量指标上对照 SpeculativeCascade 的两种 deferral 规则（DiffTV、TopTokens）与 Speculative Decoding，横轴是每次调用大模型生成的 token 数。曲线显示的取舍是：
+横轴上的数越小，同样产出对应的大模型调用越频繁，质量指标越高、调用成本也越高；横轴上的数越大，单次调用覆盖的 token 越多、单位产出的调用越省，质量指标随之下降。标准 speculative sampling 通过接受与残差采样保持 target distribution；
+speculative cascades 是产品质量约束下的风险路由，两者相似但目标函数不同。
 
 ## 本章总结与下章衔接
 
@@ -671,7 +737,8 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 - Quantization、pruning、distillation 减少权重或模型本体成本，但真实加速依赖 kernel 和硬件支持。
 - Speculative sampling 用 draft model 起草、target model 并行验收，可以保持 target distribution。
 - Continuous batching 和 PagedAttention 面向动态 serving，把 ragged workload、KV fragmentation、prefix sharing 和 copy-on-write 变成可管理的问题。
-- CoT、多路径采样、工具搜索和 RL rollout 会放大 token 生成、KV cache 与调度压力；训练侧分析见 [第 13 章 §13.1 为什么需要 RLVR？](../chapter13/chapter13_可验证奖励的强化学习.md)，能力侧分析见 [推理行为与能力专题](../topics/reasoning_behavior.md)。
+- CoT、多路径采样、工具搜索和 RL rollout 会放大 token 生成、KV cache 与调度压力；
+  训练侧分析见 [第 13 章 §13.1 为什么需要 RLVR？](../chapter13/chapter13_可验证奖励的强化学习.md)，能力侧分析见 [推理行为与能力专题](../topics/reasoning_behavior.md)。
 - SSM、linear attention、diffusion language model 和 speculative cascades 是更激进的扩展方向，应该按“优化哪个瓶颈、留下什么质量风险”来读。
 
 推理系统决定了 token 的产出成本，token 产出又受数据规模与配比约束：压得越狠，蒸馏 / 量化校准 / draft model 训练数据的需求越高；这些都把视角从模型与系统切到训练数据本身。数据侧工程串在 [第 10 章 §10.1 数据获取](../chapter10/chapter10_数据工程.md) 中。
@@ -684,7 +751,8 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 
 3. Speculative sampling 和 speculative cascades 都用小模型，但为什么前者可以强调 exact sampling，后者更像质量/成本路由？
 
-4. 一个服务把 generation batch 从 1 提到 32，单步 latency 的增幅远小于 batch 的增幅，总 throughput 因此接近线性提升。从 arithmetic intensity 角度解释：MLP generation 的算术强度为什么随 $B$ 增长，而 $B = 32$ 在 H100 上仍处在 memory-bound 区间？attention generation 在两种 batch 下都停在 memory-bound 的原因又是什么？
+4. 一个服务把 generation batch 从 1 提到 32，单步 latency 的增幅远小于 batch 的增幅，总 throughput 因此接近线性提升。从 arithmetic intensity 角度解释：
+   MLP generation 的算术强度为什么随 $B$ 增长，而 $B = 32$ 在 H100 上仍处在 memory-bound 区间？attention generation 在两种 batch 下都停在 memory-bound 的原因又是什么？
 
 5. 一个在线服务希望把多条共享 system prompt 的对话塞进同一 batch。直接把它们当作独立请求合并，KV cache 会怎样浪费？PagedAttention 的 block table + prefix sharing + copy-on-write 如何把这份浪费变成可回收的物理块？
 
@@ -721,8 +789,11 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 
 ### 官方来源
 
-- [LLaDA2.0: Scaling Up Diffusion Language Models to 100B, arXiv:2512.15745](https://arxiv.org/abs/2512.15745) — Tiwei Bie 等 31 位作者按姓氏字母序署名，机构覆盖 Ant Group / Renmin University of China / Zhejiang University / Westlake University / Hong Kong University of Science and Technology 五所，v1 提交 2025-12-10 / v2 修订 2025-12-24；查阅日期 2026-09-04，状态「论文」。
-- [MiniMax-01, arXiv:2501.08313](https://arxiv.org/abs/2501.08313) — 7 个 lightning attention 层后接 1 个 softmax attention 层，共 80 层；引用回连到 [第 3 章](../chapter3/chapter3_语言模型架构和训练技术细节.md) 与 [第 8 章](../chapter8/chapter8_Scaling_Laws.md)；查阅日期 2026-09-04，状态「论文」。
+- [LLaDA2.0: Scaling Up Diffusion Language Models to 100B, arXiv:2512.15745](https://arxiv.org/abs/2512.15745) — Tiwei Bie 等 31 位作者按姓氏字母序署名，
+  机构覆盖 Ant Group / Renmin University of China / Zhejiang University / Westlake University / Hong Kong University of Science and Technology 五所，v1 提交 2025-12-10 / v2 修订 2025-12-24；
+  查阅日期 2026-09-04，状态「论文」。
+- [MiniMax-01, arXiv:2501.08313](https://arxiv.org/abs/2501.08313) — 7 个 lightning attention 层后接 1 个 softmax attention 层，共 80 层；
+  引用回连到 [第 3 章](../chapter3/chapter3_语言模型架构和训练技术细节.md) 与 [第 8 章](../chapter8/chapter8_Scaling_Laws.md)；查阅日期 2026-09-04，状态「论文」。
 - [Native Sparse Attention, arXiv:2502.11089](https://arxiv.org/abs/2502.11089) — compression / selection / sliding window 三分支结构与 gate 机制 Equation 5；查阅日期 2026-09-04，状态「论文」。
 - [Sparse Transformer, arXiv:1904.10509](https://arxiv.org/abs/1904.10509) — sparse attention 早期工作；查阅日期 2026-09-04，状态「论文」。
 - 其余链接本次复核仍可访问。
@@ -754,7 +825,7 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 - [Compact Language Models via Pruning and Knowledge Distillation, arXiv:2407.14679](https://arxiv.org/abs/2407.14679) — NVIDIA 剪枝 + 蒸馏流程。
 - [Medusa, arXiv:2401.10774](https://arxiv.org/abs/2401.10774) — 多 token 预测头 draft。
 - [EAGLE, arXiv:2401.15077](https://arxiv.org/abs/2401.15077) — target model 高层特征 draft。
-- [Prompt Compression Survey, NAACL 2025](https://aclanthology.org/2025.naacl-long.368/) — hard / soft / visual 三类 prompt compression。
+- [Prompt Compression Survey, NAACL 2025](https://aclanthology.org/2025.naacl-long.368/) — 综述按 hard / soft 两类组织 prompt compression。
 - [DeepSeek-OCR, arXiv:2510.18234](https://arxiv.org/abs/2510.18234) — 视觉 prompt compression。
 - [MiniMax-01, arXiv:2501.08313](https://arxiv.org/abs/2501.08313) — 7 个 lightning attention 层后接 1 个 softmax attention 层，共 80 层。
 - [S4, arXiv:2111.00396](https://arxiv.org/abs/2111.00396) — structured state spaces 出处。
@@ -762,3 +833,10 @@ Speculative cascades 也是大小模型协作，但它和标准 speculative samp
 - [LLaDA2.0, arXiv:2512.15745](https://arxiv.org/abs/2512.15745) — 16B-mini / 100B-flash MoE 扩散语言模型，block diffusion + WSD 调度。
 - [Step-3 / AFD, arXiv:2507.19427](https://arxiv.org/abs/2507.19427) — Attention-FFN Disaggregation，attention / FFN 分到两套 GPU 子系统。
 - [Faster Cascades via Speculative Decoding, arXiv:2405.19261](https://arxiv.org/abs/2405.19261) — speculative cascades 风险路由。
+
+## 待核证清单
+
+本章以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
+
+- `chapter9_推理系统.md:L612` — 「DistServe / Splitwise 等 prefill-decode 分离部署方案」——原因：本会话无 WebSearch，笔记未附这两项工作的一手链接，方案描述没有一手页面支撑；已试：无 URL。
+- `chapter9_推理系统.md:L556` — 「内部碎片填充位置近似均匀时平均约半个 block」——原因：vLLM 论文只给出「within one block」上界，均匀填充的期望估计没有一手页面直接支撑；已试：`https://arxiv.org/html/2309.06180`。

@@ -13,14 +13,23 @@
 按以下顺序阅读，每一节给读者一个可用的工程判断：
 
 1. **§2.1 资源核算的入口**：用两个 napkin math 例子（70B / 15T / 1024 H100、8 H100 / AdamW 显存）建立数量级直觉，落到三类约束（compute / memory capacity / memory bandwidth）与 roofline。
+
 2. **§2.2 张量（PyTorch 基础）**：shape / dtype / stride / view / contiguity / 矩阵乘法 / 逐元素算子 / einops，把后续资源账本用到的 PyTorch API 集中放在这里。可以先快速浏览，等读到具体 API 疑问再回来查。
+
 3. **§2.3 内存（dtype 与存储机制）**：FP32 / FP16 / BF16 / FP8 / NVFP4 的字节数与权衡，stride 与 storage 怎样决定实际占用，CPU↔GPU 移动的代价。
+
 4. **§2.4 计算效率**：把 $6 \times N_{\text{data}} \times N_{\text{param}}$（ $N_{\text{data}}$ 为数据点数，语言模型里取 token 数）的 FLOPs 账本套到具体算子，给出 arithmetic intensity / MFU 的来源。
+
 5. **§2.5 模型构建与训练基础**：把 §2.1.3 的 4 元素账本（parameter / gradient / optimizer state / activation）落地到代码与训练循环，附 activation checkpointing 的最小实现。
 
-本章的 PyTorch 代码可以按”形状账本”来读：每个 tensor 的 shape 决定元素数和矩阵乘维度，每个 dtype 决定 bytes，每个中间激活是否保留决定反向传播显存。写一行 tensor 代码时，最好顺手问三件事：它会触发多少矩阵乘、会搬多少字节、反向传播还要保留什么。这样后面学习 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md)、[第 7 章 §7.6 ZeRO / FSDP](../chapter7/chapter7_分布式训练.md) 和 [第 9 章 §9.3 模型与 KV cache 压缩：减少每步数据搬运](../chapter9/chapter9_推理系统.md) 时，才不会把性能问题只理解成”代码慢”。
+本章的 PyTorch 代码可以按”形状账本”来读：每个 tensor 的 shape 决定元素数和矩阵乘维度，每个 dtype 决定 bytes，
+每个中间激活是否保留决定反向传播显存。写一行 tensor 代码时，最好顺手问三件事：它会触发多少矩阵乘、会搬多少字节、
+反向传播还要保留什么。这样后面学习 [第 5 章 §5.7 FlashAttention](../chapter5/chapter5_GPU和GPU相关优化.md)、
+[第 7 章 §7.6 ZeRO / FSDP](../chapter7/chapter7_分布式训练.md) 和 [第 9 章 §9.3 模型与 KV cache 压缩：减少每步数据搬运](../chapter9/chapter9_推理系统.md) 时，
+才不会把性能问题只理解成”代码慢”。
 
-阅读本章代码时，建议把变量名当成账本列： $B$ 通常表示 batch， $S$ 表示 sequence length， $D$ 表示当前示例的输入或隐藏维度， $d_k$ 表示 attention 头维度， $h$ 表示 attention 头数。一个 `einsum` 或 `matmul` 是否昂贵，取决于这些维度相乘后会产生多少元素、多少 FLOPs、多少中间张量。设备选择统一通过 `cuda_if_available()` 管理 CPU 回退。
+阅读本章代码时，建议把变量名当成账本列： $B$ 通常表示 batch， $S$ 表示 sequence length， $D$ 表示当前示例的输入或隐藏维度， $d_k$ 表示 attention 头维度， $h$ 表示 attention 头数。
+一个 `einsum` 或 `matmul` 是否昂贵，取决于这些维度相乘后会产生多少元素、多少 FLOPs、多少中间张量。设备选择统一通过 `cuda_if_available()` 管理 CPU 回退。
 
 另一个常用 helper 是 `get_promised_flop_per_sec(dtype)`。它按 GPU 代际和 dtype 估算理论峰值，用来把 FLOPs 账本转换成训练时间和 MFU 估算。
 
@@ -32,7 +41,9 @@
 
 **问题：在 1024 张 H100 上训练一个 70B 参数模型，数据量为 15T tokens，大概要多久？**
 
-这类问题不能等完整训练跑完再判断。大训练前需要先做 “napkin math”：用少量公开规格和训练公式完成数量级估算。H100 是 2026 年数据中心训练的主力型号之一，下面所有资源核算和 MFU 例子都按 H100 规格估算；B200 / Blackwell 与 H100 的差异集中在 FP8 / NVFP4 等低精度格式与显存代际，格式侧在 §2.3.1 单列说明；§2.4.1 的算力例子按 dense / sparse 两条口径区分 H100 峰值。
+这类问题不能等完整训练跑完再判断。大训练前需要先做 “napkin math”：用少量公开规格和训练公式完成数量级估算。
+H100 是 2026 年数据中心训练的主力型号之一，下面所有资源核算和 MFU 例子都按 H100 规格估算；B200 / Blackwell 与 H100 的差异集中在 FP8 / NVFP4 等低精度格式与显存代际，
+格式侧在 §2.3.1 单列说明；§2.4.1 的算力例子按 dense / sparse 两条口径区分 H100 峰值。
 
 #### 第一步：计算总工作量
 
@@ -42,7 +53,11 @@ $$
 F_{\text{total}} \approx 6 \times N_{\text{param}} \times N_{\text{token}}
 $$
 
-公式里的 **6** 倍来自前向和反向的粗略 FLOPs 账：前向传播约为 $2 \times$ 参数量（乘法+加法），反向传播计算梯度约为前向的 2 倍，也就是 $4 \times$ 参数量。 $N_{\text{param}}$ 取非 embedding 参数量；70B 级别模型的 embedding（含 input 与 output 两张词表，未做 weight tying）占比随词表大小变化，常见区间约 1%–3%（[LLaMA-3 70B config.json](https://huggingface.co/meta-llama/Meta-Llama-3-70B/blob/main/config.json) `vocab_size=128256`、`hidden_size=8192`、`tie_word_embeddings=false` 时两张 embedding 表合计 ≈ 2.10B / 70.6B ≈ 3%），粗估时可忽略。
+公式里的 **6** 倍来自前向和反向的粗略 FLOPs 账：前向传播约为 $2 \times$ 参数量（乘法+加法），反向传播计算梯度约为前向的 2 倍，也就是 $4 \times$ 参数量。
+
+$N_{\text{param}}$ 取非 embedding 参数量；70B 级别模型的 embedding（含 input 与 output 两张词表，未做 weight tying）占比随词表大小变化，常见区间约 1%–3%，粗估时可忽略。
+以 [LLaMA-3 70B config.json](https://huggingface.co/meta-llama/Meta-Llama-3-70B/blob/main/config.json) 为例：
+`vocab_size=128256`、`hidden_size=8192`、`tie_word_embeddings=false` 时两张 embedding 表合计 ≈ 2.10B / 70.6B ≈ 3%。
 
 代入数据：
 
@@ -52,15 +67,17 @@ $$
 
 #### 第二步：计算硬件算力
 
-查阅 [NVIDIA H100 产品页](https://www.nvidia.com/en-sg/data-center/h100/)，其 FP16/BF16 的峰值算力约为 **1979 TFLOP/s**（每秒万亿次浮点运算）。下面三张图先展开 H100 各精度的峰值表，再解释 1,979 这个数字背后的稀疏路径，最后给出 H100 SXM 与 NVL 两类形态的规格对照。
+查阅 [NVIDIA H100 产品页](https://www.nvidia.com/en-sg/data-center/h100/)，其 FP16/BF16 的峰值算力约为 **1979 TFLOP/s**（每秒万亿次浮点运算）。
+下面三张图先展开 H100 各精度的峰值表，再解释 1,979 这个数字背后的稀疏路径，最后给出 H100 SXM 与 NVL 两类形态的规格对照。
 
-但是要注意，这个值是 NVIDIA H100 GPU 在使用 FP16 或 BF16 数据类型、且启用结构化稀疏（Structured Sparsity）时可达到的理论最大计算吞吐量（[NVIDIA H100 产品页](https://www.nvidia.com/en-sg/data-center/h100/)）。训练普通的稠密 Transformer（dense，无结构化稀疏）时，应按 dense 峰值估算，约为稀疏峰值的一半，即约 989.5 TFLOP/s。
+但是要注意，这个值是 NVIDIA H100 GPU 在使用 FP16 或 BF16 数据类型、且启用结构化稀疏（Structured Sparsity）时可达到的理论最大计算吞吐量（[NVIDIA H100 产品页](https://www.nvidia.com/en-sg/data-center/h100/)）。
+训练普通的稠密 Transformer（dense，无结构化稀疏）时，应按 dense 峰值估算，约为稀疏峰值的一半，即约 989.5 TFLOP/s。
 
 ![图 2.1-1 H100 性能明细](images/2-1-1-h100-performance-details.png)
 
 *图 2.1-1 H100 性能明细*
 
-图 2.1-1 把 H100 的精度峰值按 FP64 / FP32 / TF32 / BF16 / FP16 / FP8 / INT8 拆到同一张表里，并标出 Tensor Core 与 CUDA Core 两条路径。粗估训练时间时只需对照 BF16 / FP16 Tensor Core 那一行。
+图 2.1-1 把 H100 的精度峰值按 FP64 / FP32 / TF32 / BF16 / FP16 / FP8 / INT8 拆到同一张表里：不带后缀的 Peak 行是 CUDA Core 峰值，带 Tensor Core 后缀的行是 Tensor Core 峰值。粗估训练时间时只需对照 BF16 / FP16 Tensor Core 那一行。
 
 ![图 2.1-2 三类稀疏剪枝对比](images/2-1-2-structured-sparsity.png)
 
@@ -80,7 +97,14 @@ $$
 
 *图 2.1-3 H100 SXM 与 H100 NVL 规格对比*
 
-图 2.1-3 给出 H100 SXM 与 H100 NVL 两类形态的横向规格对照：SXM5 BF16 Tensor Core 1,979 teraFLOPS（含稀疏；dense 为一半，约 989.5 teraFLOPS）、HBM 80 GB、3.35 TB/s；NVL 形态把显存扩到 94 GB、带宽提到 3.9 TB/s，但 BF16 Tensor Core 降到 1,671 teraFLOPS（含稀疏；dense 约为一半，即 835 teraFLOPS）。两个 Tensor Core 行都带 `*`，按 NVIDIA datasheet 惯例表示含 2:4 稀疏，dense Transformer 应按一半重算。本节后面的例子按 SXM5 规格估算（与 [NVIDIA H100 datasheet](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/H100/H100-datasheet-us-update.pdf) 一致），如换 NVL 或 PCIe 形态需按该形态的峰值重算。
+图 2.1-3 给出 H100 SXM 与 H100 NVL 两类形态的横向规格对照：SXM5 BF16 Tensor Core 1,979 teraFLOPS（含稀疏；
+dense 为一半，约 989.5 teraFLOPS）、HBM 80 GB、3.35 TB/s；NVL 形态把显存扩到 94 GB、带宽提到 3.9 TB/s，
+但 BF16 Tensor Core 降到 1,671 teraFLOPS（含稀疏；dense 约为一半，即 835 teraFLOPS）。
+
+两个 Tensor Core 行都带 `*`，按 NVIDIA datasheet 惯例表示含 2:4 稀疏，dense Transformer 应按一半重算。
+
+本节后面的例子按 SXM5 规格估算（与 [NVIDIA H100 datasheet](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/H100/H100-datasheet-us-update.pdf) 一致），
+如换 NVL 或 PCIe 形态需按该形态的峰值重算。
 
 上述 989.5 TFLOP/s 是 H100 的理论峰值，但实际运行模型时，由于各种软硬件开销，你几乎不可能达到 100% **模型算力利用率 (MFU, Model FLOPs Utilization)**，通常按 30%–60% 的利用率估算更现实。这里取 50% 用作后续估计。
 
@@ -118,21 +142,26 @@ $$
 N_{\max} = \frac{640 \times 10^9 \text{ bytes}}{12 \text{ bytes/param}} \approx 53\text{B}
 $$
 
-也就是约 530 亿参数。这个估算仍然偏乐观，因为没有计入依赖 batch、序列长度和层数的 activation，也没有计入通信缓冲、临时张量和框架碎片。若所有参数、梯度和 AdamW 状态都按 FP32 保存，每个参数至少约 16 bytes，上限会降到约 400 亿参数。现代训练通常还会组合混合精度、ZeRO/FSDP、activation checkpointing 和 gradient accumulation。
+也就是约 530 亿参数。这个估算仍然偏乐观，因为没有计入依赖 batch、序列长度和层数的 activation，也没有计入通信缓冲、临时张量和框架碎片。
+若所有参数、梯度和 AdamW 状态都按 FP32 保存，每个参数至少约 16 bytes，上限会降到约 400 亿参数。现代训练通常还会组合混合精度、ZeRO/FSDP、activation checkpointing 和 gradient accumulation。
 
 ### 2.1.3 资源账的三类约束：compute、memory 与 bandwidth
 
 资源核算同时看三类约束：
 
-- **Compute**：训练普通 dense Transformer 时，常用粗估是 $6 \times N_{\text{param}} \times N_{\text{token}}$ ，其中 $N_{\text{param}}$ 是非 embedding 参数量， $N_{\text{token}}$ 是训练 token 数。这个估算适合早期预算判断，但长上下文、MoE、扩散式语言模型或特殊注意力结构会改变细节。
+- **Compute**：训练普通 dense Transformer 时，常用粗估是 $6 \times N_{\text{param}} \times N_{\text{token}}$ ，其中 $N_{\text{param}}$ 是非 embedding 参数量， $N_{\text{token}}$ 是训练 token 数。
+  这个估算适合早期预算判断，但长上下文、MoE、扩散式语言模型或特殊注意力结构会改变细节。
+
 - **Memory capacity**：参数、梯度、优化器状态和激活都要占显存。AdamW 朴素训练中，优化器状态常常比参数本身更大；checkpointing、ZeRO/FSDP 和低精度训练都是在不同位置减内存。
+
 - **Memory bandwidth**：推理、小 batch matmul 和逐元素算子经常受 HBM 带宽限制。roofline 分析用算术强度判断一个算子更可能是 compute-bound 还是 memory-bound。
 
 ![图 2.1-4 GPU 计算与存储分层](images/2-1-4-compute-memory-bound.png)
 
 *图 2.1-4 GPU 计算与存储分层*
 
-图 2.1-4 把 GPU 抽象成 Compute 与 Memory 两个层次：上层是大量 ALU / Tensor Core 组成的计算单元，下层是 HBM 这样的高带宽显存。Compute 与 Memory 之间通过一条总线相连，每次算子要先把数据从 Memory 搬到 Compute，算完再写回 Memory。本节后面 §2.1.3 的 arithmetic intensity 与 roofline 小节都基于这一分层结构展开。
+图 2.1-4 把 GPU 抽象成 Compute 与 Memory 两个层次：上层是大量 ALU / Tensor Core 组成的计算单元，下层是 HBM 这样的高带宽显存。
+Compute 与 Memory 之间通过一条总线相连，每次算子要先把数据从 Memory 搬到 Compute，算完再写回 Memory。本节后面 §2.1.3 的 arithmetic intensity 与 roofline 小节都基于这一分层结构展开。
 
 估算训练时间时要在厂商峰值上乘以 MFU；估算最大模型时也要考虑 optimizer、activation、通信缓冲和碎片。H100、H200 与 B200 这类指标更适合作数量级估算样例，具体训练计划仍应通过 benchmark 验证。
 
@@ -146,7 +175,8 @@ $$
 
 Roofline 模型把硬件抽象成两条上限：一条来自峰值算力，另一条来自内存带宽。算术强度低于硬件的临界点时，算子主要受 HBM 带宽限制，属于 memory-bound；高于临界点时，算子更可能受矩阵乘法单元或 Tensor Core 峰值限制，属于 compute-bound。
 
-这个框架解释了很多 LLM 工程现象：大 batch 的矩阵乘法通常 compute-bound；逐元素 ReLU、LayerNorm、small batch matmul 和自回归 decode 更容易 memory-bound；FlashAttention、kernel fusion 和 tiling 的共同目标，是减少重复读写 HBM、提高每次搬运数据能完成的计算量。
+这个框架解释了很多 LLM 工程现象：大 batch 的矩阵乘法通常 compute-bound；逐元素 ReLU、LayerNorm、small batch matmul 和自回归 decode 更容易 memory-bound；
+FlashAttention、kernel fusion 和 tiling 的共同目标，是减少重复读写 HBM、提高每次搬运数据能完成的计算量。
 
 以 H100 dense BF16 为例，理论计算峰值约为 989.5 TFLOP/s，HBM 带宽约为 3.35 TB/s，因此硬件临界算术强度约为：
 
@@ -181,13 +211,15 @@ $$
 
 当目标全局 batch 太大而单卡显存放不下时，常用 **gradient accumulation**：把一个大 batch 拆成多个 micro-batch，依次前向/反向并累积梯度，最后再执行一次优化器更新。这样 activation memory 按 micro-batch 缩小，但计算量基本不变，训练吞吐会受到额外循环和通信时机影响。
 
-**Activation checkpointing**（也称 gradient checkpointing 或 rematerialization）则是用额外计算换显存。前向时只保存部分检查点激活，反向时从最近检查点重新计算中间激活。若每层都保存激活，激活内存随 $O(L)$ 增长；若完全不保存，重计算开销会过高。实践中常按区间保存，使激活内存和重计算成本之间取得折中。
+**Activation checkpointing**（也称 gradient checkpointing 或 rematerialization）则是用额外计算换显存。前向时只保存部分检查点激活，反向时从最近检查点重新计算中间激活。
+若每层都保存激活，激活内存随 $O(L)$ 增长；若完全不保存，重计算开销会过高。实践中常按区间保存，使激活内存和重计算成本之间取得折中。
 
 这两个技巧解决的是不同问题：gradient accumulation 调整 batch 的显存峰值和优化器更新频率；activation checkpointing 减少单次前向/反向必须保留的中间状态。二者常同时使用。
 
 ## 2.2 张量 (Tensors)
 
-本节是 PyTorch 入门参考：把后续资源账本用到的张量基础 API 集中放在这里——shape / dtype / stride / view / contiguity / 矩阵乘法 / 逐元素算子 / einops。资源核算的主线是 §2.1、§2.3、§2.4、§2.5；本节服务于它们，读者可先按"目录层级"快速浏览，等读到具体算子或操作时再回来查代码形态与正确性。
+本节是 PyTorch 入门参考：把后续资源账本用到的张量基础 API 集中放在这里——shape / dtype / stride / view / contiguity / 矩阵乘法 / 逐元素算子 / einops。
+资源核算的主线是 §2.1、§2.3、§2.4、§2.5；本节服务于它们，读者可先按"目录层级"快速浏览，等读到具体算子或操作时再回来查代码形态与正确性。
 
 ### 2.2.1 张量基础
 
@@ -208,7 +240,8 @@ nn.init.trunc_normal_(x, mean=0, std=1, a=-2, b=2)  # 截断正态分布初始�
 ```
 
 > [!NOTE]
-> `nn.init.trunc_normal_` 的 `a` 与 `b` 是**绝对**截断区间，不是 $\sigma$ 的倍数（[PyTorch `nn.init` 文档](https://docs.pytorch.org/docs/stable/nn.init.html)）。本例 `std=1`，所以 `a=-2, b=2` 在数值上恰好等于 $\pm 2\sigma$；一旦 `std ≠ 1`，要按 $\pm k\sigma$ 截断就要把 `std` 乘进 `a`/`b`（写法见 §2.5.1）。
+> `nn.init.trunc_normal_` 的 `a` 与 `b` 是**绝对**截断区间，不是 $\sigma$ 的倍数（[PyTorch `nn.init` 文档](https://docs.pytorch.org/docs/stable/nn.init.html)）。
+> 本例 `std=1`，所以 `a=-2, b=2` 在数值上恰好等于 $\pm 2\sigma$；一旦 `std ≠ 1`，要按 $\pm k\sigma$ 截断就要把 `std` 乘进 `a`/`b`（写法见 §2.5.1）。
 
 ### 2.2.2 张量的操作
 
@@ -282,7 +315,9 @@ assert torch.equal(x + x, torch.tensor([2., 8, 18])) # 每个元素自加
 assert torch.equal(x * 2, torch.tensor([2., 8, 18])) # 每个元素乘以标量2
 assert torch.equal(x / 0.5, torch.tensor([2., 8, 18])) # 每个元素除以标量0.5
 ```
-最后，我们介绍了一个非常实用的工具函数 **triu**，这在计算 **因果注意力掩码（causal attention mask）** 时非常有用。在语言模型中，为了确保模型在计算第 j 个位置时只能看到第 j 个词本身及之前的词（即不能“偷看”未来信息），就需要使用这种上三角矩阵作为掩码。其中 M[i, j] 表示位置 i 对位置 j 的贡献，当 i > j 时（即 i 在 j 之后），贡献应为 0。
+最后，我们介绍了一个非常实用的工具函数 **triu**，这在计算 **因果注意力掩码（causal attention mask）** 时非常有用。
+在语言模型中，为了确保模型在计算第 j 个位置时只能看到第 j 个词本身及之前的词（即不能“偷看”未来信息），就需要使用这种上三角矩阵作为掩码。
+其中 M[i, j] 表示位置 i 对位置 j 的贡献，当 i > j 时（即 i 在 j 之后），贡献应为 0。
 
 ```python
 # 实用操作：上三角矩阵（用于因果注意力掩码）
@@ -489,14 +524,18 @@ x = rearrange(x, "... heads hidden2 -> ... (heads hidden2)")
 *图 2.3-3 BF16 数值格式*
 
 *   **规格**：占用 **2 字节** (16 bits)。结构为：1 位符号位 + **8 位指数位** + 7 位尾数位。
+
 *   **来源**：由 Google Brain 专为深度学习设计。
+
 *   **设计逻辑**：**“要范围，不要精度”**。
     *   深度学习模型（尤其是神经网络）对小数点的后几位精度不敏感，但对数值的范围非常敏感。
     *   BF16 直接截断了 FP32 的尾数，但**保留了和 FP32 相同的 8 位指数位**。
+
 *   **优点**：
     *   拥有和 FP32 一样宽广的动态范围，**不需要 Loss Scaling** 也能稳定训练。
     *   显存占用和 FP16 一样少。
     *   在 A100/H100 等新硬件上计算速度极快。
+
 *   **训练用途**：在现代 LLM 训练中常用于参数、activation 和梯度的低精度路径，并用于前向和反向传播中的矩阵乘法。
 
 4. FP8 (8 位浮点数)
@@ -506,13 +545,20 @@ x = rearrange(x, "... heads hidden2 -> ... (heads hidden2)")
 *图 2.3-4 FP8 数值格式*
 
 *   **规格**：占用 **1 字节** (8 bits)。
+
 *   **变体**：
     *   **E4M3**：4 位指数，3 位尾数（精度稍高，范围稍小）。
     *   **E5M2**：5 位指数，2 位尾数（范围稍大，精度更低）。
+
 *   **优点**：极致的显存压缩和计算吞吐量。
+
 *   **硬件限制**：Hopper/H100 开始原生支持 FP8；Blackwell/B200 又把更细粒度的缩放因子做成了更重要的硬件路径。
+
 *   **Blackwell 语境下的新变化**：**MXFP8** 与 **MXFP4 / NVFP4** 这类格式按块携带缩放因子，减少异常值把整块动态范围拉坏的问题。
-*   **训练用途**：自 H100 / Hopper 起 FP8 已通过 NVIDIA Transformer Engine、Microsoft FP8-LM 等库进入生产路径，但生产训练通常仍混合 BF16 master weight 与 FP8 matmul；安全降到 FP8 的张量范围、是否需要 E4M3 / E5M2 选择与 per-tensor / per-block 缩放，仍高度依赖硬件、kernel 和缩放策略。Blackwell 又把 MXFP8 / NVFP4 这类按块缩放格式推到生产级训练——例如 NVIDIA Nemotron 3 Super 用 NVFP4 在 25T token 数据集上完成预训练——但二者尚未成为普遍默认配置。
+
+*   **训练用途**：自 H100 / Hopper 起 FP8 已通过 NVIDIA Transformer Engine、Microsoft FP8-LM 等库进入生产路径，
+    但生产训练通常仍混合 BF16 master weight 与 FP8 matmul；安全降到 FP8 的张量范围、是否需要 E4M3 / E5M2 选择与 per-tensor / per-block 缩放，仍高度依赖硬件、kernel 和缩放策略。
+    Blackwell 又把 MXFP8 / NVFP4 这类按块缩放格式推到生产级训练——例如 NVIDIA Nemotron 3 Super 用 NVFP4 在 25T token 数据集上完成预训练——但二者尚未成为普遍默认配置。
 
 #### 为什么 BF16 通常比 FP16 更适合训练？
 
@@ -521,9 +567,11 @@ x = rearrange(x, "... heads hidden2 -> ... (heads hidden2)")
 
 ### 2.3.2 张量在内存中的存储机制
 
-在 PyTorch 中，张量底层可以分成“指向数据的存储”和“解释数据的元数据”两部分来理解。元数据记录形状（size）、步长（stride）、数据类型（dtype）和设备等信息；数值放在连续或按 stride 解释的存储区里。早期 PyTorch 暴露过更独立的 `Storage` 概念，现代接口把这层细节封装得更多，读者只需要记住 Tensor 对象包含“指针 + 元数据”这一抽象。
+在 PyTorch 中，张量底层可以分成“指向数据的存储”和“解释数据的元数据”两部分来理解。
+元数据记录形状（size）、步长（stride）、数据类型（dtype）和设备等信息；数值放在连续或按 stride 解释的存储区里。早期 PyTorch 暴露过更独立的 `Storage` 概念，现代接口把这层细节封装得更多，读者只需要记住 Tensor 对象包含“指针 + 元数据”这一抽象。
 
-因此，在现在的 PyTorch 版本中，PyTorch 的设计者们选择将这一层实现细节进行封装，让 Tensor 对象本身成为一个集成了“**指针+元数据**”的单一实体。一个张量本身并不直接“包含”数据，而是指向一块连续的内存区域，并附带一套规则（元数据），告诉程序如何根据你请求的索引去这块内存里找到对应的数据。下面定义一个 $4 \times 4$ 的二维张量作为例子：
+因此，在现在的 PyTorch 版本中，PyTorch 的设计者们选择将这一层实现细节进行封装，让 Tensor 对象本身成为一个集成了“**指针+元数据**”的单一实体。
+一个张量本身并不直接“包含”数据，而是指向一块连续的内存区域，并附带一套规则（元数据），告诉程序如何根据你请求的索引去这块内存里找到对应的数据。下面定义一个 $4 \times 4$ 的二维张量作为例子：
 
 ```python
 x = torch.tensor([
@@ -657,10 +705,17 @@ def cuda_if_available(index: int = 0) -> torch.device:
 下面用一组例子建立 FLOPs 与 FLOP/s 的直观认识：
 
 - GPT-3 (2020 年)：训练耗时约 $3.14 \times 10^{23}$ FLOPs [文章](https://lambda.ai/blog/demystifying-gpt-3)
+
 - GPT-4 (2023 年)：据推测训练耗时约 $2 \times 10^{25}$ FLOPs [文章](https://patmcguinness.substack.com/p/gpt-4-details-revealed)
+
 - 政策背景：美国曾有一项行政命令，要求任何训练 FLOPs 超过 $1 \times 10^{26}$ 的基础模型必须向政府报告（该命令已于 2025 年被撤销）
-- NVIDIA A100：BF16/FP16 Tensor Core 峰值性能为 312 TFLOP/s（即 $3.12 \times 10^{14}$ FLOP/s）[官方手册](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-nvidia-us-2188504-web.pdf)
-- NVIDIA H100：BF16/FP16 Tensor Core 峰值性能为 1979 TFLOP/s（含稀疏，sparsity）；dense 矩阵乘法约为一半，即 989.5 TFLOP/s [官方手册](https://resources.nvidia.com/en-us-tensor-core/nvidia-tensor-core-gpu-datasheet)
+
+- NVIDIA A100：BF16/FP16 Tensor Core 峰值性能为 312 TFLOP/s（即 $3.12 \times 10^{14}$ FLOP/s）
+  [官方手册](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-nvidia-us-2188504-web.pdf)
+
+- NVIDIA H100：BF16/FP16 Tensor Core 峰值性能为 1979 TFLOP/s（含稀疏，sparsity）；
+  dense 矩阵乘法约为一半，即 989.5 TFLOP/s
+  [官方手册](https://resources.nvidia.com/en-us-tensor-core/nvidia-tensor-core-gpu-datasheet)
 
 #### 线性模型的计算量
 
@@ -853,7 +908,8 @@ $$
 
 详细推导（链式法则四步 + 元素级展开 + 形状验证）见 [第 2 章 §附录 A 反向传播梯度推导](chapter2_appendix_backward_gradient.md)。
 
-这类深度线性网络可以按层展开成一条 activation 链。前向传播从 $x$ 依次产生 $h_1, h_2, \ldots$ ；反向传播沿相反方向传回梯度，每一层都按 $h_{\text{in}}^{\mathrm{T}} G_{h_{\text{out}}}$ 的统一模式计算参数梯度，其中 $h_{\text{in}}$ 是该层输入、 $G_{h_{\text{out}}}$ 是该层输出梯度。
+这类深度线性网络可以按层展开成一条 activation 链。前向传播从 $x$ 依次产生 $h_1, h_2, \ldots$ ；反向传播沿相反方向传回梯度，
+每一层都按 $h_{\text{in}}^{\mathrm{T}} G_{h_{\text{out}}}$ 的统一模式计算参数梯度，其中 $h_{\text{in}}$ 是该层输入、 $G_{h_{\text{out}}}$ 是该层输出梯度。
 
 ![图 2.4-1 深度线性网络中的 activation 与梯度流](images/2-4-1-deep-network-gradient-flow.png)
 
@@ -875,9 +931,12 @@ $$
 F_{\text{step}} = F_{\text{forward}} + F_{\text{backward}} \approx 2 B N_{\text{param}} + \bigl(4 B N_{\text{param}} - 2 B D^2\bigr) = 6 B N_{\text{param}} - 2 B D^2 .
 $$
 
-通用多层网络（每层都既算 activation grad 又算 weight grad）回到 $6 B N_{\text{param}}$ / step 形式：每层反向都是前向的 2 倍。这一 per-token 公式与 Kaplan 2020 / Chinchilla 2022 等论文给出的 LM 训练 FLOPs 估算一致（详见章节末来源记录）；沿 step 数 $S$ 求和得整段训练的总 FLOPs $\approx 6 N_{\text{param}} \cdot N_{\text{token}}$，与 §2.1.1 的 $F_{\text{total}} \approx 6 N_{\text{param}} N_{\text{token}}$ 一致。
+通用多层网络（每层都既算 activation grad 又算 weight grad）回到 $6 B N_{\text{param}}$ / step 形式：每层反向都是前向的 2 倍。
+这一 per-token 公式与 Kaplan 2020 / Chinchilla 2022 等论文给出的 LM 训练 FLOPs 估算一致（详见章节末来源记录）；
+沿 step 数 $S$ 求和得整段训练的总 FLOPs $\approx 6 N_{\text{param}} \cdot N_{\text{token}}$，与 §2.1.1 的 $F_{\text{total}} \approx 6 N_{\text{param}} N_{\text{token}}$ 一致。
 
-本例反向比前向略低于 2 倍：少了一项 $2 B D^2$（即 $\partial L / \partial x = G_{h_1} W_1^{\mathrm{T}}$），因为 `x` 是叶子（`requires_grad=False`），activation grad 不再向 `x` 之下继续传播；`requires_grad=True` 的中间张量在反向中收到上游梯度并继续回传，链路走到叶子为止，而中间张量的 `.grad` 默认不写入，需要 `retain_grad()` 才保存。
+本例反向比前向略低于 2 倍：少了一项 $2 B D^2$（即 $\partial L / \partial x = G_{h_1} W_1^{\mathrm{T}}$），因为 `x` 是叶子（`requires_grad=False`），activation grad 不再向 `x` 之下继续传播；
+`requires_grad=True` 的中间张量在反向中收到上游梯度并继续回传，链路走到叶子为止，而中间张量的 `.grad` 默认不写入，需要 `retain_grad()` 才保存。
 
 ## 2.5 模型构建与训练基础
 
@@ -901,19 +960,27 @@ nn.Parameter 是 torch.Tensor 的子类，因此它“表现得像一个张量�
 x = nn.Parameter(torch.randn(input_dim)) # 输入向量
 output = x @ w # 输出向量
 ```
-当输入与权重都用 `torch.randn`（即 `x_j ~ N(0,1)`、`W_{ij} ~ N(0,1)`）独立采样时， $y_i = \sum_j W_{ij} x_j$ 的方差满足 $\mathrm{Var}(y_i) = \sum_j \mathrm{Var}(W_{ij})\mathrm{Var}(x_j) = n$（[Goodfellow et al. *Deep Learning* §8.4 Parameter Initialization Strategies](https://www.deeplearningbook.org/contents/optimization.html)），所以 `output` 的标准差为 `` $`\sqrt{n} = \sqrt{\text{input_dim}}`$ ``。例如 `input_dim = 16384` 时 `output` 标准差约为 128，远大于 `x` 的标准差 1，会逐层放大导致梯度爆炸（gradient explosion），使训练过程变得极不稳定，甚至无法收敛。
+当输入与权重都用 `torch.randn`（即 `x_j ~ N(0,1)`、`W_{ij} ~ N(0,1)`）独立采样时， $y_i = \sum_j W_{ij} x_j$ 的方差满足
+$\mathrm{Var}(y_i) = \sum_j \mathrm{Var}(W_{ij})\mathrm{Var}(x_j) = n$
+（[Goodfellow et al. *Deep Learning* §8.4 Parameter Initialization Strategies](https://www.deeplearningbook.org/contents/optimization.html)），
+所以 `output` 的标准差为 `` $`\sqrt{n} = \sqrt{\text{input_dim}}`$ ``。
+
+例如 `input_dim = 16384` 时 `output` 标准差约为 128，远大于 `x` 的标准差 1，会逐层放大导致梯度爆炸（gradient explosion），使训练过程变得极不稳定，甚至无法收敛。
 
 为了克服这个问题，需要一种对输入维度 `input_dim` 不敏感的初始化方法。常用的做法是按 fan-in 缩放：权重除以输入维度的平方根 $\sqrt{d_{\text{in}}}$ ，把 $\mathrm{Var}(y_i)$ 拉回 $O(1)$ 。这里的 $d_{\text{in}}$ 对应代码里的 `input_dim`。
 
-区分两个容易混用的名字： $W_{ij} \sim U[-1/\sqrt{n}, 1/\sqrt{n}]$ 这种只看 fan-in 的缩放，在 Glorot 与 Bengio 的论文里叫 **standard initialization**（式 1），是他们用作对照的基线；论文提出的 **Xavier / Glorot 初始化**（式 16）同时兼顾前向激活方差与反向梯度方差，取
+区分两个容易混用的名字： $W_{ij} \sim U[-1/\sqrt{n}, 1/\sqrt{n}]$ 这种只看 fan-in 的缩放，在 Glorot 与 Bengio 的论文里叫 **standard initialization**（式 1），是他们用作对照的基线；
+论文提出的 **Xavier / Glorot 初始化**（式 16）同时兼顾前向激活方差与反向梯度方差，取
 
 $$
 W \sim U\left[-\sqrt{\frac{6}{n_{\text{in}} + n_{\text{out}}}},\ \sqrt{\frac{6}{n_{\text{in}} + n_{\text{out}}}}\right]
 $$
 
-PyTorch 的 `nn.init.xavier_uniform_` 就按 $a = \text{gain} \times \sqrt{6 / (\text{fan-in} + \text{fan-out})}$ 取均匀分布边界。当 $n_{\text{in}} = n_{\text{out}}$（本节 `Linear(dim, dim)` 的情形）时两者只差一个常数因子 $\sqrt{3}$ ，所以按 $1/\sqrt{d_{\text{in}}}$ 缩放在数量级上等价。
+PyTorch 的 `nn.init.xavier_uniform_` 就按 $a = \text{gain} \times \sqrt{6 / (\text{fan-in} + \text{fan-out})}$ 取均匀分布边界。
+当 $n_{\text{in}} = n_{\text{out}}$（本节 `Linear(dim, dim)` 的情形）时两者只差一个常数因子 $\sqrt{3}$ ，所以按 $1/\sqrt{d_{\text{in}}}$ 缩放在数量级上等价。
 
-相关资料可见 [Xavier 初始化论文](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf) 和 [Stack Exchange 讨论](https://ai.stackexchange.com/questions/30491/is-there-a-proper-initialization-technique-for-the-weight-matrices-in-multi-head)。
+相关资料可见 [Xavier 初始化论文](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf) 和
+[Stack Exchange 讨论](https://ai.stackexchange.com/questions/30491/is-there-a-proper-initialization-technique-for-the-weight-matrices-in-multi-head)。
 
 ```python
 w = nn.Parameter(torch.randn(input_dim, output_dim) / np.sqrt(input_dim))
@@ -928,7 +995,8 @@ w = nn.Parameter(nn.init.trunc_normal_(torch.empty(input_dim, output_dim),
                                       std=std, a=-3 * std, b=3 * std))
 ```
 
-`nn.init.trunc_normal_` 的 `a` 与 `b` 是**绝对**截断值（[PyTorch `nn.init` 文档](https://docs.pytorch.org/docs/stable/nn.init.html)）；`std` 乘进 `a`/`b`（`a=-3*std, b=3*std`）才截在 $\pm 3\sigma$，直接写 `a=-3, b=3` 截的是绝对值 3，随 `input_dim` 增大会远宽于 $3\sigma$。
+`nn.init.trunc_normal_` 的 `a` 与 `b` 是**绝对**截断值（[PyTorch `nn.init` 文档](https://docs.pytorch.org/docs/stable/nn.init.html)）；
+`std` 乘进 `a`/`b`（`a=-3*std, b=3*std`）才截在 $\pm 3\sigma$，直接写 `a=-3, b=3` 截的是绝对值 3，随 `input_dim` 增大会远宽于 $3\sigma$。
 
 ### 2.5.2 使用 pytorch 自定义模型
 
@@ -1062,7 +1130,8 @@ orig_data = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=np.int32)
 orig_data.tofile("data.npy") # 将数组保存到文件
 ```
 
-对于 LLaMA-1（[arXiv:2302.13971](https://arxiv.org/abs/2302.13971)）这类典型 ~4.7 TB（按 Table 1 累加：CommonCrawl 3.3 TB + C4 783 GB + Github 328 GB + Wikipedia 83 GB + Books 85 GB + ArXiv 92 GB + StackExchange 78 GB）的超大数据集，不可能将其全部加载到内存中。解决方案是使用 `numpy.memmap` 创建一个"内存映射"对象。
+对于 LLaMA-1（[arXiv:2302.13971](https://arxiv.org/abs/2302.13971)）这类典型 ~4.7 TB（按 Table 1 累加：CommonCrawl 3.3 TB + C4 783 GB + Github 328 GB + Wikipedia 83 GB +
+Books 85 GB + ArXiv 92 GB + StackExchange 78 GB）的超大数据集，不可能将其全部加载到内存中。解决方案是使用 `numpy.memmap` 创建一个"内存映射"对象。
 
 ```python
 data = np.memmap("data.npy", dtype=np.int32) # 创建内存映射
@@ -1156,7 +1225,8 @@ optimizer.step() # 根据梯度和优化器内部状态，更新模型参数
 
 释放内存（可选）
 
-在每次迭代开始前，需要清空上一次计算得到的梯度，否则梯度会累积。`zero_grad` 的签名是 `zero_grad(self, set_to_none: bool = True)`，自 PyTorch 2.0 起 `set_to_none` 默认为 `True`：它把梯度指针置为 `None`，省掉一次逐元素置零写入并释放梯度张量占用的显存；传 `False` 才回到原地写 0 的旧行为（此时 `.grad` 保持为已分配的零张量）。
+在每次迭代开始前，需要清空上一次计算得到的梯度，否则梯度会累积。`zero_grad` 的签名是 `zero_grad(self, set_to_none: bool = True)`，自 PyTorch 2.0 起 `set_to_none` 默认为 `True`：
+它把梯度指针置为 `None`，省掉一次逐元素置零写入并释放梯度张量占用的显存；传 `False` 才回到原地写 0 的旧行为（此时 `.grad` 保持为已分配的零张量）。
 
 ```python
 optimizer.zero_grad(set_to_none=True)
@@ -1207,7 +1277,8 @@ class AdaGrad(torch.optim.Optimizer):
 
 ### 2.5.6 资源核算
 
-本节把 §2.1.3 给出的四元素账本（参数 / 梯度 / optimizer state / activation）落到深度线性网络的具体公式与代码：4 元素如何按层数 $L$ 与维度 $D$ 计数，FLOPs 怎样回到 $6 \times N_{\text{data}} \times N_{\text{param}}$ 的形式。各 dtype 的字节数见 §2.3.1，12 bytes/param 的分项账本见 §2.1.2，按张量角色的混合精度开销在本节给出。
+本节把 §2.1.3 给出的四元素账本（参数 / 梯度 / optimizer state / activation）落到深度线性网络的具体公式与代码：4 元素如何按层数 $L$ 与维度 $D$ 计数，FLOPs 怎样回到 $6 \times N_{\text{data}} \times N_{\text{param}}$ 的形式。
+各 dtype 的字节数见 §2.3.1，12 bytes/param 的分项账本见 §2.1.2，按张量角色的混合精度开销在本节给出。
 
 #### 内存占用分析
 
@@ -1393,7 +1464,13 @@ loaded_checkpoint = torch.load("model_checkpoint.pt")
 这里我们介绍两个主要的工具库，它们可以自动化地实现混合精度训练：
 
 - PyTorch 的 AMP（Automatic Mixed Precision）：自动在安全位置插入 autocast 和梯度缩放，减少手工改代码的成本。[PyTorch AMP 文档](https://pytorch.org/docs/stable/amp.html)
-- NVIDIA Transformer Engine：面向 Transformer 的低精度训练库，支持 FP8 相关格式和缩放策略。[Micikevicius et al., 2022, FP8 Formats for Deep Learning, arXiv:2209.05433](https://arxiv.org/abs/2209.05433)（NVIDIA Transformer Engine 项目页：[TransformerEngine](https://github.com/NVIDIA/TransformerEngine)）— 注意 FP8-LM（[Peng et al., 2023, arXiv:2310.18313](https://arxiv.org/abs/2310.18313)，Microsoft Research）是另一条独立的 FP8 训练路线，不要与 NVIDIA TE 混淆
+
+- NVIDIA Transformer Engine：面向 Transformer 的低精度训练库，支持 FP8 相关格式和缩放策略。
+  [Micikevicius et al., 2022, FP8 Formats for Deep Learning, arXiv:2209.05433](https://arxiv.org/abs/2209.05433)
+  （NVIDIA Transformer Engine 项目页：[TransformerEngine](https://github.com/NVIDIA/TransformerEngine)）。
+
+- FP8-LM（[Peng et al., 2023, arXiv:2310.18313](https://arxiv.org/abs/2310.18313)，Microsoft Research）
+  是另一条独立的 FP8 训练路线，不要与 NVIDIA TE 混淆
 
 低精度格式要区分三层含义，其中 BF16 的指数位和尾数位关系可回看图 2.3-3：
 
@@ -1434,9 +1511,16 @@ class CruncherCheckpointed(nn.Module):
 
 ## 本章总结与下章衔接
 
-本章围绕四张资源账本展开：tensor 的 shape / dtype / device 与 stride、 $6 \times N_{\text{data}} \times N_{\text{param}}$ 量级的 FLOPs、activation + optimizer state + gradient + parameter 的显存组合、以及 roofline 上的 arithmetic intensity / MFU。PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通：换硬件（A100 / H100 / B200）或换精度（fp32 / bf16 / fp16）时只需替换峰值数字，账本形状不变。[第 9 章 §9.2 Arithmetic Intensity：为什么 generation 常常 memory-bound](../chapter9/chapter9_推理系统.md) 把同一套算术强度与带宽账本搬到推理侧，用来解释 decode 阶段为什么受 KV cache 读取带宽支配。
+本章围绕四张资源账本展开：tensor 的 shape / dtype / device 与 stride、 $6 \times N_{\text{data}} \times N_{\text{param}}$ 量级的 FLOPs、
+activation + optimizer state + gradient + parameter 的显存组合、以及 roofline 上的 arithmetic intensity / MFU。
 
-下章进入 [第 3 章 语言模型架构和训练的技术细节](../chapter3/chapter3_语言模型架构和训练技术细节.md)：把 token 和算力账本当作输入侧准备之后，第 3 章讨论现代 dense decoder 的默认骨架（Pre-norm / RMSNorm / no bias / SwiGLU / RoPE / GQA / MLA / CLA）、attention 替代和训练稳定性。
+PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通：换硬件（A100 / H100 / B200）或换精度（fp32 / bf16 / fp16）时只需替换峰值数字，账本形状不变。
+
+[第 9 章 §9.2 Arithmetic Intensity：为什么 generation 常常 memory-bound](../chapter9/chapter9_推理系统.md) 把同一套算术强度与带宽账本搬到推理侧，
+用来解释 decode 阶段为什么受 KV cache 读取带宽支配。
+
+下章进入 [第 3 章 语言模型架构和训练的技术细节](../chapter3/chapter3_语言模型架构和训练技术细节.md)：
+把 token 和算力账本当作输入侧准备之后，第 3 章讨论现代 dense decoder 的默认骨架（Pre-norm / RMSNorm / no bias / SwiGLU / RoPE / GQA / MLA / CLA）、attention 替代和训练稳定性。
 
 ## 来源与更新记录
 
@@ -1445,7 +1529,7 @@ class CruncherCheckpointed(nn.Module):
 - [NVIDIA H100 Tensor Core GPU 产品页](https://www.nvidia.com/en-sg/data-center/h100/)：H100 SXM FP16/BF16 Tensor Core 1,979 TFLOPS（含稀疏）、FP32 67 TFLOPS、显存带宽 3.35 TB/s，查阅日期 2026-09-03。
 - [NVIDIA H200 产品页](https://www.nvidia.com/en-us/data-center/h200/)：141 GB HBM3e、4.8 TB/s、BF16 Tensor Core 1,979 TFLOPS，查阅日期 2026-09-03。
 - [NVIDIA HGX B200 产品页](https://www.nvidia.com/en-us/data-center/hgx/)：HGX B200 平台 BF16 Tensor Core 36 PFLOPS（含稀疏；dense 为一半，约 18 PFLOPS）/ FP32 600 TFLOPS / 1.4 TB 总显存，查阅日期 2026-09-03。
-- [Nemotron 3 Super, arXiv:2604.12374](https://arxiv.org/abs/2604.12374)：120B（active 12B）hybrid Mamba-Attention MoE，首个 NVFP4 全程预训练 25T token 的生产级模型，查阅日期 2026-09-03。
+- [Nemotron 3 Super, arXiv:2604.12374](https://arxiv.org/abs/2604.12374)：120B（active 12B）hybrid Mamba-Attention MoE，Nemotron 3 家族中首个以 NVFP4 预训练、首个采用 LatentMoE 的模型，预训练 25T token，查阅日期 2026-09-22。
 - [FP8-LM, arXiv:2310.18313](https://arxiv.org/abs/2310.18313)：Microsoft 提出的 FP8 大模型训练框架，查阅日期 2026-09-03。
 - [FP8 Formats for Deep Learning, arXiv:2209.05433](https://arxiv.org/abs/2209.05433)：Micikevicius et al. 2022 NVIDIA FP8 E4M3/E5M2 格式规范，查阅日期 2026-09-03。
 - [Mixed Precision Training, arXiv:1710.03740](https://arxiv.org/abs/1710.03740)：Micikevicius et al. 2017（ICLR 2018）半精度训练策略，查阅日期 2026-09-22。
@@ -1458,6 +1542,15 @@ class CruncherCheckpointed(nn.Module):
 
 ### 本节事实声明的来源指向
 
-- $F_{\text{total}} \approx 6 \times N_{\text{param}} \times N_{\text{token}}$ 公式最早出处：[Kaplan et al. 2020, *Scaling Laws for Neural Language Models*, arXiv:2001.08361](https://arxiv.org/abs/2001.08361) §2.1 "Parameter and Compute Scaling of Transformers" 一段写 "Accounting for the backwards pass (approximately twice the compute as the forwards pass), we then define the estimated non-embedding compute as $C \approx 6N$ floating point operators per training token"，并把总训练 compute 写成 $C_{\min} \equiv 6 N B_{\text{crit}} S$（ $N$ 非 embedding 参数量、 $B$ batch size、 $S$ step 数， $BS$ 即总 token 数 $N_{\text{token}}$）；§2.4.3 的 $6 \times N_{\text{param}} \times N_{\text{token}}$ 公式以此为最早出处，查阅日期 2026-09-14。
+- $F_{\text{total}} \approx 6 \times N_{\text{param}} \times N_{\text{token}}$ 公式最早出处：[Kaplan et al. 2020, *Scaling Laws for Neural Language Models*, arXiv:2001.08361](https://arxiv.org/abs/2001.08361) §2.1 "Parameter and Compute Scaling of Transformers" 一段写 "Accounting for the backwards pass (approximately twice the compute as the forwards pass), we then define the estimated non-embedding compute as $C \approx 6N$ floating point operators per training token"，总训练 compute 写成 $C \approx 6NBS$（ $N$ 非 embedding 参数量、 $B$ batch size、 $S$ step 数， $BS$ 即总 token 数 $N_{\text{token}}$； $C_{\min}$ 与 $B_{\text{crit}}$ 是该文 §1.3 另行定义的「达到给定 loss 所需最小 compute」与「critical batch size」符号）；§2.4.3 的 $6 \times N_{\text{param}} \times N_{\text{token}}$ 公式以此为最早出处，查阅日期 2026-09-22。
 - Chinchilla 沿用同一口径：[Hoffmann et al. 2022 (Chinchilla), *Training Compute-Optimal Large Language Models*, arXiv:2203.15556](https://arxiv.org/abs/2203.15556) §3.3 "Approach 3: Fitting a parametric loss function" 下 "Efficient frontier" 一段直接写 "minimizing the parametric loss $\hat{L}$ under the constraint $\mathrm{FLOPs}(N,D) \approx 6ND$ ([Kaplan et al., 2020](https://arxiv.org/abs/2001.08361))"，与 Kaplan 2020 的 $6NBS$ 口径一致（ $D = BS = N_{\text{token}}$），查阅日期 2026-09-22。
 - 反向 FLOPs 链式法则展开记号：[Austin et al., *How to Scale Your Model*, "All the Transformer Math You Need to Know"](https://jax-ml.github.io/scaling-book/transformers)：Jacob Austin, Sholto Douglas, Roy Frostig, Anselm Levskaya, Charlie Chen, Sharad Vikram, Federico Lebron, Peter Choy, Vinay Ramasesh, Albert Webson, Reiner Pope（Reiner Pope 现已离开 Google DeepMind 加入 MatX），Google DeepMind，2025-02-04 发布；页内 "Forward and reverse FLOPs" 一节把每层训练 FLOPs 写成前向 $2NPM$ + 反向 $4NPM = 6NPM$（ $N$ batch 维度、 $P$ 输入维度、 $M$ 输出维度），其中反向拆为 $dL/dB$ 的 $2NPM$ 与 $dL/dA$ 的 $2NPM$，§2.4.3 按层链式法则展开采用的记号即来自该页，查阅日期 2026-09-14。
+
+## 待核证清单
+
+本章以下断言在仅有 WebFetch（无 WebSearch）的会话中无法用一手源定案，正文维持原表述，留待后续复核核销。
+
+- `chapter2_pytorch与资源核算.md:L60` — 「config.json vocab_size=128256 等字段字面值」——原因：HF gated 页面 fetch 返回 401；
+  已试：`https://huggingface.co/meta-llama/Meta-Llama-3-70B/blob/main/config.json`、
+  `https://huggingface.co/meta-llama/Meta-Llama-3-70B/raw/main/config.json`。
+- `chapter2_pytorch与资源核算.md:L711` — 「1×10^26 行政命令已于 2025 年被撤销」——原因：笔记未附一手 URL；已试：无 URL。
