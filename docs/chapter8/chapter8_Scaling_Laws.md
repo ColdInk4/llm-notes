@@ -494,7 +494,7 @@ $$
 
 右图扫 seed token count $D$ 。这里的 `seed` 指起始数据集，和 random seed 无关； $D$ 是这批起始 unique tokens 的规模。三条曲线都随 $D$ 增大而下降，说明更多 unique tokens 仍然最直接地降低 loss。
 
-论文 Figure 3 把这件事单独画出来：一批模型在 100M unique tokens 上只训练一个 epoch，图里同时给出实测 loss、data-constrained scaling law 的预测和 Chinchilla 的预测。
+论文 Figure 11 把这件事单独画出来：一批模型在 100M unique tokens 上只训练一个 epoch，图里同时给出实测 loss、data-constrained scaling law 的预测和 Chinchilla 的预测。
 
 实测曲线在参数量超过某个位置后开始回升，data-constrained 公式预测 loss 会走平，Chinchilla 公式则预测 loss 继续改善。
 
@@ -702,9 +702,13 @@ Data parallelism 扩到更多 GPU 时，global batch 通常要跟着变大，否
 
 *图 8.3-19 Critical batch size regimes*
 
-图 8.3-19 把 batch size 和"达到 target loss 所需的 steps / samples"放在同一张图里：横轴是 batch size（对数），纵轴分别画 total samples / steps 与 batch 的关系。
+图 8.3-19 左侧在 loss 等高线上对比两种 batch：从同一点出发，smaller batch 的更新方向被梯度噪声推离等高线下降方向（红箭头落到更差的 ✗），larger batch 的方向更接近指向 loss 更低的内圈（蓝箭头）。
 
-读图时按 batch 增长方向看：左侧进入 noise-limited regime，batch 翻倍 steps 接近减半，总 samples 几乎不变；右侧进入 bias-limited regime，steps 下降变慢，总 samples 开始上升。两条 regime 的过渡位置就是 critical batch size。
+图 8.3-19 右侧画 Predicted Training Speed：纵轴 $\epsilon_{\mathrm{opt}}(B)/\epsilon_{\max}$ 是 batch $B$ 能换到的理论训练效率占效率上限的比例，
+横轴是 batch size 与 noise scale 的比值 $B/\mathcal{B}$（ $\mathcal{B}$ 即下文的 noise scale），对数坐标，虚线落在 $B/\mathcal{B} = 1$。
+
+读右图时按 $B/\mathcal{B}$ 从左往右看：虚线左侧是 noise-limited 的 Perfect scaling 区，batch 翻倍、达到同一 loss 的 steps 接近减半，总 samples 几乎不变；
+右侧进入 bias-limited 的 Ineffective scaling 区，steps 下降变慢，总 samples 开始上升。两区的过渡位置 $B/\mathcal{B} \approx 1$ 就是 critical batch size。
 
 Noise-limited regime 里，batch 还小，mini-batch gradient 的随机噪声很明显。增加 batch 会平均掉一部分噪声，让每一步方向更可靠。这个区间里，batch 翻倍常常能让达到同一 loss 所需的 steps 接近减半，所以总 tokens 不会明显增加。
 
@@ -1144,6 +1148,8 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 | Mistral 7B | 官方未披露训练 token 数；UCStrategies 估约 8T（80% 多语种 web + 20% code） |
 | Llama 3 70B | 约 215（约 15T 语料 / 70B） |
 
+图 8.4-13 给 Mistral 7B 标注 110 tokens/parameter，约合 0.8T token，与 UCStrategies 的 8T 估计相差约一个数量级；Mistral AI 从未公布训练 token 数，这两个数字都是估计值。
+
 一个简单账本是：训练只付一次，但推理会在模型生命周期里反复付费。
 
 若两个模型 pretraining loss 接近，较小模型通常更容易部署，KV cache 更小，单 token latency 和服务成本也更低。因此生产系统常愿意用更多训练 tokens 换一个更小、更便宜的 serving 模型。
@@ -1271,6 +1277,7 @@ MiniCPM 的第一步是用 muP 改参数化，让 learning rate 更容易跨规�
 
 > [!NOTE]
 > MiniCPM paper（[arXiv:2404.06395](https://arxiv.org/abs/2404.06395) Appendix A.1）给出一组具体 muP 超参数：`Scale_emb = 12`、`Scale_depth = 1.4`、`init_std = 0.1`、`base learning rate = 0.01`。
+>
 > CerebrasGPT（[arXiv:2304.03208](https://arxiv.org/abs/2304.03208) §2.4 与 Table 3）的 µP 对照组只覆盖 111M / 256M / 590M / 1.3B / 2.7B 五档，没有 6.7B / 13B 的 µP 模型；6.7B / 13B 只出现在 SP 组里。
 > 论文 §3.3 报告 µP 模型在 Pile test loss 上平均比 SP 模型低约 0.43%，相对 SP scaling law 的残差标准差约 0.04%，SP 模型约 0.66%（相差约 16×），跨宽度 loss 稳定性验证在 111M–2.7B 之间完成。
 > 具体微调（如 `d_base` 的取值）随模型族不同。
@@ -1599,11 +1606,12 @@ Architecture scaling 特别容易被实现质量影响：kernel 是否优化、s
 
 *图 8.6-26 近期 scaling-law 训练设置汇总*
 
-图 8.6-26 把 §8.6.3 这一组公开报告的核心决策变量和原始论文图集中放在一张表/矩阵里，方便横向比较。
+图 8.6-26 把 §8.6.3 这一组公开报告的 scaling recipe 汇成一页分组清单，方便横向比较。
 
-图 8.6-26 汇总不同报告公开的决策变量：DeepSeek 展示 batch / LR 与 IsoFLOP；MiniCPM 展示 muP、WSD 和 joint fit；Qwen 只简述超参数 scaling；
+图 8.6-26 按 recipe 列出各报告公开的决策变量：DeepSeek 展示 batch / LR 与 IsoFLOP；MiniCPM 展示 muP、WSD 和 joint fit；Qwen 只简述超参数 scaling；Kimi K2 标 MoE scaling；Llama 3 与 Hunyuan 只标 isoflops；
+MiniMax 标 architecture choice。
 
-Kimi K2、Hunyuan、Llama 3 和 MiniMax 分别公开 MoE sparsity、active-parameter IsoFLOP、downstream 外推和 architecture comparison。
+Kimi K2、Hunyuan、Llama 3 和 MiniMax 在 §8.6.3 对应图里给出更细的决策变量：MoE sparsity、active-parameter IsoFLOP、downstream 外推和 architecture comparison。
 
 公开点越完整，越容易复核具体超参数；只有结论或少量曲线时，主要能复用的是实验设计。
 
@@ -1737,6 +1745,7 @@ Muon 在大模型上的稳定性补丁是 MuonClip，由 Kimi K2 引入：在 at
 > 公开大规模训练中，Kimi K2（[arXiv:2507.20534](https://arxiv.org/abs/2507.20534) §2.1）是 MuonClip 与 Muon 在 1T total / 32B activated MoE 上 15.5T token 稳定预训练的代表案例；
 > 同一团队后续公开的 Kimi Linear（[arXiv:2510.26692](https://arxiv.org/abs/2510.26692)，2025-10-30，Kimi Team）把 KDA（Kimi Delta Attention，linear attention 变体）与 MLA 按 layerwise 混合。
 > 模型为 3B activated / 48B total。
+>
 > 两份公开报告的模型大小、token 数、sparsity、attention 比例、optimizer 与训练设置都不同，把其中一份的训练结论搬到另一份之前，要先对齐两者的实验设置。
 
 ### 8.6.5 Cerebras-GPT：muP 的公开验证案例
@@ -1939,6 +1948,7 @@ Init.Var. 一行：hidden 与 input weights / biases 都是 $1/\mathrm{fan\text{
 > **Scaling law 方法论的边界**：
 > - **Scaling law 是 recipe-dependent lower bound**——scaling law 只对固定训练配置 + 单一数据来源有效；改换 optimizer、warmup、batch schedule 或数据混合会得到另一条 lower bound，不能跨曲线插值。
 >   同一条 curve 上的预测回答的是“沿用这一套 recipe 继续放大能拿到什么”，换 recipe 后预测会移到另一条 curve 上。
+>
 > - **多项式 vs 指数在小窗口难分辨**——只在 1 个数量级以内的 compute 区间观察，外推到 5 个数量级会得到与函数形式无关的伪线性结论；区分幂律与指数趋势通常需要至少 1.5–2 个数量级的 compute 跨度。
 > - **跨实验设置 transfer 时要核训练口径**——把别处报告的 slope / intercept 直接套到自己的训练上，前提是 optimizer、batch、warmup、数据混合都对齐；否则就是 "我用别人报告的 recipe 直接外推到自己的实验设置" 的拟似预测，曲线看起来科学，背后仍是经验拟合。
 
@@ -1964,8 +1974,11 @@ Init.Var. 一行：hidden 与 input weights / biases 都是 $1/\mathrm{fan\text{
 
 - [Kaplan et al., Scaling Laws for Neural Language Models, arXiv:2001.08361](https://arxiv.org/abs/2001.08361)
 - [Hoffmann et al., Training Compute-Optimal Large Language Models (Chinchilla), arXiv:2203.15556](https://arxiv.org/abs/2203.15556)
-- [Muennighoff et al., Scaling Data-Constrained Language Models, arXiv:2305.16264](https://arxiv.org/abs/2305.16264) — §8.3.3 effective data 公式 + Figure 1 右图 8.67B / 6.34B IsoFLOP 星点 + Figure 3 100M unique tokens IsoLoss contours + Figure 4 三档 IsoFLOP 预算 + Appendix F "Do Excess Parameters Hurt, Plateau or Help?" 与 muP 对照主源
-- [Goyal et al., Scaling Laws for Data Filtering — Data Curation cannot be Compute Agnostic, arXiv:2404.07177](https://arxiv.org/abs/2404.07177) — §8.3.3 data selection 与 quality-quantity tradeoff（图 8.3-10）主源
+- [Muennighoff et al., Scaling Data-Constrained Language Models, arXiv:2305.16264](https://arxiv.org/abs/2305.16264)
+  — §8.3.3 effective data 公式 + Figure 1 右图 8.67B / 6.34B IsoFLOP 星点 + Figure 3 100M unique tokens IsoLoss contours +
+  Figure 4 三档 IsoFLOP 预算 + Appendix F "Do Excess Parameters Hurt, Plateau or Help?"（Figure 11：100M 单 epoch 实测与预测）与 muP 对照主源
+- [Goyal et al., Scaling Laws for Data Filtering — Data Curation cannot be Compute Agnostic, arXiv:2404.07177](https://arxiv.org/abs/2404.07177)
+  — §8.3.3 data selection 与 quality-quantity tradeoff（图 8.3-10）主源
 - [Yang et al., Tensor Programs V: Tuning Large Neural Networks via Zero-Shot Hyperparameter Transfer, arXiv:2203.03466](https://arxiv.org/abs/2203.03466)
 - [MiniCPM Technical Report, arXiv:2404.06395](https://arxiv.org/abs/2404.06395)
 - [DeepSeek LLM, arXiv:2401.02954](https://arxiv.org/abs/2401.02954)
@@ -1979,34 +1992,78 @@ Init.Var. 一行：hidden 与 input weights / biases 都是 $1/\mathrm{fan\text{
 
 ### 官方来源
 
-早期 learning-curve 与 data-scaling 论文：[Banko & Brill 2001](https://aclanthology.org/P01-1005/)；[Kolachina et al. 2012](https://aclanthology.org/P12-1003/)；[Hestness et al. 2017](https://arxiv.org/abs/1712.00409)。
+早期 learning-curve 与 data-scaling 论文：[Banko & Brill 2001](https://aclanthology.org/P01-1005/)；[Kolachina et al. 2012](https://aclanthology.org/P12-1003/)；
+[Hestness et al. 2017](https://arxiv.org/abs/1712.00409)。
 
-论文与技术报告：[Kaplan et al. 2020](https://arxiv.org/abs/2001.08361)；[Chinchilla / Hoffmann et al. 2022](https://arxiv.org/abs/2203.15556)；[Muennighoff et al., Scaling Data-Constrained Language Models, arXiv:2305.16264](https://arxiv.org/abs/2305.16264)；[Goyal et al., Scaling Laws for Data Filtering, arXiv:2404.07177](https://arxiv.org/abs/2404.07177)；[Likelihood-Based Diffusion Language Models / Gulrajani & Hashimoto 2023, arXiv:2305.18619](https://arxiv.org/abs/2305.18619)；[Besiroglu et al., arXiv:2404.10102](https://arxiv.org/abs/2404.10102)；[MiniCPM Technical Report, arXiv:2404.06395](https://arxiv.org/abs/2404.06395)；[Gadre et al., arXiv:2403.08540](https://arxiv.org/abs/2403.08540)；[DeepSeek LLM, arXiv:2401.02954](https://arxiv.org/abs/2401.02954)；[DeepSeek-V3, arXiv:2412.19437](https://arxiv.org/abs/2412.19437)；[Cerebras-GPT, arXiv:2304.03208](https://arxiv.org/abs/2304.03208)；[Tensor Programs V / Yang et al., arXiv:2203.03466](https://arxiv.org/abs/2203.03466)；[A Spectral Condition for Feature Learning, arXiv:2310.17813](https://arxiv.org/abs/2310.17813)；[Hunyuan-Large, arXiv:2411.02265](https://arxiv.org/abs/2411.02265)；[MiniMax-01, arXiv:2501.08313](https://arxiv.org/abs/2501.08313)；[Kimi K2, arXiv:2507.20534](https://arxiv.org/abs/2507.20534)；[Kimi Linear, arXiv:2510.26692](https://arxiv.org/abs/2510.26692)；[Towards Robust Scaling Laws for Optimizers / Volkova et al., arXiv:2602.07712](https://arxiv.org/abs/2602.07712)；[Predictable Scale: Part I — Step Law / Li et al. StepFun, arXiv:2503.04715](https://arxiv.org/abs/2503.04715)；[Llama 3 Herd of Models / Grattafiori et al. 2024, arXiv:2407.21783](https://arxiv.org/abs/2407.21783)；[Qwen3 Technical Report, arXiv:2505.09388](https://arxiv.org/abs/2505.09388)；[OLMo 3, arXiv:2512.13961](https://arxiv.org/abs/2512.13961)；[Mamba-2, arXiv:2405.21060](https://arxiv.org/abs/2405.21060)；[Gated DeltaNet, arXiv:2412.06464](https://arxiv.org/abs/2412.06464)。
+论文与技术报告：[Kaplan et al. 2020](https://arxiv.org/abs/2001.08361)；[Chinchilla / Hoffmann et al. 2022](https://arxiv.org/abs/2203.15556)；
+[Muennighoff et al., Scaling Data-Constrained Language Models, arXiv:2305.16264](https://arxiv.org/abs/2305.16264)；
+[Goyal et al., Scaling Laws for Data Filtering, arXiv:2404.07177](https://arxiv.org/abs/2404.07177)；
+[Likelihood-Based Diffusion Language Models / Gulrajani & Hashimoto 2023, arXiv:2305.18619](https://arxiv.org/abs/2305.18619)；
+[Besiroglu et al., arXiv:2404.10102](https://arxiv.org/abs/2404.10102)；[MiniCPM Technical Report, arXiv:2404.06395](https://arxiv.org/abs/2404.06395)；
+[Gadre et al., arXiv:2403.08540](https://arxiv.org/abs/2403.08540)；[DeepSeek LLM, arXiv:2401.02954](https://arxiv.org/abs/2401.02954)；
+[DeepSeek-V3, arXiv:2412.19437](https://arxiv.org/abs/2412.19437)；[Cerebras-GPT, arXiv:2304.03208](https://arxiv.org/abs/2304.03208)；
+[Tensor Programs V / Yang et al., arXiv:2203.03466](https://arxiv.org/abs/2203.03466)；
+[A Spectral Condition for Feature Learning, arXiv:2310.17813](https://arxiv.org/abs/2310.17813)；[Hunyuan-Large, arXiv:2411.02265](https://arxiv.org/abs/2411.02265)；
+[MiniMax-01, arXiv:2501.08313](https://arxiv.org/abs/2501.08313)；[Kimi K2, arXiv:2507.20534](https://arxiv.org/abs/2507.20534)；
+[Kimi Linear, arXiv:2510.26692](https://arxiv.org/abs/2510.26692)；
+[Towards Robust Scaling Laws for Optimizers / Volkova et al., arXiv:2602.07712](https://arxiv.org/abs/2602.07712)；
+[Predictable Scale: Part I — Step Law / Li et al. StepFun, arXiv:2503.04715](https://arxiv.org/abs/2503.04715)；
+[Llama 3 Herd of Models / Grattafiori et al. 2024, arXiv:2407.21783](https://arxiv.org/abs/2407.21783)；
+[Qwen3 Technical Report, arXiv:2505.09388](https://arxiv.org/abs/2505.09388)；[OLMo 3, arXiv:2512.13961](https://arxiv.org/abs/2512.13961)；
+[Mamba-2, arXiv:2405.21060](https://arxiv.org/abs/2405.21060)；[Gated DeltaNet, arXiv:2412.06464](https://arxiv.org/abs/2412.06464)。
 
-模型与平台发布：[DeepSeek-V3.2-Exp（DeepSeek Sparse Attention，2025-09-29）](https://api-docs.deepseek.com/news/news250929)；[OLMo 3 模型卡](https://huggingface.co/allenai/OLMo-3-7B-Think)；[NVIDIA Nemotron 3 发布公告（2025-12-15 起）](https://nvidianews.nvidia.com/news/nvidia-debuts-nemotron-3-family-of-open-models)；[NVIDIA Inside Nemotron 3 技术博客](https://developer.nvidia.com/blog/inside-nvidia-nemotron-3-techniques-tools-and-data-that-make-it-efficient-and-accurate/)。
+模型与平台发布：[DeepSeek-V3.2-Exp（DeepSeek Sparse Attention，2025-09-29）](https://api-docs.deepseek.com/news/news250929)；
+[OLMo 3 模型卡](https://huggingface.co/allenai/OLMo-3-7B-Think)；
+[NVIDIA Nemotron 3 发布公告（2025-12-15 起）](https://nvidianews.nvidia.com/news/nvidia-debuts-nemotron-3-family-of-open-models)；
+[NVIDIA Inside Nemotron 3 技术博客](https://developer.nvidia.com/blog/inside-nvidia-nemotron-3-techniques-tools-and-data-that-make-it-efficient-and-accurate/)。
 
-官方实践指南：[Cerebras / EleutherAI `The Practitioner's Guide to the Maximal Update Parameterization`](https://www.cerebras.ai/blog/the-practitioners-guide-to-the-maximal-update-parameterization)。
+官方实践指南：[Cerebras / EleutherAI `The Practitioner's Guide to the Maximal Update 
+Parameterization`](https://www.cerebras.ai/blog/the-practitioners-guide-to-the-maximal-update-parameterization)。
 
-Muon 相关（2026-09-05 复核）：Keller Jordan, [`Muon: An optimizer for hidden layers in neural networks`](https://kellerjordan.github.io/posts/muon/)（2024-12，算法原始出处，社区笔记）；[Bernstein & Newhouse, *Modular Duality in Deep Learning*, arXiv:2410.21265](https://arxiv.org/abs/2410.21265)；[Open Athena / Marin Delphi 博客 *Scaling Laws That Extrapolate 300× Past the Fit*](https://openathena.ai/blog/delphi)。
+Muon 相关（2026-09-05 复核）：Keller Jordan, [`Muon: An optimizer for hidden layers in neural networks`](https://kellerjordan.github.io/posts/muon/)（2024-12，算法原始出处，社区笔记）；
+[Bernstein & Newhouse, *Modular Duality in Deep Learning*, arXiv:2410.21265](https://arxiv.org/abs/2410.21265)；
+[Open Athena / Marin Delphi 博客 *Scaling Laws That Extrapolate 300× Past the Fit*](https://openathena.ai/blog/delphi)。
 
 ### 本节事实声明的来源指向
 
-- §8.4.2 Kaplan 拟合 $N_{\mathrm{opt}} \propto C_{\min}^{0.73}$ 、 $D_{\mathrm{opt}} \propto C_{\min}^{0.27}$ 见 [Kaplan et al. 2020 §6.1 + 附录 Table 6](https://arxiv.org/abs/2001.08361)。
-- §8.3.3 effective data 公式与 Figure 1 右图 8.67B / 6.34B IsoFLOP 星点、Figure 3 100M unique tokens IsoLoss contours、Figure 4 三档 IsoFLOP 预算（ $9.3 \times 10^{20}$、 $2.1 \times 10^{21}$、 $9.3 \times 10^{21}$）及 Appendix F "Do Excess Parameters Hurt, Plateau or Help?" 见 [Muennighoff et al., arXiv:2305.16264](https://arxiv.org/abs/2305.16264)。
+- §8.4.2 Kaplan 拟合 $N_{\mathrm{opt}} \propto C_{\min}^{0.73}$ 、 $D_{\mathrm{opt}} \propto C_{\min}^{0.27}$ 见 [Kaplan et al. 2020 §6.1 + 附录 Table 
+  6](https://arxiv.org/abs/2001.08361)。
+- §8.3.3 effective data 公式与 Figure 1 右图 8.67B / 6.34B IsoFLOP 星点、Figure 3 100M unique tokens IsoLoss contours、Figure 4 三档 IsoFLOP 预算（
+  $9.3 \times 10^{20}$、 $2.1 \times 10^{21}$、 $9.3 \times 10^{21}$）
+  及 Appendix F "Do Excess Parameters Hurt, Plateau or Help?"（Figure 11：100M 单 epoch 实测与预测）
+  见 [Muennighoff et al., arXiv:2305.16264](https://arxiv.org/abs/2305.16264)。
 - §8.3.3 data selection 与 quality-quantity tradeoff（图 8.3-10 DataComp A–F bucket 实验）见 [Goyal et al., arXiv:2404.07177](https://arxiv.org/abs/2404.07177)。
 - §8.4.2 内部 Method 3 underfit 复核（数据 forensics 重拟合）见 [Besiroglu et al., arXiv:2404.10102](https://arxiv.org/abs/2404.10102)。
-- §8.4.3 tokens-per-parameter 表（GPT-3 ≈ 2、Chinchilla ≈ 20、LLaMA 65B ≈ 22、Llama 2 70B ≈ 29、Mistral 7B 官方未披露、Llama 3 70B ≈ 215）来源：CS336 2026 Lecture 9 slide "Important note – train-optimal is likely not what you want"（抽文 `lecture_09.txt` L502–L512）。Mistral 7B 训练 token 数官方未公开；论文 [arXiv:2310.06825](https://arxiv.org/abs/2310.06825) PDF 全文 abstract 与正文均未披露训练 token 数（仅描述模型架构与 fine-tuning），Mistral AI 公告 [blog](https://mistral.ai/news/announcing-mistral-7b/) 全文亦未提及训练 token 数（2023-09-27 发布当日 archive 快照与现行页一致）；[UCStrategies Mistral 7B guide](https://ucstrategies.com/news/mistral-7b-guide-specs-benchmarks-edge-ai-deployment-2026/) 估约 8T，原文 "8 trillion tokens (80% multilingual web text, 20% code)"（2026-09-23 查阅）；笔记采用「官方未披露 + 二手估计明确归因」口径，不强行给定单一数字。
-- §8.6.1 MiniCPM muP 超参数（`Scale_emb = 12`、`Scale_depth = 1.4`、`init_std = 0.1`、`base LR = 0.01`）见 [MiniCPM paper Appendix A.1, arXiv:2404.06395](https://arxiv.org/abs/2404.06395)；CerebrasGPT µP 对照实验覆盖范围（111M / 256M / 590M / 1.3B / 2.7B）与 §3.3 Pile test loss 数值（µP 比 SP 平均低约 0.43%、µP 残差标准差 ≈ 0.04% vs SP ≈ 0.66%）见 [Cerebras-GPT §2.4 / Table 3 / §3.3, arXiv:2304.03208](https://arxiv.org/abs/2304.03208)。
-- §8.6.1 MiniCPM $D_{\mathrm{opt}}/N_{\mathrm{opt}} \approx 192$ 与 Llama 2 反推 70–100 见 MiniCPM 论文 §4.5 "Measuring the Scaling Law with WSD LRS"（同 [arXiv:2404.06395](https://arxiv.org/abs/2404.06395)）。
-- §8.6.2 DeepSeek LLM multi-step schedule（warmup 2000 steps、peak 段、80% 降到 31.6%、90% 降到 10%）见 [DeepSeek LLM §2.3 Figure 1, arXiv:2401.02954](https://arxiv.org/abs/2401.02954)；DeepSeek-V3 多段 schedule（10T tokens cosine + 500B final 段切换到 $7.3\times10^{-6}$）见 [DeepSeek-V3 §4.2, arXiv:2412.19437](https://arxiv.org/abs/2412.19437)。
+- §8.4.3 tokens-per-parameter 表（GPT-3 ≈ 2、Chinchilla ≈ 20、LLaMA 65B ≈ 22、Llama 2 70B ≈ 29、Mistral 7B 官方未披露、Llama 3 70B ≈ 215）按「训练 tokens ÷ 参数量」由 [GPT-3, 
+  arXiv:2005.14165](https://arxiv.org/abs/2005.14165)、[Chinchilla, arXiv:2203.15556](https://arxiv.org/abs/2203.15556)、[LLaMA, 
+  arXiv:2302.13971](https://arxiv.org/abs/2302.13971)、[Llama 2, arXiv:2307.09288](https://arxiv.org/abs/2307.09288)、[Llama 3 Herd, 
+  arXiv:2407.21783](https://arxiv.org/abs/2407.21783) 各论文官方披露的训练 token 数直接算出；Mistral 7B 训练 token 数官方未公开；
+  论文 [arXiv:2310.06825](https://arxiv.org/abs/2310.06825) PDF 全文 abstract 与正文均未披露训练 token 数（仅描述模型架构与 fine-tuning），
+  Mistral AI 公告 [blog](https://mistral.ai/news/announcing-mistral-7b/) 全文亦未提及训练 token 数（2023-09-27 发布当日 archive 快照与现行页一致）；
+  [UCStrategies Mistral 7B guide](https://ucstrategies.com/news/mistral-7b-guide-specs-benchmarks-edge-ai-deployment-2026/) 估约 8T，
+  原文 "8 trillion tokens (80% multilingual web text, 20% code)"（2026-09-23 查阅）；笔记采用「官方未披露 + 二手估计明确归因」口径，不强行给定单一数字。
+- §8.6.1 MiniCPM muP 超参数（`Scale_emb = 12`、`Scale_depth = 1.4`、`init_std = 0.1`、`base LR = 0.01`）见 [MiniCPM paper Appendix A.1, 
+  arXiv:2404.06395](https://arxiv.org/abs/2404.06395)；
+  CerebrasGPT µP 对照实验覆盖范围（111M / 256M / 590M / 1.3B / 2.7B）与 §3.3 Pile test loss 数值（µP 比 SP 平均低约 0.43%、µP 残差标准差 ≈ 0.04% vs SP ≈ 0.66%）见 [Cerebras-GPT §2.4 / Table 3 / 
+  §3.3, arXiv:2304.03208](https://arxiv.org/abs/2304.03208)。
+- §8.6.1 MiniCPM $D_{\mathrm{opt}}/N_{\mathrm{opt}} \approx 192$ 与 Llama 2 反推 70–100 见 MiniCPM 论文 §4.5 "Measuring the Scaling Law with WSD LRS"（同 
+  [arXiv:2404.06395](https://arxiv.org/abs/2404.06395)）。
+- §8.6.2 DeepSeek LLM multi-step schedule（warmup 2000 steps、peak 段、80% 降到 31.6%、90% 降到 10%）见 [DeepSeek LLM §2.3 Figure 1, 
+  arXiv:2401.02954](https://arxiv.org/abs/2401.02954)；
+  DeepSeek-V3 多段 schedule（10T tokens cosine + 500B final 段切换到 $7.3\times10^{-6}$）见 [DeepSeek-V3 §4.2, arXiv:2412.19437](https://arxiv.org/abs/2412.19437)。
 - §8.6.3 Kimi K2 sparsity 48（384 expert、top-8 active）见 [Kimi K2 §2.3, arXiv:2507.20534](https://arxiv.org/abs/2507.20534)。
-- §8.6.3 Hunyuan-Large active-parameter IsoFLOP（58.1B / 5.6T → 96 tokens-per-active-parameter；52B / 7T → 135 tokens-per-active-parameter）见 [Hunyuan-Large §2.3.1, arXiv:2411.02265](https://arxiv.org/abs/2411.02265)。
-- §8.6.3 Llama 3 IsoFLOP profiling 范围（6×10¹⁸ 至 10²² FLOPs、模型规模 40M–16B）与 405B 旗舰模型 15.6T tokens（≈ 38.5 tokens/parameter）见 [Llama 3 Herd of Models §1 / §3.2 / §3.2.1, arXiv:2407.21783](https://arxiv.org/abs/2407.21783)（查阅 2026-09-06）。
+- §8.6.3 Hunyuan-Large active-parameter IsoFLOP（58.1B / 5.6T → 96 tokens-per-active-parameter；52B / 7T → 135 tokens-per-active-parameter）见 [Hunyuan-Large §2.3.1, 
+  arXiv:2411.02265](https://arxiv.org/abs/2411.02265)。
+- §8.6.3 Llama 3 IsoFLOP profiling 范围（6×10¹⁸ 至 10²² FLOPs、模型规模 40M–16B）与 405B 旗舰模型 15.6T tokens（≈ 38.5 tokens/parameter）见 [Llama 3 Herd of Models §1 / §3.2 / §3.2.1, 
+  arXiv:2407.21783](https://arxiv.org/abs/2407.21783)（查阅 2026-09-06）。
 - §8.6.3 MiniMax-01 architecture scaling law 引用见 [MiniMax-01, arXiv:2501.08313](https://arxiv.org/abs/2501.08313)（2025-01-14）。
 - §8.6.4 Cautious AdamC scaling blow-up、AdamH fix 与 $\eta_0\sqrt{B/B_0}(T_0/T)^{0.3}$ LR scaling 见 [Open Athena / Marin Delphi 博客](https://openathena.ai/blog/delphi)。
-- §8.6.4 MuonClip 在 1T total / 32B activated MoE 上 15.5T token 稳定预训练见 [Kimi K2 §2.1, arXiv:2507.20534](https://arxiv.org/abs/2507.20534)；Kimi Linear（3B activated / 48B total、KDA + MLA layerwise 混合）见 [Kimi Linear, arXiv:2510.26692](https://arxiv.org/abs/2510.26692)。
-- §8.6.4 Volkova et al. 共享 power-law exponents + optimizer-specific rescaling factors（AdamW / Muon / Scion / Shampoo / SOAP）见 [Towards Robust Scaling Laws for Optimizers, arXiv:2602.07712](https://arxiv.org/abs/2602.07712)。
-- §8.6.6 Tensor Programs V Table 3 hidden / output / input weights 三类参数的 LR 与 Init.Var. 规则见 [Tensor Programs V §4 Table 3 与 §B.1 Transformer 实施, arXiv:2203.03466](https://arxiv.org/abs/2203.03466)。
+- §8.6.4 MuonClip 在 1T total / 32B activated MoE 上 15.5T token 稳定预训练见 [Kimi K2 §2.1, arXiv:2507.20534](https://arxiv.org/abs/2507.20534)；
+  Kimi Linear（3B activated / 48B total、KDA + MLA layerwise 混合）见 [Kimi Linear, arXiv:2510.26692](https://arxiv.org/abs/2510.26692)。
+- §8.6.4 Volkova et al. 共享 power-law exponents + optimizer-specific rescaling factors（AdamW / Muon / Scion / Shampoo / SOAP）见 [Towards Robust Scaling Laws for 
+  Optimizers, arXiv:2602.07712](https://arxiv.org/abs/2602.07712)。
+- §8.6.6 Tensor Programs V Table 3 hidden / output / input weights 三类参数的 LR 与 Init.Var. 规则见 [Tensor Programs V §4 Table 3 与 §B.1 Transformer 实施, 
+  arXiv:2203.03466](https://arxiv.org/abs/2203.03466)。
 - §8.7 衔接说明见 [第 9 章 §9.1 Inference Workload：为什么推理不同于训练](../chapter9/chapter9_推理系统.md)。
 
 ### 学习参考与外部链接（仅供讲义组织与可视化辅助）

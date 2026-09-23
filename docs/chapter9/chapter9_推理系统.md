@@ -6,8 +6,8 @@
 
 - 区分 `prefill` 与 `generation` 阶段的算力 / 带宽瓶颈，并解释 `TTFT`、latency、throughput 的来源。
 - 计算推理系统的 `arithmetic intensity`，判断一段推理是 `compute-bound` 还是 `memory-bound`。
-- 描述 KV cache 压缩的四种主要路径（MQA / GQA / MLA / CLA）及其显存收益与质量代价。
-- 解释 speculative sampling 的工作机制：draft model 起草、target model 验证、按接受率调整 round 长度。
+- 描述 KV cache 压缩的主要路径（GQA / MQA、MLA、CLA、local / sparse attention、quantization / pruning / distillation）及其显存收益与质量代价。
+- 解释 speculative sampling 的工作机制：draft model 起草、target model 并行验证、按接受与残差采样保持 target 分布。
 - 描述 PagedAttention、continuous batching、prefix sharing 等 serving scheduler 在显存与吞吐之间的折中。
 
 推理系统是语言模型把能力交给用户和下游系统的工程层。训练决定模型学到了什么，推理系统决定这些能力能以多高吞吐、多低延迟、多少显存和多少服务成本被释放出来。对话、代码补全、搜索、智能体调用、批量数据处理、评测和 RL rollout 都在消耗推理预算。
@@ -202,10 +202,10 @@ jax-ml scaling-book roofline 章节用 9.89 × 10¹⁴ bfloat16 FLOPs/s 表示�
 
 对矩阵乘法 $X(B \times D) \cdot W(D \times F)$，当 $D, F \gg B$ 时 arithmetic intensity 收敛到 $B$，因此 compute-bound 的条件是 $B > 295$。
 
-把这条阈值落到具体 batch 上：Llama 2 13B 单步运算量大致随 $B$ 线性增长，所以 MLP generation 在 $B > 295$ 时进入 compute-bound 区间；实际服务系统常见 batch size 远小于 295，generation 因此长期 memory-bound。
+把这条阈值落到具体 batch 上：Llama 2 13B 单步运算量大致随 $B$ 线性增长，所以 MLP generation 在 $B > 295$ 时进入 compute-bound 区间；这组参数下显存容量先把 batch 卡在 295 以下，generation 因此长期 memory-bound。
 
-但 batch 继续增大后会撞上显存容量上限：Llama 2 13B 在 BF16 下参数约 26.0 GB，单条请求 KV cache 约 0.84 GB，参数 + KV cache 总内存 = $26.0 + 0.84 \cdot B$ GB。B=64 时约 79.7 GB（仍可装下单卡 80 GB H100）；
-B=256 时约 240.8 GB（已超过 80 GB 容量）。80 GB 是显存容量上限，与 295 FLOPs/byte 的 compute-bound 判据是两条独立约束；§9.2.3 用更完整的 latency / throughput 账本说明这条 tradeoff。
+容量账本可以直接写出来：Llama 2 13B 在 BF16 下参数约 26.0 GB，单条请求 KV cache 约 0.84 GB，参数 + KV cache 总内存 = $26.0 + 0.84 \cdot B$ GB。B=64 时约 79.7 GB（仍可装下单卡 80 GB H100）；
+B=256 时约 240.8 GB（已超过 80 GB 容量，可行 batch 因此达不到 295）。80 GB 是显存容量上限，与 295 FLOPs/byte 的 compute-bound 判据是两条独立约束；§9.2.3 用更完整的 latency / throughput 账本说明这条 tradeoff。
 
 ### 9.2.1 MLP 层：batch 和 token 数能摊薄权重读取
 

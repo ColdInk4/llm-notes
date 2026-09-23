@@ -7,7 +7,7 @@
 这一章沿同一条问题主线推进：现代默认骨架里每一项选择都在解决哪个具体瓶颈；它和原始 Transformer 的差异来自何处；在什么场景下保留可调余地。
 
 本章按五块组织内容：§3.1 回顾位置编码、多头注意力、FFN、残差和归一化等基础模块；§3.2 把这些模块换成 Pre-norm + RMSNorm + no bias + SwiGLU + RoPE 等现代默认并解释各自解决的问题，其中 §3.2.5 把注意力变体按 KV cache、稀疏读取、线性时间三条线展开；§3.3 给出超参数经验区间；
-§3.4 介绍稳定性技巧。
+§3.4 介绍稳定性技巧；§3.5 按四类判断收束全章。
 
 ## 本章学习目标
 
@@ -480,7 +480,7 @@ RMSNorm 的 systems intuition 是：归一化层 FLOPs 占比很小，但 arithm
 
 Narang 等人（EMNLP 2021，[arXiv:2102.11972](https://arxiv.org/abs/2102.11972)）的消融在 Table 1 给出具体数字：同为 223M 参数、11.1T ops 的设置下，
 Vanilla Transformer（pre-norm + LayerNorm + shared biases + relative attention——这里的 Vanilla 指 Narang 复现的 T5-style 基线，并非 Vaswani 2017 原始论文中的配置）每秒 3.50 步、final loss 1.838；
-将 LayerNorm 替换为 RMSNorm 后每秒 3.68 步、final loss 1.821。两组对照除归一化方式外保持一致，因此 RMSNorm 的收益主要来自实现层的算术强度和数据移动改善，而不是表达能力本身。
+将 LayerNorm 替换为 RMSNorm 后每秒 3.68 步、final loss 1.821。两组对照除归一化方式外保持一致，全部差异来自 LayerNorm 到 RMSNorm 的定义替换：RMSNorm 只按均方根缩放、不再围绕均值重构，wall-clock 更快，损失同步改善。
 
 ![图 3.2-6 RMSNorm 实验](images/3-2-6-rmsnorm-experiment.png)
 
@@ -814,7 +814,7 @@ linear attention / Mamba-2 / Gated DeltaNet 提供线性时间推理替代。
 自回归生成一次只产生一个新 token：模型读取已有上下文，输出下一个 token 的分布，再把新 token 接到上下文后继续生成。由于 generation 阶段不能像 prefill 那样完全并行，系统会缓存历史 token 的 K/V。这样生成新 token 时只需要为新 token 计算新的 Q/K/V，并复用历史 K/V，
 这个缓存就是 KV cache。
 
-prefill 一次并行处理全部 $b \times n$ 个 token，注意力的算术强度为 $O\left(\left(\frac{1}{k} + \frac{1}{bn}\right)^{-1}\right)$： $bn$ 大时数值接近 $k$，计算可以持续压在 GPU 上。generation 一次只处理新 token，
+以 batch 大小 $b$、序列长度 $n$、单个 head 的维度 $k$、模型维度 $d$ 记账。prefill 一次并行处理全部 $b \times n$ 个 token，注意力的算术强度为 $O\left(\left(\frac{1}{k} + \frac{1}{bn}\right)^{-1}\right)$： $bn$ 大时数值接近 $k$，计算可以持续压在 GPU 上。generation 一次只处理新 token，
 注意力的算术操作计为 $bnd^2$、访存计为 $bn^2d + nd^2$，算术强度变成：
 
 $$O\left(\left(\frac{n}{d} + \frac{1}{b}\right)^{-1}\right)$$
@@ -1165,12 +1165,12 @@ $$
 
 以 PaLM 为例，它虽然是 SwiGLU 模型，但把 $d_{\text{ff}}$ 直接设为 $4d_{\text{model}}$，没有做 2/3 缩放。LLaMA-2 70B 与 Mistral-7B v0.1 落在 3.5 倍附近：
 LLaMA-2 70B 的 `hidden_size = 8192`、`intermediate_size = 28672`，Mistral-7B v0.1 的 `hidden_size = 4096`、`intermediate_size = 14336`，两者都是 $d_{\text{ff}}/d_{\text{model}} = 3.5$。
-两个模型都用 GQA（`num_key_value_heads = 8`），共享 KV 省下的预算被重新分配给 MLP，于是在 $8/3$ 的基础上再乘约 1.33。
+两个模型都用 GQA（`num_key_value_heads = 8`），该取值是 $8/3$ 的约 1.31 倍。
 
-保持 MHA 的模型仍按 $8/3$ 经验值落地。LLaMA-2 7B/13B 用 MHA（`num_key_value_heads = num_attention_heads`），FFN expansion 沿用 $8/3$ 左右而没有 GQA 下的 1.33 倍放大；
+保持 MHA 的模型仍按 $8/3$ 经验值落地。LLaMA-2 7B/13B 用 MHA（`num_key_value_heads = num_attention_heads`），FFN expansion 沿用 $8/3$ 左右，与上文两个 GQA 模型的 3.5 形成对照；
 LLaMA-1 7B 的 `hidden_size = 4096`、`intermediate_size = 11008`， $d_{\text{ff}}/d_{\text{model}} \approx 2.687$。
 
-GQA 模型则分布在 $2.66\text{–}2.86$ 区间。
+DeepSeek-LLM-67B 与 Yi-34B 两个 GQA 模型落在 $2.66\text{–}2.86$ 区间。
 DeepSeek-LLM-67B-base（[`deepseek-ai/deepseek-llm-67b-base`](https://huggingface.co/deepseek-ai/deepseek-llm-67b-base) 的 `config.json`：
 `hidden_size = 8192`、`intermediate_size = 22016`、`hidden_act: silu` 即 SwiGLU、`num_key_value_heads = 8` 即 GQA、
  $d_{\text{ff}}/d_{\text{model}} \approx 2.687$）落在这个区间。

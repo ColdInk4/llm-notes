@@ -130,7 +130,7 @@ The Pile 把 Common Crawl、arXiv、GitHub、StackExchange、邮件列表等 22 
 | Qwen3 训练语料 | 36T tokens | |
 | DeepSeek V3 训练语料 | 14.8T tokens（V3 paper abstract 与正文报告，multi-stage sampling 后） | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) |
 
-表里两处口径值得单独记住：LLaMA 1 的质量分类器正例取自 Wikipedia 页面引用指向的网页，训练语料由 CCNet 处理（[arXiv:2302.13971](https://arxiv.org/abs/2302.13971) 表 2），Books 包含 Gutenberg 与 Books3。
+表里两处口径值得单独记住：LLaMA 1 的质量分类器正例取自 Wikipedia 页面引用指向的网页，训练语料由 CCNet 处理（[arXiv:2302.13971](https://arxiv.org/abs/2302.13971) §2.1），Books 包含 Gutenberg 与 Books3。
 DCLM 的 3.8T token 过滤子集对应 HF 上的 [`mlfoundations/dclm-baseline-1.0`](https://huggingface.co/datasets/mlfoundations/dclm-baseline-1.0)，为论文公开口径。
 
 **近期模型：阶段化数据账本。**
@@ -165,7 +165,7 @@ token 数与文档数的比值同时给出平均文档长度：DCLM-Baseline 约
 
 图 10.1-3 把中期训练拆成两块：Dolmino 高质量子集合计 832.6B tokens，Dolmino 数学子集合计 10.7B tokens。相对预训练的 3.90T tokens，中期训练的总量约为其五分之一，其中数学部分不到千分之三。
 
-高质量子集里最大的一条仍是 DCLM-Baseline，但取的是 FastText 打分 top 7% 且 FineWeb 质量分高于 2 的 752B tokens 子集；
+高质量子集里最大的一条仍是 DCLM-Baseline，但取的是 FastText 打分 top 7% 且 FineWeb 质量分不低于 2 的 752B tokens 子集；
 其余是 FLAN 指令数据 17.0B、peS2o 学术论文 58.6B、Wikipedia & Wikibooks 3.7B 和 Stack Exchange 问答 1.26B。
 同一个来源在两张表里出现两次时口径不同：预训练取全量，中期训练取分数最高的一段。
 
@@ -237,7 +237,8 @@ Shadow library 在数据清单中只作为负面参照登记，不进入训练�
 
 2025 年 8 月 26 日，Anthropic 同意支付 15 亿美元（约 48.2 万部作品）达成和解，是当时美国公开记录中金额最高的版权和解；2025 年 9 月 25 日法院作出 preliminary approval。
 
-**Anthropic 版权诉讼和解（2026 年进展）。** Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官承继，案号由 3:24-cv-05417-WHA reassign 为 4:24-cv-05417-AMO（N.D. Cal. 案号的分区前缀与法官姓名首字母后缀都随承办法官变化，案件主体不变）。
+**Anthropic 版权诉讼和解（2026 年进展）。** Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官承继，案号由 3:24-cv-05417-WHA reassign 为 4:24-cv-05417-AMO。
+（N.D. Cal. 案号的分区前缀与法官姓名首字母后缀都随承办法官变化，案件主体不变。）
 2026 年 5 月 14 日后者举行 75 分钟 fairness hearing，对律师费明细、lead-plaintiff 服务费、开支分摊与未及时 opt-out 通知提出补充材料要求；
 
 2026 年 7 月 20 日 Judge Martínez-Olguín 作出 final approval，确认 <span>$</span>1.5B、482,460 部 eligible works（
@@ -458,7 +459,7 @@ Lee 等人在 [arXiv:2107.06499](https://arxiv.org/abs/2107.06499) 中使用的�
 相变阈值 $\tau = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.993$ ：在这个相似度上，单个 band 全匹配的概率恰好是 $1/b$ ，于是候选碰撞概率为 $1 - (1 - 1/b)^b \approx 1 - 1/e \approx 0.63$ 。
 相似度高于 0.993 的文档对碰撞概率迅速趋近 1，低于 0.993 的则迅速趋近 0，全量 $O(N^2)$ 精确比对由此压缩成对少量候选对的验证。
 
-进入候选集后，论文再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做一次精确过滤（论文 §4.2）：LSH 的 0.993 相变点作用在 5-gram shingle 的 Jaccard 上，负责把召回拉满；
+进入候选集后，论文再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做一次精确过滤（论文 §4.2 与附录 A）：LSH 的 0.993 相变点作用在 5-gram shingle 的 Jaccard 上，负责把召回拉满；
 0.8 的二次阈值作用在成对精算的 Jaccard 与编辑相似度上，负责精度。两道门在同一相似度轴上前后接力。
 
 ![图 10.2-5 LSH band 与相似度关系](images/10-2-5-lsh-bands-threshold.png)
@@ -487,7 +488,7 @@ Lee 等人在 [arXiv:2107.06499](https://arxiv.org/abs/2107.06499) 中使用的�
 
 | 数据集 | 公开版本 / 论文 | 规模（tokens / 文档） | 来源构成 | 去重与过滤 |
 | --- | --- | --- | --- | --- |
-| The Pile | [arXiv:2101.00027](https://arxiv.org/abs/2101.00027) | ~334B tokens；去重后 ~207B | 22 个来源：网页、书籍、代码、论文、百科等 | 全局文档级 exact-hash 去重；无质量分类器 |
+| The Pile | [arXiv:2101.00027](https://arxiv.org/abs/2101.00027) | ~334B tokens；去重后 ~207B | 22 个来源：网页、书籍、代码、论文、百科等 | 全局 MinHashLSH 近重复去重（Pythia 口径，阈值 0.87）；无质量分类器 |
 | FineWeb | [arXiv:2406.17557](https://arxiv.org/abs/2406.17557) | 15T tokens | 96 个 Common Crawl dumps 拼接 | MinHash 文档级去重（5-gram、112 哈希、14 buckets、阈值 0.75）；PII 匿名 |
 | DCLM-Baseline | [arXiv:2406.11794](https://arxiv.org/abs/2406.11794) | 3.8T tokens（fastText 过滤后）；Pool 240T tokens 未过滤 | Common Crawl 单源 | fastText 质量分类器 + hash 去重 + 启发式过滤 |
 
@@ -522,9 +523,10 @@ $$
 丰富来源分到 $0.5 \times 10^{12}$ tokens，只读了它的 5%；高质量来源同样分到 $0.5 \times 10^{12}$ tokens，却要在 $10^{10}$ tokens 上重复 50 次。
 重复 50 个 epoch 已经远超小来源的合理范围，模型容易滑向过拟合与记忆，重复采样的收益被抵消。
 
-UniMax 一类方法就是为这个问题设计的：给每个来源设一个硬 epoch 上限 $C$ ，要求 $p_s N_{\text{train}} \le C \cdot N_s$ ，在这个约束下把剩余预算尽量均匀地分给尚未触顶的来源，取代了先按 token 数比例分配再事后修补的方案。
+UniMax 一类方法就是为这个问题设计的：给每个来源设一个硬 epoch 上限 $N$ ，要求 $p_s N_{\text{train}} \le N \cdot N_s$ ，在这个约束下把剩余预算尽量均匀地分给尚未触顶的来源，取代了先按 token 数比例分配再事后修补的方案。
 
-> UniMax（[arXiv:2304.09151](https://arxiv.org/abs/2304.09151)）在多语种设置里 ablate 了 epoch 上限 $N$ ，测试值为 1、5、10；主实验和推荐设定都是 $N = 1$ ，即任何样本都不重复。上限设得越松，尾部语言被重复的次数越多，重复带来的收益也越早被过拟合抵消。
+> UniMax（[arXiv:2304.09151](https://arxiv.org/abs/2304.09151)）在多语种设置里 ablate 了 epoch 上限 $N$ ，测试值为 1、5、10；到目前为止的主实验都用默认设定 $N = 1$ ，即任何样本都不重复。
+> 上限设得越松，尾部语言被重复的次数越多；论文观察到完全不重复的 $N = 1$ 表现最好，但效应很小，并指出最优 $N$ 取决于字符预算——预算足够大时， $N = 1$ 会几乎看不到最低资源语言。
 
 ![图 10.2-7 RegMix 数据混合建模流程](images/10-2-7-regmix.png)
 
@@ -534,7 +536,7 @@ RegMix（[arXiv:2407.01492](https://arxiv.org/abs/2407.01492)）把数据混合�
 先按某个分布采一批混合比例，用每个比例训练一个小规模 proxy 模型并记录目标指标（图中示例是 Hacker News / GitHub / Philpapers 三个来源，比例 9.5% / 35.9% / 54.6% 得到 5.46，87.7% / 12.0% / 0.3% 得到 5.57，24.4% / 1.4% / 74.2% 得到 6.07）；
 再用这些 (比例, 指标) 对拟合一个回归模型，可以是线性模型也可以是树模型；然后在回归模型上枚举大量未训练过的混合比例，得到一张预测曲面；最后取曲面的最小点作为大模型的训练配比。
 
-图中这次拟合给出的最优比例是 22.8% / 67.0% / 10.2%，预测目标值 5.34，低于任何一次实际跑过的 proxy 结果。这个流程和 scaling law 很接近：都用一组便宜的小实验拟合一条曲线，再外推到没有跑过的配置上。
+图中这次拟合给出的最优比例是 22.8% / 67.0% / 10.2%，预测目标值 5.34，低于图中列出的三次 proxy 实际结果（最低 5.46）。这个流程和 scaling law 很接近：都用一组便宜的小实验拟合一条曲线，再外推到没有跑过的配置上。
 
 DoReMi（[Xie et al., 2023, *DoReMi: Optimizing Data Mixtures Speeds Up Language Model Pretraining*, arXiv:2305.10429](https://arxiv.org/abs/2305.10429)，NeurIPS 2023）用另一个角度做同一件事：
 先训练一个 280M 的 reference model，再用一个相同规模、跑 Group DRO 的 proxy model 沿训练 trajectory 动态调整 domain 权重——
@@ -741,7 +743,9 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 - OpenWebMath 表 2 MATH Algebra-Easy 对照：1.4B 模型在 14.7B OpenWebMath tokens 上 5.62%，相同 14.7B Pile/ProofPile tokens 2.81%，Pythia-1.4B 在 300B Pile tokens 上 3.93%
 - phi-1 §2.1 的 350M 模型 96K / 36K 步对照，HumanEval 12.19% → 17.68%；abstract 给出 phi-1 主模型 1.3B 参数与 phi-1-small = 350M、HumanEval 45%
 - Kandpal et al. — 重复 10 次的序列被生成的频率约为出现 1 次序列的 1000 倍
-- Lee et al. §4.2 — $n = 9000$ 个 MinHash 函数 / 5-gram 文档签名、 $b = 20$ 个 band、每 band $r = 450$ 行；
+- Pythia §2.2 / §2.4 — 标准 Pile 334B tokens（GPT-NeoX tokenizer）与 MinHashLSH 阈值 0.87 近重复去重后的约 207B tokens；
+  Pile 论文附录 D.2 说明因内存限制未做 Pile-wide 去重，仅在 OpenWebText2 与 Pile-CC 内部做 Jaccard 0.5 的 MinHashLSH
+- Lee et al. §4.2 与附录 A — $n = 9000$ 个 MinHash 函数 / 5-gram 文档签名、 $b = 20$ 个 band、每 band $r = 450$ 行；
   相变阈值 $\tau = (1/b)^{1/r} = (1/20)^{1/450} \approx 0.993$；候选对上再按 Jaccard ≥ 0.8 与编辑相似度 ≥ 0.8 做精确过滤
 - UniMax §5.3 — ablation 中 max-epoch $N \in \{1, 5, 10\}$ 的 TyDi QA 对照与 $N = 1$ 的默认设定
 - OpenThoughts §4.1 的 27 code / 21 math / 14 science 来源与 §4.4 的 1× / 4× / 16× 采样 ablation

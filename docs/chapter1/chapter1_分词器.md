@@ -89,7 +89,7 @@ $$
 
 *图 1.1-3 token 数量决定 attention 成本和上下文占用*
 
-图 1.1-3 把这条成本链画在同一条轴上：tokenizer 切分得越碎，同一段原始文本就越快耗尽上下文窗口，attention 矩阵也越大。提高压缩率可以缓解这个问题，代价是扩大词表会增加 embedding 和输出层的参数量，并让低频 token 更难被充分训练。词表规模因此成为一个需要权衡的量，下面用几个公开模型看看这个量落在什么区间。
+图 1.1-3 把这条成本链放在同一张图里：tokenizer 切分得越碎，同一段原始文本就越快耗尽上下文窗口，attention 矩阵也越大。提高压缩率可以缓解这个问题，代价是扩大词表会增加 embedding 和输出层的参数量，并让低频 token 更难被充分训练。词表规模因此成为一个需要权衡的量，下面用几个公开模型看看这个量落在什么区间。
 
 OpenAI 的 tiktoken 提供两类相近规模的编码，可以用来看清一个词表规模是怎样被算出来的。
 
@@ -114,7 +114,7 @@ DeepSeek-V3 的 `vocab_size` 为 $129{,}280$（[HF config](https://huggingface.c
 
 Qwen3-235B-A22B 的 `vocab_size` 为 $151{,}936$（[HF config](https://huggingface.co/Qwen/Qwen3-235B-A22B/blob/main/config.json)），
 Qwen3 技术报告 §2 给出的 tokenizer 基础大小是 151,669，两者相差 267 个 id 槽位。
-十万到二十万这个区间，就是当前主流模型在压缩率、词表稀疏性和跨语言覆盖之间选定的折中位置。
+OpenAI、DeepSeek、Qwen 的公开词表都落在十万到二十万量级；业界经验上，这个量级对应压缩率、词表稀疏性和跨语言覆盖之间的一处折中。
 
 Tokenizer-free 架构尝试直接在 byte 或动态 chunk 上建模，代表方向包括 ByT5、MEGABYTE、Byte Latent Transformer、T-Free 和 H-Net，目标是减少固定词表带来的碎片化和跨语言偏差。
 
@@ -227,13 +227,9 @@ $$
 \text{merge}^\ast = \arg\max_{(a, b)} \text{counts}(a, b)
 $$
 
-WordPiece 把合并准则换成"提升语料对数似然最多的子词对"：
+WordPiece 把合并准则换成"提升语料对数似然最多的子词对"：每轮从当前词表枚举所有可组合的子词对，选出加入模型后使训练语料似然提升最大的那个，似然提升低于阈值时停止；BPE 按 pair 出现次数排序，WordPiece 按整份语料在语言模型下的似然提升排序。
 
-$$
-\text{merge}^\ast = \arg\max_{(a, b)} \frac{\text{counts}(a, b)}{\text{counts}(a) \cdot \text{counts}(b)}
-$$
-
-即按互信息（PMI）排序而不是绝对频率。Unigram 从一个较大的初始 token 候选词表出发，给每个候选 token 赋概率 $P(t)$ ，把一段文本 $x$ 的所有可能分词记成候选集合 $S(x)$ ，其中每个 $s \in S(x)$ 是一串 token。对 $S(x)$ 求边缘似然，用负对数似然作为训练 loss：
+Unigram 从一个较大的初始 token 候选词表出发，给每个候选 token 赋概率 $P(t)$ ，把一段文本 $x$ 的所有可能分词记成候选集合 $S(x)$ ，其中每个 $s \in S(x)$ 是一串 token。对 $S(x)$ 求边缘似然，用负对数似然作为训练 loss：
 
 $$
 \mathcal{L} = -\log P(x) = -\log \sum_{s \in S(x)} \prod_{t \in s} P(t)
@@ -309,7 +305,8 @@ Tokenizer 是训练前固定的离散接口。它需要同时满足可逆、完�
 
 WordPiece、Unigram 和 SentencePiece 在不同模型族里同样常见；tokenizer-free 路线则尝试把固定词表替换为 byte 级或动态 chunk 建模。无论哪条路线，后续模型都需要在序列上形成合适的抽象，并把更多计算容量分配给信息密度更高的片段。
 
-token id 序列是模型接触张量之前的最后一步；进入训练侧后，令 token 数为 $T$ 、batch size 为 $B$ ，则 FLOPs 与显存可表示为 $T$ 与 $B$ 的函数，下一章 [第 2 章 PyTorch 与资源核算](../chapter2/chapter2_pytorch与资源核算.md) 把这部分账本展开。
+token id 序列是模型接触张量之前的最后一步；进入训练侧后，token 数记作 $N_{\text{token}}$ 、batch size 记作 $B$ ，
+则 FLOPs 与显存可表示为 $N_{\text{token}}$ 与 $B$ 的函数，下一章 [第 2 章 PyTorch 与资源核算](../chapter2/chapter2_pytorch与资源核算.md) 把这部分账本展开。
 
 ## 思考
 
@@ -324,7 +321,8 @@ token id 序列是模型接触张量之前的最后一步；进入训练侧后�
 - [Sennrich et al., 2016: Neural Machine Translation of Rare Words with Subword Units, arXiv:1508.07909](https://arxiv.org/abs/1508.07909)
 - [Kudo and Richardson, 2018: SentencePiece, arXiv:1808.06226](https://arxiv.org/abs/1808.06226)
 - [Wu et al., 2016: Google's Neural Machine Translation System, arXiv:1609.08144](https://arxiv.org/abs/1609.08144)
-（§4.1 采用 wordpiece 模型，把子词切分推广到大规模神经机器翻译；wordpiece 本身出自 Schuster and Nakajima, *Japanese and Korean voice search*, ICASSP 2012）
+  （§4.1 采用 wordpiece 模型，把子词切分推广到大规模神经机器翻译；wordpiece 本身出自
+  [Schuster and Nakajima, *Japanese and Korean voice search*, ICASSP 2012](https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/37842.pdf)）
 - [Kudo, 2018: Subword Regularization, arXiv:1804.10959](https://arxiv.org/abs/1804.10959)（Unigram LM）
 - [Tiktokenizer 交互式查看器](https://tiktokenizer.vercel.app/)
 - [Hugging Face Tokenizers 课程](https://huggingface.co/learn/llm-course/en/chapter6/1)
@@ -337,16 +335,24 @@ token id 序列是模型接触张量之前的最后一步；进入训练侧后�
 - [Kudo and Richardson, 2018: SentencePiece](https://arxiv.org/abs/1808.06226)
 - [Kudo, 2018 §3.2 Unigram language model](https://arxiv.org/pdf/1804.10959)
 - [Wu et al., 2016 §4.1 Wordpiece Model](https://arxiv.org/pdf/1609.08144)（其文献 [35] 为 Schuster and Nakajima, *Japanese and Korean voice search*, ICASSP 2012）
+- [Schuster and Nakajima, 2012: Japanese and Korean Voice Search (ICASSP)](https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/37842.pdf)
+  （WordPieceModel 算法原文："Choose the new word unit out of all possible ones that increases the likelihood on the training data the most"）
 - [DeepSeek-V3 技术报告 §4.1 Data Construction](https://arxiv.org/html/2412.19437v2)（"The tokenizer for DeepSeek-V3 employs Byte-level BPE with an extended vocabulary of 128K tokens."）
 - [Qwen3 技术报告 §2 Architecture](https://arxiv.org/html/2505.09388v1)（"byte-level byte-pair encoding (BBPE) with a vocabulary size of 151,669"）
-- [tiktoken `tiktoken_ext/openai_public.py`](https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py)（`o200k_base` 的 `ENDOFTEXT: 199999` 与 `ENDOFPROMPT: 200018`；`o200k_harmony` 的 `<|startoftext|>: 199998`、`<|return|>: 200002`、`<|constrain|>: 200003`、`<|channel|>: 200005`、`<|start|>: 200006`、`<|end|>: 200007`、`<|message|>: 200008`、`<|call|>: 200012`，reserved 区间填到 201087）
+- [tiktoken `tiktoken_ext/openai_public.py`](https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py)（`o200k_base` 的 `ENDOFTEXT: 199999` 与 `ENDOFPROMPT: 200018`；
+  `o200k_harmony` 的 `<|startoftext|>: 199998`、`<|return|>: 200002`、`<|constrain|>: 200003`、`<|channel|>: 200005`、
+  `<|start|>: 200006`、`<|end|>: 200007`、`<|message|>: 200008`、`<|call|>: 200012`，reserved 区间填到 201087）
 - [`o200k_base.tiktoken`](https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken)（合并表 199,998 行，末行 rank 199997）
-- [tiktoken `tiktoken/model.py`](https://github.com/openai/tiktoken/blob/main/tiktoken/model.py)（`MODEL_PREFIX_TO_ENCODING` 中 `gpt-5` / `gpt-4o-` / `o1-` / `o3-` → `o200k_base`，`gpt-oss-` → `o200k_harmony`）
+- [tiktoken `tiktoken/model.py`](https://github.com/openai/tiktoken/blob/main/tiktoken/model.py)
+  （`MODEL_PREFIX_TO_ENCODING` 中 `gpt-5` / `gpt-4o-` / `o1-` / `o3-` → `o200k_base`，`gpt-oss-` → `o200k_harmony`）
 - [OpenAI Harmony 格式说明](https://developers.openai.com/cookbook/articles/openai-harmony)（`<|start|>` 200006、`<|channel|>` 200005 等控制 token id）
 - [DeepSeek-V3 `config.json`](https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/main/config.json)（`vocab_size` 129280）
 - [Qwen3-235B-A22B `config.json`](https://huggingface.co/Qwen/Qwen3-235B-A22B/blob/main/config.json)（`vocab_size` 151936）
-- [GPT-2 `src/encoder.py`](https://github.com/openai/gpt-2/blob/master/src/encoder.py)（第 53 行 `self.pat`；`bytes_to_unicode()` 文档串 "And avoids mapping to whitespace/control characters the bpe code barfs on."）
-- [DeepSeek-R1 `tokenizer.json`](https://huggingface.co/deepseek-ai/DeepSeek-R1/blob/main/tokenizer.json)（`pre_tokenizer` 为 Sequence：Split `\p{N}{1,3}` → Split `[一-龥぀-ゟ゠-ヿ]+` → Split 字母与标点长正则 → ByteLevel；`vocab` 128,000 条、`merges` 127,741 条）
+- [GPT-2 `src/encoder.py`](https://github.com/openai/gpt-2/blob/master/src/encoder.py)
+  （第 53 行 `self.pat`；`bytes_to_unicode()` 文档串 "And avoids mapping to whitespace/control characters the bpe code barfs on."）
+- [DeepSeek-R1 `tokenizer.json`](https://huggingface.co/deepseek-ai/DeepSeek-R1/blob/main/tokenizer.json)
+  （`pre_tokenizer` 为 Sequence：Split `\p{N}{1,3}` → Split `[一-龥぀-ゟ゠-ヿ]+` → Split 字母与标点长正则 → ByteLevel；
+  `vocab` 128,000 条、`merges` 127,741 条）
 - [llama.cpp `src/llama-vocab.cpp`](https://github.com/ggml-org/llama.cpp/blob/master/src/llama-vocab.cpp)（`LLAMA_VOCAB_PRE_TYPE_DEEPSEEK3_LLM` 记录同三条正则）
 - [Hugging Face LLM Course: Tokenizers](https://huggingface.co/learn/llm-course/en/chapter6/1)
 - [Hugging Face Transformers: Tokenization algorithms](https://huggingface.co/docs/transformers/en/tokenizer_summary)
@@ -355,7 +361,18 @@ token id 序列是模型接触张量之前的最后一步；进入训练侧后�
 
 ### 本节事实声明的来源指向
 
-- 词表规模与 token id 实证段：上列 tiktoken / DeepSeek-V3 / Qwen3 一手源；`tiktoken` 0.14.0 上 `tiktoken.get_encoding("o200k_base")` 对 `"Stanford was founded in 1885."` 输出 `[93447, 9201, 673, 24303, 306, 220, 13096, 20, 13]`，`n_vocab` 为 200019，`_pat_str` 含数字分支 `\p{N}{1,3}`，完整字符串仅含数字的 token 共 1290 个（1 位 109、2 位 167、3 位 1014，其中 ASCII 子集对应 1 位 10、2 位 100、3 位 1000 共 1110 个；其他数字来自阿拉伯印度、孟加拉、全角等 Unicode 脚本）；`token_byte_values()` 返回按字节序排序的 199,998 条（`v == sorted(v)` 为真；以 0 起下标，制表符起头段自第 11 项开始、空格起头段第 1,257 至 107,785 项、三字节前导码自第 181,212 项开始、四字节前导码自第 199,933 项开始）；图 1.3-2 与图 1.5-1 的 12 个 id 用 DeepSeek-R1 `tokenizer.json` 的 `vocab` 反查 GPT-2 `bytes_to_unicode()` 映射，两图仅第 10 个 id 不同：图 1.3-2 是 `238`、对应字节 `0x8d`（emoji 🌍 的第 4 个 UTF-8 字节），图 1.5-1 是 `240`、对应字节 `0x8f`（emoji 🌏 的第 4 个 UTF-8 字节），其余 11 个 id 对应同一片段序列 `你好` / ` ，` / `hello` / `,` / ` ` / ` world` / ` !` / ` ` / ` \xf0\x9f\x8c` / ` ` / `！`。
+- 词表规模与 token id 实证段：上列 tiktoken / DeepSeek-V3 / Qwen3 一手源；`tiktoken` 0.14.0 上
+  `tiktoken.get_encoding("o200k_base")` 对 `"Stanford was founded in 1885."` 输出
+  `[93447, 9201, 673, 24303, 306, 220, 13096, 20, 13]`，`n_vocab` 为 200019，`_pat_str` 含数字分支 `\p{N}{1,3}`，
+  完整字符串仅含数字的 token 共 1290 个（1 位 109、2 位 167、3 位 1014，其中 ASCII 子集对应 1 位 10、
+  2 位 100、3 位 1000 共 1110 个；其他数字来自阿拉伯印度、孟加拉、全角等 Unicode 脚本）。
+- token byte 序实证段：`token_byte_values()` 返回按字节序排序的 199,998 条（`v == sorted(v)` 为真；
+  以 0 起下标，制表符起头段自第 11 项开始、空格起头段第 1,257 至 107,785 项、三字节前导码自第 181,212 项开始、
+  四字节前导码自第 199,933 项开始）。
+- 图 1.3-2 与图 1.5-1 的 id 反查实证段：两图各 12 个 id，用 DeepSeek-R1 `tokenizer.json` 的
+  `vocab` 反查 GPT-2 `bytes_to_unicode()` 映射，两图仅第 10 个 id 不同：图 1.3-2 是 `238`、
+  对应字节 `0x8d`（emoji 🌍 的第 4 个 UTF-8 字节），图 1.5-1 是 `240`、对应字节 `0x8f`（emoji 🌏 的第 4 个 UTF-8 字节），
+  其余 11 个 id 对应同一片段序列 `你好` / ` ，` / `hello` / `,` / ` ` / ` world` / ` !` / ` ` / ` \xf0\x9f\x8c` / ` ` / `！`。
 - BPE 训练 trace 实证段：§1.3 用课程 `lecture_01.py` 的 `train_bpe("the cat in the hat", num_merges=3)` 复现，三轮合并依次是 `(116,104)→256 th`、`(256,101)→257 the`、`(257,32)→258 the `。
 
 ## 附录：代码实验

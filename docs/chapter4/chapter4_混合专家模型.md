@@ -97,7 +97,7 @@ MoE 通过将原本的单一前馈网络（如 MLP/FFN）替换为由多个并�
 
 两栏共用同一套「选择 → 专家计算 → Add + Normalize」骨架，区别在选择规则。
 
-两类的共同账本在后面反复出现：无论按分数还是按哈希选，最终都要把 token 重排到对应 expert 的计算批次里，负载倾斜会直接变成设备等待和通信尾延迟。
+两类共享同一本计算账：无论按分数还是按哈希选，最终都要把 token 重排到对应 expert 的计算批次里，负载倾斜会直接变成设备等待和通信尾延迟。
 
 从选择方向看，路由还可以拆成三种更具体的形式：
 
@@ -1169,7 +1169,7 @@ v1/v2 用 softmax + 全局归一化，v3 先对每个 expert 独立打 sigmoid �
 
 *图 4.3-2 激活计算量相同的 MoE 消融*
 
-图 4.3-2 把每次前向的激活计算预算控制在相近水平，再改变 shared expert 与 routed expert 的粒度。多数组合中，更细的 routed experts 与少量 shared experts 能提高归一化指标；右侧问答类任务的提升尤其明显，说明 shared expert 对通用能力和 routed expert 分化有互补作用。
+图 4.3-2 把每次前向的激活计算预算控制在相同水平，再改变 shared expert 与 routed expert 的粒度。多数组合中，更细的 routed experts 与少量 shared experts 能提高归一化指标；右侧问答类任务的提升尤其明显，说明 shared expert 对通用能力和 routed expert 分化有互补作用。
 
 随着专家继续细化，收益会逐渐受通信开销、路由稳定性和每个 expert 可获得 token 数限制。
 
@@ -1221,7 +1221,7 @@ DeepSeek-V3 论文在 MoE 之外同时披露了两项独立于 MoE 的核心架�
 
     公开解法分两条：ST-MoE（Zoph et al., 2022）只 fine-tune 非 MoE 的 MLP 部分、把 routed experts 冻结（MoE 参数约占全模型 ≈80%，可训练参数随之压到约 1/5，ST-MoE §4.2）对冲数据不足；
 
-    DeepSeek 走数据侧，把 SFT 数据扩到百万量级（课程材料记为 1.4M 样本）压过拟合。大规模 MoE 后训练按这两条路线之一处理。
+    DeepSeek 走数据侧，把 SFT 数据扩到百万量级压过拟合。大规模 MoE 后训练按这两条路线之一处理。
 
 ---
 
@@ -1502,7 +1502,8 @@ MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并
 - [ST-MoE, arXiv:2202.08906](https://arxiv.org/abs/2202.08906)
 - [OLMoE, arXiv:2409.02060](https://arxiv.org/abs/2409.02060)
 - [Upcycled MoE, arXiv:2212.05055](https://arxiv.org/abs/2212.05055)
-- [DeepSeekMoE §4.4 Pile loss 数据见 DeepSeek-V3 技术报告 §4.2 / Table 1 / Table 4，arXiv:2412.19437](https://arxiv.org/abs/2412.19437)
+- [DeepSeekMoE, arXiv:2401.06066](https://arxiv.org/abs/2401.06066)（§4.4 共享 expert 消融：Pile loss 1.808 / 1.806 / 1.811、1:3 扩展比例）
+- [DeepSeek-V3, arXiv:2412.19437](https://arxiv.org/abs/2412.19437)（Table 1 训练成本、Table 4 MTP 消融）
 - [Switch Transformer, arXiv:2101.03961](https://arxiv.org/abs/2101.03961)
 - [Kimi K2, arXiv:2507.20534](https://arxiv.org/abs/2507.20534)
 - 查阅日期：2026-09-22。
@@ -1511,7 +1512,7 @@ MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并
 
 - §4.1.2 router z-loss 与低精度 router 分析（ST-MoE [arXiv:2202.08906](https://arxiv.org/abs/2202.08906) §3.3， $c_z = 0.001$）
 - §4.1.3 从零训练 25% 追赶（OLMoE [arXiv:2409.02060](https://arxiv.org/abs/2409.02060) §4.1.5）与 upcycled 120% 预算（[arXiv:2212.05055](https://arxiv.org/abs/2212.05055) Figure 4）
-- §4.3.1 DeepSeekMoE §4.4 Pile loss 1.808 / 1.806 / 1.811
+- §4.3.1 DeepSeekMoE §4.4 Pile loss 1.808 / 1.806 / 1.811 与 1:3 扩展比例（[arXiv:2401.06066](https://arxiv.org/abs/2401.06066) §4.4）
 - §4.3.2 seq-wise $\alpha = 0.0001$、bias 更新 $\gamma = 0.001$、MTP 深度 $D = 1$ 与 14.8T tokens（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §4.2、Table 1、Table 4）
 - §4.5 Switch 表口径（[arXiv:2101.03961](https://arxiv.org/abs/2101.03961) Table 9）
 - §4.4 Kimi K2 QK-Clip 阈值 $\tau = 100$ 与 15.5T 零 loss spike（[arXiv:2507.20534](https://arxiv.org/abs/2507.20534)）

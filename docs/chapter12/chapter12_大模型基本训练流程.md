@@ -13,7 +13,7 @@
 
 ## 章首速查图
 
-本章按四个阶段推进主线，每一节对应流程中的一个节点：
+本章按预训练、mid-training、SFT、偏好对齐四个阶段推进主线，流程中的节点如下：
 
 ```
 预训练 PT（base model）
@@ -370,10 +370,11 @@ RLHF / DPO 数据的质量不止取决于标注一致性，还取决于标注者
   not religious or belong to religions other than Buddhists, Muslims, and Hindus**"。
   该结论把 RLHF 的代表性整体向世俗化、高学历、高收入平移。
 
-  宗教维度上，论文给 RLHF 模型列出的对齐群体是「不信仰宗教，或信仰佛教、伊斯兰教、印度教之外宗教」的人群，这个集合按字面排除 Buddhist / Muslim / Hindu 三类；
-与 base LM 集中代表的 Protestant / Roman Catholic 相比，RLHF 模型的代表性在 base 群体的基础上叠加了世俗化与高学历 / 高收入维度，但并未脱离基督教范围（Jewish 仍在对齐集合内）。
-论文下一句指出，这批对齐群体的人口构成与 InstructGPT 论文报告的众包标注者吻合，标注池的人口结构直接写进对齐方向。
-后训练数据若想复现 InstructGPT 的对齐方向，prompt pool 与 RLHF 后训练数据在人口维度上的分布要与论文标注池对齐。
+  宗教维度上，论文给 RLHF 模型列出的对齐群体是「不信仰宗教，或信仰佛教、伊斯兰教、印度教之外宗教」的人群，这个集合按字面排除 Buddhist / Muslim / Hindu 三类，Christianity 与 Judaism 仍落在集合内。
+
+  与 base LM 集中代表的 Protestant / Roman Catholic 相比，两个集合在收入与意识形态维度上是替换关系：base LM 落在 lower income、moderate，RLHF 模型落在 liberal、high income、well-educated。
+  论文下一句指出，这批对齐群体的人口构成与 InstructGPT 论文报告的众包标注者吻合，标注池的人口结构直接写进对齐方向。
+  后训练数据若想复现 InstructGPT 的对齐方向，prompt pool 与 RLHF 后训练数据在人口维度上的分布要与论文标注池对齐。
 - **专家 vs 普通人**：[Hosking, Blunsom, Bartolo, 2024, *Human Feedback is not Gold Standard*, ICLR 2024, arXiv:2309.16349](https://arxiv.org/abs/2309.16349)
   定义了 Harmful / Fluency / Scope / Repetition / Refusal / Formatting / Relevance / Factuality / Inconsistency / Contradiction 共 10 类错误。
   scope、fluency、harmfulness 三类在实验模型上出现率低于 1%，被排除在对照之外；
@@ -402,7 +403,8 @@ RLHF / DPO 数据的质量不止取决于标注一致性，还取决于标注者
 公开 RLHF / SFT 数据集的经验数字是判断"多少样本才够"的参考：
 
 - **OpenAssistant Conversations（OASST1）**：Köpf et al. 2023 的 [arXiv:2304.07327](https://arxiv.org/abs/2304.07327)
-  给出"over 10,000 complete and fully annotated conversation trees, 161,443 messages in 35 different languages, 461,292 quality ratings" 的统计口径，由 13,500 名以上志愿者协作产生；
+  给出"over 10,000 complete and fully annotated conversation trees, 161,443 messages in 35 different languages, 461,292 quality ratings" 的统计口径，由 13,500 名以上志愿者协作产生。
+
   [HF 数据集卡](https://huggingface.co/datasets/OpenAssistant/oasst1) 的 viewer 口径是 train 84,437 行 + validation 4,401 行，合计 88,838 行。
 
   它是早期较完整的开源人类标注对话与偏好数据集之一。
@@ -466,10 +468,13 @@ DPO 的目标是把 pairwise preference data 直接写成监督式损失。
 | 主要风险 | reward hacking、训练不稳定 | 偏好对质量、长度偏差 | 失去参考模型约束 | 长度归一化引入新偏置 |
 | 工程代价 | 4 个模型 + KL 调参 | 2 个模型 + $\beta$ 调参 | 1 个模型 + $\beta, \gamma$ 调参 | 2 个模型 + $\beta$ 调参 |
 
-Llama 3 技术报告把 DPO + rejection sampling 作为 RLHF 主线。Llama 3 §4.1.4 在介绍 post-training 流程时直接以 DPO 替换 InstructGPT（[arXiv:2203.02155](https://arxiv.org/abs/2203.02155)）的 PPO-based RLHF。
+Llama 3 技术报告把 DPO + rejection sampling 作为 RLHF 主线。§1 引言写明 post-training 流程基于 SFT、rejection sampling 与 DPO，
+"as opposed to more complex reinforcement learning algorithms"——对照的是 [InstructGPT, arXiv:2203.02155](https://arxiv.org/abs/2203.02155) 的 PPO-based RLHF；
+§4.1.4 记录了同一取舍的实测理由：
 
-理由是「We also explored on-policy algorithms such as PPO, but found that DPO required less compute for large-scale models and
+「We also explored on-policy algorithms such as PPO, but found that DPO required less compute for large-scale models and
 performed better, especially on instruction following benchmarks like IFEval」。
+
 这是工程选择，同一套 PPO/DPO 代码换不同的偏好数据仍会得到不同行为。
 
 Llama 3 tech report（Grattafiori et al., 2024, [arXiv:2407.21783](https://arxiv.org/abs/2407.21783)；早期版本以 Dubey et al. 署名）的 §4 引言把后训练组织成多轮外循环
@@ -680,4 +685,4 @@ mode collapse 是另一类副作用。经过强偏好优化后，模型可能减
 - MiniCPM §6.3 decay stage 数据混合来源（UltraChat / SlimOrca / OssInstruct / EvolInstruct + 私有 SFT）
 - Wang et al. Table 1 平均 completion 长度（ShareGPT 357.8 / OASST1 212.5 / Flan V2 31.2 / Self-Instruct 29.3）；Table 7 单数据集 AlpacaEval 胜率；Figure 2 胜率与 unique token 数相关系数 0.96
 - Bianchi et al. §4 — 20,000 条 Alpaca 指令 + 100/300/500/1000/1500/2000 条安全指令的消融；
-  "500 to 1,000 safety instructions are enough to substantially reduce the harmfulness of the models" 原文已核验；exaggerated safety 观察
+  "500 to 1,000 safety instructions (in addition to the 20k base dataset) are enough to substantially reduce the harmfulness of the models" 原文已核验；exaggerated safety 观察

@@ -244,7 +244,10 @@ $T_{\text{launch}}$ 是 CPU 端 kernel launch 开销（与算子复杂度无关�
 $N = 8192$ 的方阵乘法把 $A$、 $B$、 $C$ 各过一遍 HBM 的理想访存是 $3N^2 \times 4\ \text{B} \approx 0.8\ \text{GB}$，对应 $T_{\text{memory}} \ge 0.8\ \text{GB} / 8\ \text{TB/s} \approx 0.1\ \text{ms}$；
 实测 $17.6\ \text{ms}$ 是这个下界的约 170 倍，所以该尺寸由 $T_{\text{compute}}$ 主导，落在 compute-bound 区。
 
-作为参照，此时算术强度 $I = 2N^3 / (3N^2 \times 4\ \text{B}) = N / 6 \approx 1365\ \text{FLOP/B}$，远在拐点之上。Benchmark 给出真实机器上的拐点，把 $N^3$ 的复杂度公式落到具体硬件常量上。
+作为参照，此时算术强度 $I = 2N^3 / (3N^2 \times 4\ \text{B}) = N / 6 \approx 1365\ \text{FLOP/B}$。
+B200 单卡 FP32 峰值约 75 TFLOP/s（HGX B200 平台 8 卡合计 600 TFLOPS 折算），代入 §6.1 的 $I_{\text{ridge}} = \text{peak FLOP/s} / \text{peak bandwidth}$，
+以 HBM 8 TB/s 计算得 $I_{\text{ridge}} \approx 9.4\ \text{FLOP/B}$，1365 高出它两个数量级，compute-bound 在算术强度口径上同样成立。
+Benchmark 给出真实机器上的拐点，把 $N^3$ 的复杂度公式落到具体硬件常量上。
 
 ### 6.2.2 Profiler 看到实际 kernel
 
@@ -624,16 +627,16 @@ PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微�
 - [NVIDIA Matrix Multiplication Background User's Guide](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html)（ $256 \times 128$ tile、A100 108 SM 的一波 tile 数）
 - [Triton fused softmax 教程](https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html)（朴素实现总访存 $8MN + 4M$、理想 $2MN$、理论加速约 4 倍）
 - [NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/)
-- [NVIDIA B200 datasheet](https://www.nvidia.com/en-us/data-center/hgx/)
+- [NVIDIA B200 datasheet](https://www.nvidia.com/en-us/data-center/hgx/)（HGX 平台 8 卡合计规格：FP32 600 TFLOPS、总显存 1.4 TB）
 - [Stanford CS336 `triton_gelu-ptx.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/triton_gelu-ptx.txt)
 - 本章以 CUTLASS 3.x 源码、Triton 文档、PTX ISA 与 NVIDIA H100/B200 datasheet 为主。
-- 查阅日期：2026-09-05。
+- 查阅日期：2026-09-23。
 
 ### 本节事实声明的来源指向
 
 - 表 6.3–6.6 的 benchmark / profiler 数字与 kernel 名对应课程实测输出（单卡 B200）
 - 表 6.7 与表 6.8 的 PTX 信号对应 [`triton_gelu-ptx.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/triton_gelu-ptx.txt)
-- 表 6.2 的 register bandwidth 为按 SM 数、时钟与寄存器端口宽度换算的量级估计，其余三级带宽取自各代 datasheet 公布值
+- 表 6.2 的 HBM bandwidth 取自各代 datasheet 公布值；register、L1/shared 与 L2 三级为数量级估计——NVIDIA datasheet 只公布 HBM 带宽，不公布 cache 级带宽
 
 ### 来源对齐
 

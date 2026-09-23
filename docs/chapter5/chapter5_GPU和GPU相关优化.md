@@ -11,8 +11,8 @@
 
 本章围绕大模型训练与推理所依赖的 GPU 加速路径展开，重点解决四个问题：
 
-1. [理解 GPU 的基本架构、与 CPU 的差异以及从图形处理器到 AI 引擎的发展历程](#51-gpu的起源图形处理器)
-2. [掌握 GPU 的执行模型（SM、Warp、Block、Thread）和分层内存模型（全局内存、L2 缓存、共享内存、寄存器等）](#52-gpu的执行模型-sm流式多处理器)
+1. [理解 GPU 的基本架构、与 CPU 的差异以及从图形处理器到 AI 引擎的发展历程](#51-gpu-的起源图形处理器)
+2. [掌握 GPU 的执行模型（SM、Warp、Block、Thread）和分层内存模型（全局内存、L2 缓存、共享内存、寄存器等）](#52-gpu-的执行模型-sm流式多处理器)
 3. [学习 GPU 性能优化的关键技术：避免串行执行、低精度计算、算子融合、重计算、内存合并、分块（Tiling）等](#56-性能优化技术)
 4. [深入理解 FlashAttention（V1/V2/V3）的 IO 优化、分块和硬件适配](#57-flashattention)
 
@@ -171,7 +171,7 @@ SM 同时管理**数千个线程**，决定哪个线程在何时使用哪个计�
 SM 内部有 **4 条独立的指令流水线**，每个时钟周期可以同时发射 4 条不同指令给不同的 warp（线程束）。
 
 #### 数据缓存与共享
-SM 内置 **192 KB 的 L1 缓存/共享内存**，供本 SM 内的线程快速存取数据；其访问延迟在几十个周期量级，比全局显存的约 290 周期低一个数量级（约 8-9 倍，与图 5.3-1 latency table 的 Global memory = 290 / L1 = 33 一致）。
+SM 内置 **192 KB 的 L1 缓存/共享内存**（A100 口径，H100 / B200 为 256 KB，见 §5.1.3 硬件表与 §5.3.3），供本 SM 内的线程快速存取数据；其访问延迟在几十个周期量级，比全局显存的约 290 周期低一个数量级（约 8-9 倍，与图 5.3-1 latency table 的 Global memory = 290 / L1 = 33 一致）。
 
 ---
 
@@ -193,7 +193,8 @@ GPU 程序通常按 **grid -> block -> warp -> thread** 的层级组织。grid �
 
 一个 **warp** 是 32 个连续编号线程组成的固定小组，是 SM 调度指令的基本单位。warp 内线程以 SIMT 方式执行：指令相同，输入数据不同。若同一 warp 内部分线程走 `if` 分支、部分线程走 `else` 分支，硬件会用 mask 分阶段执行两条路径，形成 **warp divergence**，有效利用率下降。
 
-SM 上同时可驻留最多 **64 个 warp**（典型值，A100/H100 SM 一致；[NVIDIA H100 架构白皮书](https://dam-cdn.nvd.orangelogic.com/AssetLink/705n6ur546g0uk43w0117r17n8042d73.pdf) 对照表列 V100 / A100 / H100 的 Max Warps / SM 均为 64），由 4 个 warp 调度器从共享的 warp 池中取指；
+SM 上同时可驻留最多 **64 个 warp**（典型值，A100/H100 SM 一致；[NVIDIA H100 架构白皮书](https://dam-cdn.nvd.orangelogic.com/AssetLink/705n6ur546g0uk43w0117r17n8042d73.pdf) 对照表列 V100 / A100 / H100 的 Max Warps / SM 均为 64），由 4 个 warp 调度器从共享的 warp 池中取指。
+
 每个周期 4 个调度器各发射 1 条指令给不同 warp，使 SM 能在数据依赖或访存等待时切换 warp 隐藏延迟。warp 内 32 个线程在 **SIMT 单元**上同步执行（NVIDIA 文档用 SIMT 描述 warp 调度模型，硬件执行时内部仍按 SIMD 风格分发到一组 lane 上）。
 
 #### Block（线程块）
@@ -390,12 +391,15 @@ TPU 的 MXU（Matrix Multiply Unit）通常是 $128 \times 128$ 的 systolic arr
 配套规格为单芯片 BF16 峰值 **459 TFLOP/s**、HBM **95 GiB**、带宽 **2765 GB/s**、整 pod **8960** 颗芯片（[Google Cloud TPU v5p 文档](https://cloud.google.com/tpu/docs/v5p)）。
 页内原文 "Each TensorCore has four Matrix Multiply Units (MXU), a vector unit, and a scalar unit" 与规格表 "Number of TensorCores per chip 2" 直接给出 2 × (4 + 1 + 1) = 12。
 
-这与"一颗 H100 = 132 SM，每 SM 4 个 Tensor Core（矩阵乘法单元），合计 528 个 Tensor Core"（[NVIDIA H100 架构白皮书](https://dam-cdn.nvd.orangelogic.com/AssetLink/705n6ur546g0uk43w0117r17n8042d73.pdf)：132 SM per GPU、Tensor Cores / SM = 4、Tensor Cores / GPU = 528） 的多而小路线形成对照：TPU 走"少而大"，GPU 走"多而小"。看到"TFLOP/s"时先确认它是单 MXU、单芯片还是整 pod 的口径。
+这与"一颗 H100 = 132 SM，每 SM 4 个 Tensor Core（矩阵乘法单元），合计 528 个 Tensor Core"（[NVIDIA H100 架构白皮书](https://dam-cdn.nvd.orangelogic.com/AssetLink/705n6ur546g0uk43w0117r17n8042d73.pdf)：132 SM per GPU、Tensor Cores / SM = 4、Tensor Cores / GPU = 528） 的多而小路线形成对照：TPU 走"少而大"，GPU 走"多而小"。
+
+看到"TFLOP/s"时先确认它是单 MXU、单芯片还是整 pod 的口径。
 
 MXU 的形状同时给出了几条对齐建议。 $128 \times 128$ 的 systolic array 对齐 128 维时效率最高，不足时 MXU 会被 padding 填满，浪费算力；
 [Google Cloud TPU performance guide](https://docs.cloud.google.com/tpu/docs/performance-guide) 写明 feature 维度应取 128 的整倍数、total batch size 应取 64 的整倍数（每 TPU core 8），两者都是该指南给出的效率建议。
 
 GPU 一侧对应的是 warp size = 32（线程按 32 个一组编成 warp 调度；CUDA 指南建议 block 线程数取 32 的倍数，以避免尾部 under-populated warp 浪费算力，见 [CUDA C++ Programming Guide §8.2.3](https://docs.nvidia.com/cuda/pdf/CUDA_C_Programming_Guide.pdf)）与 SM warp 驻留上限（典型 64 warp）。
+
 这两组数字分别由 SIMT 调度模型与 systolic array 几何形状决定，不能直接换算。
 
 ### 5.4.3 TPU 网络拓扑与 pod 视角
@@ -1067,7 +1071,7 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 - **瓶颈来源**：单卡 HBM（80 GB / 141 GB / 180 GB 等）很快成为硬上限；剩余路径是切到多卡并行（TP/PP/CP）、压缩（量化、稀疏、GQA、MQA、MLA、CLA）或换 KV cache 调度（PagedAttention、prefix sharing、RadixAttention）。
 - **与 FlashAttention 的分工**：FlashAttention 解决的是 attention forward / backward 的 IO 访问模式（把 $QK^T$ 留在 SRAM，KV 矩阵不需要写回 HBM）；
   PagedAttention 解决的是 generation 阶段 KV cache 在 HBM 上的分页、碎片和共享问题。
-  FlashAttention 让 prefill 与 backward 更快，PagedAttention 让多请求共享 KV cache 时不浪费显存；两者的完整对比与实现细节在第 9 章合流。
+  FlashAttention 让 prefill 与 backward 更快，PagedAttention 让多请求共享 KV cache 时不浪费显存；两者的完整对比与实现细节在 [第 9 章 §9.5.2 PagedAttention：把 KV cache 当分页内存管理](../chapter9/chapter9_推理系统.md) 与 [第 9 章 §9.5.3 Prefix Sharing 与 Copy-on-Write](../chapter9/chapter9_推理系统.md) 合流。
 
 ## 5.9 参考文献
 
@@ -1081,7 +1085,7 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 本章的主线是“数据移动决定实际速度”。硬件表建立数量级（A100/H100/H200/B200 在 SM 数、HBM 容量与带宽、L2、TMEM 上的差异），roofline 把 compute-bound / memory-bound 拆成单一判据，
 六条优化技巧（control divergence、低精度、fusion、recomputation、coalescing、tiling）分别针对 SIMT 利用率、字节流量与数据复用；FlashAttention 是这套思路在 attention 上的集中体现。
 
-下章进入 [第 6 章 GPU 高性能编程](../chapter6/chapter6_GPU高性能编程.md)：把硬件原理落到 benchmark / profiler / Triton / PTX 的可执行工具链上，从“知道原则”过渡到“能在代码里验证原则”。
+下章进入 [第 6 章 §6.1 GPU 编程模型和硬件约束](../chapter6/chapter6_GPU高性能编程.md)：把硬件原理落到 benchmark / profiler / Triton / PTX 的可执行工具链上，从“知道原则”过渡到“能在代码里验证原则”。
 
 ## 来源与更新记录
 

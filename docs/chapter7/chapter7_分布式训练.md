@@ -63,7 +63,7 @@ activation 与 sequence 的切分在 §7.9 推到 SP / CP。
 *图 7.1-2 模型的尺寸变化*
 
 理想情况下，我们希望多卡扩展同时带来近似线性的内存扩展和近似线性的训练吞吐扩展；现实里这两个目标常常互相牵制：分片把状态显存换成跨 rank 的通信字节，分片越细，每步要搬的字节越多。
-本章后面两处账本给出这个兑换比例——ZeRO-1/2 的通信量约为 2 倍参数量、ZeRO-3 约为 3 倍参数量（§7.6.2 ZeRO 三阶段小结），TP 在每个 Transformer block 内都要做一次 activation 大小的 collective（§7.8 张量并行）——显存与通信的兑换关系由具体公式给出，
+本章后面两处账本给出这个兑换比例——ZeRO-1/2 的通信量约为 2 倍参数量、ZeRO-3 约为 3 倍参数量（§7.6 ZeRO / FSDP），TP 在每个 Transformer block 内都要做一次 activation 大小的 collective（§7.8 张量并行）——显存与通信的兑换关系由具体公式给出，
 扩展目标之间的牵制也随分片粒度按这些公式放大。
 
 ### 7.1.2 多 GPU、多机并行架构
@@ -612,7 +612,7 @@ reduce-scatter 只留下每个 rank 对应的 shard，而 all-reduce 最终让�
 
 这一节用同一个深度 MLP 把 DP / TP / PP 三种切分落到可运行代码上：DP 切 batch、TP 切 hidden、PP 切 layer。代码不追求训练出好模型，只为把"切哪一维"对应到"在哪些位置必须交换张量"看清。
 
-我们将通过一个深度 MLP 的简易实现演示每种策略。代码只是最小工作负载；选它的依据是计算量账本——讲义原话是 "MLPs are the compute bottleneck in Transformers, so this is representative"，Transformer 的参数矩阵乘大头落在 MLP 这类投影矩阵上。
+我们将通过一个深度 MLP 的简易实现演示每种策略。代码只是最小工作负载；选它的依据是计算量账本——Transformer 的参数矩阵乘大头落在 MLP 这类投影矩阵上，深度 MLP 就是这条计算路径上的瓶颈。
 三种策略演示的差异全在“切哪一维、边界上交换什么”：DP 在反向后归约梯度，TP 在层内交换 activation，PP 在层间传递 activation，这三件事在深度 MLP 里都完整存在。因此最小 MLP 足以说明 DP、TP、PP 的切分和通信差异。
 
 首先从数据并行开始。数据并行、张量并行和流水线并行可以理解为对数据、宽度和深度的不同划分方式。
@@ -904,7 +904,7 @@ $$
 > 这组数字来自 ZeRO 论文 Figure 1 的案例设定：模型规模 $\Psi = 7.5\mathrm{B}$、DP degree $N_d = 64$、优化器状态倍率 $K = 12$，
 > 对应 fp16 混合精度 Adam（fp16 参数 2Ψ + fp16 梯度 2Ψ + fp32 master weights 与 Adam 一二阶矩 12Ψ = 16Ψ baseline）。
 >
-> 在这组设定下 Figure 1 给出四档数字：**120 GB → 31.4 GB → 16.6 GB → 1.88 GB**，分别对应 baseline DP / ZeRO-1 (optimizer states 分片) / ZeRO-2 (+ gradients 分片) / ZeRO-3 (+ parameters 分片)；
+> 在这组设定下四档数字为：**120 GB → 31.4 GB → 16.6 GB → 1.88 GB**，分别对应 baseline DP / ZeRO-1 (optimizer states 分片) / ZeRO-2 (+ gradients 分片) / ZeRO-3 (+ parameters 分片)；
 > 论文 Table 1 按 DP degree 列出同一组数字（ $N_d = 64$ 行为 31.4 / 16.6 / 1.88， $N_d = 1$ 行为 120）。详见 [Rajbhandari et al., ZeRO, arXiv:1910.02054](https://arxiv.org/abs/1910.02054)。
 
 ![图 7.6-3 ZeRO 工作阶段 1](images/7-6-3-zero-stage1.png)
@@ -1466,7 +1466,7 @@ Mixtral / Gemma 2 / Qwen3 / Nemotron 3 Super 的公开并行度。
 
 ### 本节事实声明的来源指向
 
-- ZeRO Figure 1（Ψ=7.5B / $N_d$=64 / K=12，120 → 31.4 → 16.6 → 1.88 GB）、Table 1（按 DP degree 的每卡内存）、§7.2.2（ZeRO-3 通信量 3Ψ = 1.5× baseline）；"a modest 50% increase in communication volume" 出自 §1 Extended Introduction 对三个阶段的列举，不在 abstract 里。论文按 fp16 混合精度记账。
+- ZeRO Figure 1 案例设定（Ψ=7.5B / $N_d$=64 / K=12）、Table 1（按 DP degree 的每卡内存，四档 120 → 31.4 → 16.6 → 1.88 GB）、§7.2.2（ZeRO-3 通信量 3Ψ = 1.5× baseline）；"a modest 50% increase in communication volume" 出自 §1 Extended Introduction 对三个阶段的列举，不在 abstract 里。论文按 fp16 混合精度记账。
 - Korthikanti et al. Eq. (1) $\mathrm{sbh}(34 + 5as/h)$ 与 Eq. (2) $\mathrm{sbh}(10 + 24/t + 5as/(ht))$；34 拆为 attention 11 + MLP 19 + LayerNorm 4。
 - Llama 3 Herd of Models Table 4 — 三阶段 TP/CP/PP/DP 配置与 MFU。
 - DeepSeek-V3 §3.2、§4.3 — 16-way PP / 64-way EP / ZeRO-1 DP；长上下文用 YaRN 两阶段扩窗。

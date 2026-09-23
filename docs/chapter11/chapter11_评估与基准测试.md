@@ -232,7 +232,7 @@ Karpathy 对“评估危机”的担忧可以概括为三点：常见基准会�
 
 困惑度衡量模型对某个数据集分配高概率的能力。在预训练阶段，模型的目标就是最小化训练集上的困惑度。数值越小，表示模型越容易预测这些 token。
 
-训练侧优化交叉熵的等价表述与具体算式见 [第 2 章 §2.4 计算效率](../chapter2/chapter2_pytorch与资源核算.md)。
+训练侧优化交叉熵的等价表述与具体算式见 [第 12 章 §12.2.1 next-token 预训练目标](../chapter12/chapter12_大模型基本训练流程.md)。
 
 $$
 \text{Perplexity} = \left( \frac{1}{p(D)} \right)^{1/|D|}
@@ -411,7 +411,7 @@ HellaSwag 可以看作是“情境下的困惑度”，模型不需要输出概�
 
 几年之后，MMLU 已经接近饱和。这恰恰说明单一知识基准很容易从「有区分度」变成「只剩刷榜价值」。
 
-用 difficulty / validity 三维度看，这是两者的失衡：当模型的能力下限被推到随机基线之上，准确率进入饱和区；进入饱和区后的分数差异更多由题目噪声与 prompt 模板驱动。
+用 difficulty / validity 两个维度看，这是两者的失衡：当模型的能力下限被推到随机基线之上，准确率进入饱和区；进入饱和区后的分数差异更多由题目噪声与 prompt 模板驱动。
 
 MMLU-Pro 论文实测同一模型在 MMLU 上仅 prompt 变体就带来 4%–5% 的分数波动（见 §11.4.2）。
 
@@ -530,13 +530,13 @@ AlpacaEval 2.0 的一个重要变化，是用回归方式修正长度偏置，�
 
 ### 11.5.4 WildBench
 
-[WildBench](https://arxiv.org/abs/2406.04770) 从约 100 万条真实人机对话中先随机采样 1,500 条，再筛出 1,024 条构成评估集（论文 §2.1）。
+[WildBench](https://arxiv.org/abs/2406.04770) 从约 100 万条真实人机对话出发：基础过滤并剔除被所有模型判为过易的题后，从剩余池随机采样 1,500 条，再经人工筛除无意义的题，保留 1,024 条构成评估集（论文 §2.1）。
 
 主评估以 GPT-4-Turbo 为裁判，输出 WB-Reward 与 WB-Score 两类指标（§3.2、§3.3）；检查清单由 GPT-4-Turbo 与 Claude 3 Opus 联合生成，用来降低单个 LLM 裁判自身的偏差（§3.1）。
 
-论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。这条性质对应第一性原理的「基元不变性」：不同 LLM 裁判只要共享同一份 checklist，得到的相对排名就保持单调一致。
+论文 §4.3 ablation 还测试了 GPT-4、Claude 3 Opus 与 Mistral-Large 等替代裁判，结果显示它们给出的相对排名基本一致。这是经验观察：排序稳健性在共享同一份 checklist 的这几个替代裁判上实测成立，覆盖范围就是该 ablation 测试的裁判集合。
 
-因此 WildBench 度量的是「LLM-as-judge 这一整类尺子给出的相对秩序」——具体 judge 的绝对刻度会被多 judge ensemble 稀释。
+因此 WildBench 度量的是 LLM-as-judge 尺子给出的相对秩序：该 ablation 中具体 judge 的绝对刻度差异对排序影响很小，checklist 与多 judge ensemble 继续压低这种差异。
 
 WildBench 与 Chatbot Arena 高度相关。论文 §4.2 Table 3 报告的 Pearson 相关系数随 baseline（GPT-4-Turbo / Claude-3-Haiku / 三个模型平均）与长度阈值 $K$（500 字符 / 无阈值）取值不同。
 
@@ -592,13 +592,13 @@ reward model 的偏差直接决定偏好优化的目标偏差，judge 与 reward
 
 公理起点是「语言模型的上下文窗口有限 + 单调成本随序列长度增长」：要让模型在长程任务里不丢状态，必须把状态外置到文件、把计划外置到显式列表、把指令子集分到子 agent。四个组件各自对应一种外置策略（计划 / 子任务边界 / 跨 turn 状态 / 过程性指令）。
 
-这四项与 2025-2026 主流 agent 框架（Claude Code、Cursor、Aider 等）的设计选择基本对齐；同一底座模型在不同 scaffold 组合下的 benchmark 分数可能差几倍。
+这四项与 2025-2026 主流 agent 框架（Claude Code、Cursor、Aider 等）的设计选择基本对齐，属于工程经验对照；同一底座模型在不同 scaffold 组合下的 benchmark 分数可能差几倍。
 
 **基准饱和与坐标移动**：早期 GPT-3 X-Large 在 MMLU 上只有 43.9%，但刷到接近饱和后被 MMLU-Pro 替代（具体口径见 §11.4.2）。
 
-GPQA 论文里 GPT-4 few-shot CoT 在 Diamond 子集上是 38.8%，而 2026 年 9 月的官方榜单上，GPQA Diamond 已有多个前沿模型超过 94%（[gpqa.ai](https://gpqa.ai/) 头部模型达 98.9%）。
+GPQA 论文里 GPT-4 few-shot CoT 在 Diamond 子集上是 38.8%，而 2026 年 9 月 [gpqa.ai](https://gpqa.ai/) 榜单上，GPQA Diamond 已有多个前沿模型超过 94%（头部模型达 98.9%）。
 
-SWE-bench Verified 的最高分达到 79.2%（[swebench.com](https://www.swebench.com/) Claude Opus 4.5, 2025-12）。
+SWE-bench Verified 的最高分达到 79.2%（[swebench.com](https://www.swebench.com/) Sonar Foundation Agent + Claude Opus 4.5，2025-12）。
 
 基准饱和与坐标快速移动说明同一模型在不同时间窗的分数几乎不能直接横比，评估时需要同时记录版本、日期和 prompt 模板。
 
@@ -652,7 +652,7 @@ Terminal-Bench 与 Cybench 的难度口径不同。Cybench 用人类「首次解
 
 [MLE-bench](https://arxiv.org/abs/2410.07095) 自动化参与 75 个 Kaggle 机器学习竞赛，包括数据处理、模型训练、超参调优和结果提交。
 
-公理起点是「Kaggle 奖牌比例 = 在独立测试集上的相对名次」：把 Kaggle 公开 leaderboard 当作人类基线，agent 的奖牌率直接量化「agent 在 ML 工程任务上接近或超过人类中等水平的频率」。
+公理起点是「Kaggle 奖牌比例 = 在独立测试集上的相对名次」：把 Kaggle 排行榜上人类参赛者的名次分布当作人类基线（论文按 Private leaderboard 评定奖牌），agent 的奖牌率直接量化「agent 在 ML 工程任务上接近或超过人类中等水平的频率」。
 
 在论文给定的设置下，最佳智能体（o1-preview + AIDE scaffold）在 pass@1 条件下获得任何 Kaggle 奖牌（bronze / silver / gold）的比例约为 **16.9%**（论文 Table 2）；同一最佳智能体在 pass@8 时这一比例上升至约 34.1%（论文 §1）。
 
@@ -1005,7 +1005,7 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - [Llama 4 Behemoth 博客](https://ai.meta.com/blog/llama-4-multimodal-intelligence/)（图 11.1-6）
 - [OLMo-2-32B 博客](https://allenai.org/blog/olmo2-32B)（图 11.1-7）
 - [OpenAI, Introducing SWE-bench Verified](https://openai.com/index/introducing-swe-bench-verified/)（§11.6.1 / §11.10.2）
-- [GPQA Diamond 官方榜单 (gpqa.ai)](https://gpqa.ai/)（§11.6 基准饱和段）
+- [GPQA Diamond 榜单 (gpqa.ai)](https://gpqa.ai/)（§11.6 基准饱和段）
 - [SWE-bench Verified 官方榜单 (swebench.com)](https://www.swebench.com/)（§11.6 基准饱和段）
 - [HELM Leaderboard](https://crfm.stanford.edu/helm/latest/)（§11.1.2 / §11.4 / §11.5 / §11.8 / §11.9）
 - [LMArena Leaderboard](https://lmarena.ai/)（§11.1.1 / §11.5.1）

@@ -166,7 +166,7 @@ $$
 **TRPO（Trust Region Policy Optimization）**把稳定性写成约束：每次更新只允许新策略 $\pi_{\theta_{\text{new}}}$ 和旧策略 $\pi_{\theta_{\text{old}}}$ 相差一点。具体做法是解一个带 KL 约束的优化问题：
 
 $$
-\max_\theta \quad \mathbb E_{s,a \sim \pi_{\theta_{\text{old}}}} \left[ \frac{\pi_\theta(a|s)}{\pi_{\theta_{\text{old}}}(a|s)} A^{\pi_{\text{old}}}(s,a) \right] \\
+\max_\theta \quad \mathbb E_{s,a \sim \pi_{\theta_{\text{old}}}} \left[ \frac{\pi_\theta(a|s)}{\pi_{\theta_{\text{old}}}(a|s)} A^{\pi_{\theta_{\text{old}}}}(s,a) \right] \\
 \text{subject to} \quad \mathbb E_s \left[ D_{\text{KL}} \left( \pi_{\theta_{\text{old}}}(\cdot|s) \,\|\, \pi_\theta(\cdot|s) \right) \right] \leq \delta
 $$
 
@@ -228,7 +228,7 @@ PPO 在 RLHF 中承担“采样、打分、估计优势、再小步更新策略�
 - $\gamma \in [0,1]$ ：折扣因子（discount factor），通常取 0.95~1.0
 - $V(s_t)$ ：价值网络对状态 $s_t$ 的估值
 
-**经验回放缓冲区（Experience Buffer）** 用来存储每次 rollout 的数据，包括状态-动作对（ $s_t, a_t$ ）、优势函数估计值（ $\hat{A}(s_t, a_t)$ ）、估计回报（ $\hat R_t$ ）和旧策略下该动作的概率（ $\pi_\theta^{\text{old}}(a_t|s_t)$ ）。
+**经验回放缓冲区（Experience Buffer）** 用来存储每次 rollout 的数据，包括状态-动作对（ $s_t, a_t$ ）、优势函数估计值（ $\hat{A}(s_t, a_t)$ ）、估计回报（ $\hat R_t$ ）和旧策略下该动作的概率（ $\pi_{\theta_{\text{old}}}(a_t|s_t)$ ）。
 
 **策略更新模块** Policy LM $\pi_\theta^{\text{RL}}(a_t|s_t)$ 是当前正在优化的策略模型。它接收状态 $s_t$ ，输出动作 $a_t$ 的概率分布。
 
@@ -257,9 +257,9 @@ $$
 
 一个完整的训练流程应该是：
 
-- **采样阶段**：用 $\pi_\theta^{\text{old}}$ 根据用户输入 $x$ 生成回答 $y$；用 Reward Model 给 $(x,y)$ 打分 $r(x,y)$；
+- **采样阶段**：用 $\pi_{\theta_{\text{old}}}$ 根据用户输入 $x$ 生成回答 $y$；用 Reward Model 给 $(x,y)$ 打分 $r(x,y)$；
   用 Value Model 和 GAE 计算每个 token 的优势函数 $\hat{A}(s_t, a_t)$ 和回报 $\hat R_t$；最后存入 Experience Buffer。
-- **更新阶段**：从 Buffer 中采样 mini-batch 数据 ---> 计算 PPO-clip Loss、LM Loss、MSE Loss ---> 反向传播更新 Policy LM 和 Value Model ---> 更新后的新策略成为下一轮的 $\pi_\theta^{\text{old}}$
+- **更新阶段**：从 Buffer 中采样 mini-batch 数据 ---> 计算 PPO-clip Loss、LM Loss、MSE Loss ---> 反向传播更新 Policy LM 和 Value Model ---> 更新后的新策略成为下一轮的 $\pi_{\theta_{\text{old}}}$
 - **迭代循环**：重复采样 → 计算奖励与优势 → 更新策略 → 新策略采样...
 
 [OpenAI Spinning Up](https://spinningup.openai.com/en/latest/algorithms/ppo.html) 中的 PPO 伪代码很短，容易让人低估语言模型场景里的实现复杂度。
@@ -519,8 +519,8 @@ $$
 PPO 的目标函数：
 
 $$
-\min \left( \frac{\pi_\theta(a|s)}{\pi_{\theta_k}(a|s)} A^{\pi_{\theta_k}}(s,a),
-\text{ clip} \left( \frac{\pi_\theta(a|s)}{\pi_{\theta_k}(a|s)}, 1-\epsilon, 1+\epsilon \right) A^{\pi_{\theta_k}}(s,a) \right)
+\min \left( \frac{\pi_\theta(a|s)}{\pi_{\theta_{\text{old}}}(a|s)} A^{\pi_{\theta_{\text{old}}}}(s,a),
+\text{ clip} \left( \frac{\pi_\theta(a|s)}{\pi_{\theta_{\text{old}}}(a|s)}, 1-\epsilon, 1+\epsilon \right) A^{\pi_{\theta_{\text{old}}}}(s,a) \right)
 $$
 
 GRPO 与 PPO 的目标函数结构非常相似，都包含概率比和裁剪。两者的主要差异在 `A` 的来源：
@@ -546,7 +546,7 @@ $$
 这是 GRPO 替代 GAE 的关键步骤：同一个问题生成 $G$ 条回复，用组内相对分数给每条回复分配 advantage。
 
 **如何计算？**
-- 对于每一个问题 $q$ ，从旧策略 $\pi_{\text{old}}$ 中**采样一组（G 个）不同的回复** $\{o_1, o_2, \dots, o_G\}$ 。
+- 对于每一个问题 $q$ ，从旧策略 $\pi_{\theta_{\text{old}}}$ 中**采样一组（G 个）不同的回复** $\{o_1, o_2, \dots, o_G\}$ 。
 - 用奖励模型或可验证规则，为这 G 个回复**分别打分**，得到一组奖励 $\{r_1, r_2, ..., r_G\}$ 。
 - 计算这组奖励的**均值（mean）和标准差（std）**。
 - 将每个回复 $o_i$ 的奖励 $r_i$ 减去均值，再除以标准差，得到它的 $A_i$ 。
@@ -1031,7 +1031,7 @@ LIMO 在 AIME 2024 上从基座的 16.5 提到 63.3，平均分 78.1 高于用�
 样本量不是决定性变量，题目难度选择和推理链质量才是。
 
 > [!WARNING]
-> 通过少量样本提高模型推理能力，对基座模型能力要求较高。s1 与 LIMO 的公开实验都在 Qwen2.5-32B-Instruct 上展示效果，两篇论文都没有报告更小基座（7B / 3B）上的同等增益。
+> 通过少量样本提高模型推理能力，对基座模型能力要求较高。s1 的公开实验在 Qwen2.5-32B-Instruct 上展示效果；LIMO 的主结果同样在 32B 基座，它自己的模型规模消融里 AIME24 从 3B 的 2.5 分才升到 32B 的 63.3 分，更小基座拿不到与 32B 同等的增益。
 
 #### 使用少量高质量样本的 RL 或偏好优化路线
 
@@ -1095,7 +1095,7 @@ RLVR 的 prompt set 直接决定探索空间。Kimi k1.5 的数据管理可以�
 
 - **覆盖范围**：提示覆盖 STEM、代码和通用推理等领域，并用标签系统控制学科分布，避免 RL 只优化少数题型。
 - **难度分布**：提示需要覆盖易、中、难样本。过易题很快被解决，继续采样会浪费 rollout；过难题长期没有正奖励，advantage 信号也会变差。Kimi 使用模型自身表现估计难度，训练时可以动态调整采样比例。
-- **可验证性**：提示必须允许 verifier 做客观可靠的评估。选择题、判断题、证明题和部分通用问答容易产生错误正例，Kimi 因此过滤这类任务；如果模型在没有 CoT 的多次尝试中已经能猜中答案，该提示也会被视为 reward hacking 风险较高。
+- **可验证性**：提示必须允许 verifier 做客观可靠的评估。选择题、判断题、证明题容易出现「答案可猜、答对但推理错误」的错误正例，Kimi 因此直接排除这类题目；一般问答任务单独处理，如果模型在没有 CoT 的多次尝试中已经能猜中答案，该提示也会被视为 reward hacking 风险较高而移除。
 
 ##### 长思维链（Long-CoT）SFT
 
@@ -1105,7 +1105,7 @@ Long-CoT SFT 从精炼后的 RL prompt set 中选题，再用 prompt engineering
 
 ##### Kimi RL
 
-Kimi RL 的目标是在参考答案上最大化期望奖励，同时约束模型不要偏离原始行为太远：
+Kimi RL 的目标是在参考答案上最大化期望奖励，同时约束模型不要偏离原始行为太远（KL 项中的 $\pi_{\theta_i}$ 为第 $i$ 次迭代用作参考的当前模型）：
 
 $$
 \max_{\theta} \mathbb E_{(x,y^\ast) \sim \mathcal{D}} \left[ \mathbb E_{(y,z) \sim \pi_\theta} \left[ r(x, y, y^\ast) \right]
@@ -1116,7 +1116,7 @@ Kimi 的目标借鉴了 DPO 的无奖励偏好优化思想，用当前策略与�
 
 这里假设存在一个“理想策略” $\pi^\ast$ ，可理解为人类偏好分布或专家策略。DPO 式推导把奖励函数 $r$ 与策略比值联系起来：奖励减去归一化常数 $\tau \log Z$ 后，等于 $\tau$ 倍的理想策略与参考策略的对数比值。
 
-推导基于非参数假设，把奖励函数隐含表达为当前策略与参考策略的对数比值，不再显式建模。最终得到的 $r$ 可以写成策略函数。
+推导基于非参数假设，把奖励函数隐含表达为理想策略与参考策略的对数比值，不再显式建模。最终得到的 $r$ 可以写成策略函数。
 
 $$
 r(x, y, y^\ast) - \tau \log Z = \tau \log \frac{\pi^\ast(y, z|x)}{\pi_{\theta_i}(y, z|x)}
@@ -1124,7 +1124,7 @@ $$
 
 因为直接优化原始目标可能困难，这里用了一个**平方误差损失**来近似优化。
 它的目标是让当前策略 $\pi_\theta$ 的输出，尽可能匹配“理想策略” $\pi^\ast$ 所对应的奖励表达式。
-采样来自**参考策略 $\pi_{\theta_i}$**，这样可以稳定训练，避免自举（bootstrapping）带来的偏差。最终损失 $L(\theta)$ 是对所有样本和采样结果取期望后的平方误差。
+平方损失的期望取在**参考策略 $\pi_{\theta_i}$** 上：论文用 $\pi_{\theta_i}$ 采样的回复近似归一化常数 $\tau \log Z$，log-ratio 形式的约束对任意 $(y, z)$ 成立，优化时因此可以用 off-policy 数据。最终损失 $L(\theta)$ 是对所有样本和采样结果取期望后的平方误差。
 
 $$
 L(\theta) = \mathbb E_{(x,y^\ast) \sim \mathcal{D}} \left[ \mathbb E_{(y,z) \sim \pi_{\theta_i}} \left[ \left( r(x, y, y^\ast) - \tau \log Z
@@ -1386,6 +1386,6 @@ CLIP / SigLIP 的图像语义对齐、LLaVA / Qwen-VL 系列把视觉 token 接�
 - Kimi k1.5 §2.1 RL Prompt Set Curation（不带 CoT 猜答案、N = 8 easy-to-hack 过滤）；§2.3.3 Length Penalty（λ 线性设计式、先无惩罚再恒定惩罚的启用时机、Figure 5 分数来自内部小尺寸 long-CoT 模型的说明）；§2.3.4 Sampling Strategies（Curriculum Sampling 与 Prioritized Sampling ∝ 1−s 两条独立机制）；§2.3.5 Reward Modeling for Math（约 800k CoT 标注样本）
 - Qwen3 §4.2 Reasoning RL（3,995 query-verifier pairs、170 RL steps、AIME 2024 70.1 → 85.1）；§4.3 Thinking Mode Fusion（`/think` 与 `/no_think` 标记、预算耗尽时插入的停止思考指令）；Table 22（Qwen3-32B 在 Stage 2 / 3 / 4 的评测结果；ThinkFollow 为单一切换得分，Stage 3 = 88.7、Stage 4 = 98.9 +10.2）
 - LIMO §3.1.1（候选筛选路径 tens of millions → baseline 难度过滤 → 32 次采样评估 → 2,125 LIMO-Pool）；§3.1.2（推理链质量分加权 30/20/25/25 → top 800）
-- Deng et al. Abstract（原文 "3% to 8% point improvements on the AlpacaEval 2.0 benchmark relative to training on the complete dataset"）
+- Deng et al. Introduction 贡献 (2)（原文 "3% to 8% point improvements on the AlpacaEval 2.0 benchmark relative to training on the complete dataset"）
 - DeepSeek-R1 Appendix F "DeepSeek-R1 Distillation"（蒸馏表含 GPT-4o-0513 / Claude-3.5-Sonnet-1022 参照行；MATH 列评测集为 MATH-500；Figure 表头列名 MATH）
 - LIMR — Qwen2.5-Math-7B + PPO，1,389 / 8,523 样本

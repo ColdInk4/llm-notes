@@ -306,9 +306,9 @@ DTR 的计算机制是比较 Transformer 各层对同一 token 的预测分布�
 DTR 仍然是统计性指标。完整推理链需要浅层组织语言，也需要深层完成关键判断；
 未来如果要用 DTR 控制 CoT，还需要结合 token 置信度、路径一致性、外部验证器和任务难度。
 
-[Qwen 3 技术报告（arXiv:2505.09388）](https://arxiv.org/abs/2505.09388) 公开的混合思维模式
-（hybrid thinking modes）也沿着这条线索前进：通过 thinking 与 non-thinking 数据混合、特殊终止标记和
-thinking budget，让模型在不同任务上调节推理长度。
+[Qwen 3 技术报告（arXiv:2505.09388）](https://arxiv.org/abs/2505.09388) 的思维模式融合
+（Thinking Mode Fusion）也沿着这条线索前进：通过 thinking 与 non-thinking 数据混合、
+`/think` 与 `/no_think` 模式开关和 thinking budget，让模型在不同任务上调节推理长度。
 
 到这里，读者应能区分 CoT 长度、有效深度和外部奖励信号对最终行为的不同影响。
 

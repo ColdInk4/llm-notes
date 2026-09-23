@@ -81,7 +81,9 @@ ViT-L/14 在 ImageNet zero-shot 上达到与在 1.28M ImageNet 图像上训练�
 
 *图 14.2-3 CLIP ranking 目标的训练效率*
 
-图 14.2-3 比较了直接从图像预测文本与 CLIP-style ranking 的训练效率。对比学习把“生成完整 caption”改成“在候选中找匹配项”，监督信号更密集，训练更省 compute。代价是模型主要学到文本能描述的视觉语义，细粒度布局、OCR 和像素级细节需要额外机制。
+图 14.2-3 比较了直接从图像预测文本与 CLIP-style ranking 的训练效率。CLIP 论文 §2.3 以处理图像数衡量效率：达到同一 ImageNet zero-shot 准确率，按逐词生成 caption 训练的 63M 文本 Transformer 要比预测 bag-of-words 的基线多处理约 3 倍图像；
+把生成目标换成判断哪条文本与哪张图配对的对比目标后，所需图像数降到约四分之一。逐词生成要覆盖图文对中多样的措辞，论文把配对目标称为更简单的代理任务。
+代价是模型主要学到文本能描述的视觉语义，细粒度布局、OCR 和像素级细节需要额外机制。
 
 ![图 14.2-4 SigLIP pairwise sigmoid 目标](images/14-2-4-siglip-objective.png)
 
@@ -136,7 +138,8 @@ LLaVA 的 text decoder 是 **Vicuna**（基于 LLaMA-1 在 ShareGPT 上微调）
 后续 VLM 沿着更换更强 text decoder 与扩充指令数据的方向演进：LLaVA OneVision 的视觉 encoder 改为 SigLIP 并取其最后 Transformer layer 前后两套 grid features 作为视觉 token，
 text decoder 升级为 Qwen-2（0.5B / 7B / 72B 三档），projector 升级为 2-layer MLP（[LLaVA OneVision, arXiv:2408.03326](https://arxiv.org/abs/2408.03326)）。
 
-视觉 encoder 与语言侧 LLM 的规模差距很大：现代 VLM 的视觉 encoder 普遍不到 1B 参数（CLIP ViT-L/14、SigLIP2-SO-400M 这一档），例外是 Qwen-VL 采用的 OpenCLIP ViT-bigG-14。
+视觉 encoder 与语言侧 LLM 的规模差距很大：现代 VLM 的视觉 encoder 普遍不到 1B 参数（CLIP ViT-L/14、SigLIP2-SO-400M 这一档），
+大于 1B 的例子有 Qwen-VL 采用的 OpenCLIP ViT-bigG-14 与 [InternVL](https://arxiv.org/abs/2312.14238) 采用的 InternViT-6B。
 
 OpenCLIP [model_profile.csv](https://github.com/mlfoundations/open_clip/blob/main/docs/model_profile.csv) 给出
 image_mparams = 1844.91M、text_mparams = 694.66M、双塔合计 mparams = 2539.57（≈ 2.54B），
@@ -232,7 +235,7 @@ Qwen-VL 系列展示了 VLM 向更通用多模态模型演进的几个方向：�
 | 分辨率策略 | 224×224 → 448×448 两阶段 | **Naive Dynamic Resolution**（任意分辨率 → 不同视觉 token 数） | 进一步打磨动态分辨率 + DeepStack 跨层视觉注入 |
 | 位置编码 | 文本 1D RoPE + adaptor 内 2D 位置编码 | **M-RoPE**：1D 文本、2D 视觉、1D 时间，按 `[t t t t h h h h w w w w]` 分块 | **Interleaved M-RoPE**：t / h / w 在 embedding 维度交错 `[t h w t h w ...]` |
 | 视频支持 | 原版不支持（Conclusion 把 speech 与 video 列为扩展方向） | 2 帧/秒采样，单视频 token 上限 16384 | 视频帧附带显式文本时间戳 |
-| 上下文长度 | 与 Qwen-7B 一致（未单独强调） | 32K | **256K** |
+| 上下文长度 | 8K | 32K | **256K** |
 | LM 初始化 | Qwen-7B | Qwen2 | Qwen3 |
 | 模型规格 | 7B 一个规格 | 2B / 7B / 72B | dense 2B / 4B / 8B / 32B + MoE 30B-A3B / 235B-A22B |
 | 训练关键 | 三阶段：freeze LM → 联合 → freeze vision encoder | 在 Qwen2 基础上加 dynamic resolution 与 M-RoPE | square-root per-token loss + DeepStack |
@@ -366,8 +369,8 @@ Chameleon 的视觉词表由 VQ-VAE 定义：512×512 图像编码为 1024 个�
 
 多模态训练会把不同信息密度的数据放进同一个优化目标。文本 token 通常语义密度高、熵较低；图像或视频 tokens 数量多、冗余也多。若直接混合，长视频或高分辨率图像可能在 loss 中占过大权重，导致训练不稳定或挤压文本能力。
 
-这一节把前面的结构选择收束成训练检查表。公理起点是「同一 loss 函数 + 同一优化器」对不同 token 类型施加一致梯度；
-在按 token 平均的 loss 下，若各 token 类型的熵、信息密度、序列长度差异显著，简单混合会让其中一类主导训练。
+这一节把前面的结构选择收束成训练检查表。公理起点是按 token 平均的 loss：每个 token 以同一权重进入梯度估计，优化过程不感知 token 来自哪个模态。
+一个模态对总梯度的贡献等于它的 token 数乘以该模态的平均单 token 梯度；长视频与高分辨率图像带来数量级更大的 token，简单混合就会让其中一类主导训练。
 
 多模态系统的风险通常来自 token 预算、loss 权重、位置编码、数据阶段和生成目标同时变化；
 统一自回归路线（§14.6）下文本与图像 token 熵不一致带来的 norm growth 与 logit drift，及其对应的 QK norm 与 z-loss 处理，已在 §14.6 给出，这里不再重复。
@@ -391,7 +394,8 @@ Chameleon 的视觉词表由 VQ-VAE 定义：512×512 图像编码为 1024 个�
 本章主体聚焦视觉 + 文本的多模态路线（CLIP / SigLIP / LLaVA / Qwen-VL / Chameleon）；完整的多模态系统还需要覆盖音频、视频及其他模态。音频与视频作为延伸方向小节列出：
 
 - **音频 + 文本**：[Qwen2-Audio](https://arxiv.org/abs/2407.10759) 与 LLaVA 同型，encoder 输入从图像 patch 换成梅尔频谱帧：以 128 通道梅尔频谱作为输入，audio encoder 从 Whisper-large-v3 初始化，把音频表示注入语言模型。
-  [AudioPaLM](https://arxiv.org/abs/2306.12925) 把音频离散化后与文本统一建模：从现成 speech representation 模型（w2v-BERT / USM）提取 embedding 并离散成 audio token，与文本 token 拼成混合序列，输入从 PaLM 2 初始化的 decoder-only Transformer；文本模型的唯一改动是 embedding 矩阵扩展出 audio token 行。
+  [AudioPaLM](https://arxiv.org/abs/2306.12925) 把音频离散化后与文本统一建模：从现成 speech representation 模型（w2v-BERT / USM）提取 embedding 并离散成 audio token，与文本 token 拼成混合序列。
+  输入从 PaLM 2 初始化的 decoder-only Transformer；文本模型的唯一改动是 embedding 矩阵扩展出 audio token 行。
 - **联合 audio-visual**：一些公开工作尝试视频生成时同步音频；[LTX-Video](https://arxiv.org/abs/2501.00103) 论文只覆盖视频生成，没有涉及音频。
 - **真正 omni（任意模态输入输出）**：Chameleon 由 Meta 在 2024 年发布（[arXiv:2405.09818](https://arxiv.org/abs/2405.09818)），论文本身已经把文本 + 图像的统一离散 token 路线做到 vision + text 的端到端训练；
   其训练第一阶段即联合了约 **2.9T 文本 token + 1.5T 文本/图像 token + 400B 文本/图像交错 token**。
@@ -440,13 +444,16 @@ LLaVA / Qwen-VL / Chameleon 用 projector 或离散 token 把视觉 token 接到
 - [SigLIP](https://arxiv.org/abs/2303.15343)，查阅日期 `2026-09-22`，状态 `论文`（Table 1 数据从 PDF 复核）。
 - [LLaVA](https://arxiv.org/abs/2304.08485)，查阅日期 `2026-09-22`，状态 `论文`。
 - [LLaVA OneVision](https://arxiv.org/html/2408.03326)，查阅日期 `2026-09-22`，状态 `论文`（729 / 7290 token budget 从 HTML 正文复核）。
-- [Qwen-VL](https://arxiv.org/abs/2308.12966)，查阅日期 `2026-09-22`，状态 `论文`。
+- [InternVL](https://arxiv.org/abs/2312.14238)，查阅日期 `2026-09-23`，状态 `论文`（InternViT-6B 规模自 HTML 正文复核）。
+- [Qwen-VL](https://arxiv.org/abs/2308.12966)，查阅日期 `2026-09-22`，状态 `论文`；
+  上下文长度核自 [config.json](https://huggingface.co/Qwen/Qwen-VL/blob/main/config.json) 的 `max_position_embeddings: 8192`，查阅日期 `2026-09-23`。
 - [Qwen2-VL](https://arxiv.org/abs/2409.12191)，查阅日期 `2026-09-05`，状态 `论文`。
 - [Qwen3-VL Technical Report](https://arxiv.org/abs/2511.21631) + [Qwen3-VL 官方仓库](https://github.com/QwenLM/Qwen3-VL)，查阅日期 `2026-09-22`，状态 `官方 / 论文`。
 - [Chameleon](https://arxiv.org/abs/2405.09818)，查阅日期 `2026-09-22`，状态 `论文`。
 - [VQ-VAE](https://arxiv.org/abs/1711.00937)，查阅日期 `2026-09-05`，状态 `论文`。
 - [ViT](https://arxiv.org/abs/2010.11929)，查阅日期 `2026-09-05`，状态 `论文`。
-- [OpenCLIP](https://arxiv.org/abs/2212.07143)，查阅日期 `2026-09-05`，状态 `论文`；ViT-bigG-14 参数量复核自 [model_profile.csv](https://github.com/mlfoundations/open_clip/blob/main/docs/model_profile.csv)，查阅日期 `2026-09-22`。
+- [OpenCLIP](https://arxiv.org/abs/2212.07143)，查阅日期 `2026-09-05`，状态 `论文`；
+  ViT-bigG-14 参数量复核自 [model_profile.csv](https://github.com/mlfoundations/open_clip/blob/main/docs/model_profile.csv)，查阅日期 `2026-09-22`。
 - [DeepStack](https://arxiv.org/abs/2406.04334)，查阅日期 `2026-09-22`，状态 `论文`。
 - [PaLI / WebLI 数据集](https://arxiv.org/abs/2209.06794)，查阅日期 `2026-09-22`，状态 `论文`。
 - [Qwen2-Audio](https://arxiv.org/abs/2407.10759)，查阅日期 `2026-09-22`，状态 `论文`。
@@ -464,7 +471,7 @@ LLaVA / Qwen-VL / Chameleon 用 projector 或离散 token 把视觉 token 接到
 - Qwen-VL 三阶段与 Table 1 模块参数指向 [arXiv:2308.12966](https://arxiv.org/abs/2308.12966) §3 Training 与 Table 1，视频支持范围指向该文 Conclusion
 - ViT-bigG-14 参数指向 [OpenCLIP model_profile.csv](https://github.com/mlfoundations/open_clip/blob/main/docs/model_profile.csv)
 - Qwen3-VL 的 SigLIP-2 变体与 square-root loss 指向 [arXiv:2511.21631](https://arxiv.org/abs/2511.21631)，MRoPE 频谱结论指向该文 §2.1
-- Chameleon 两阶段配比与稳定性处理指向 [arXiv:2405.09818](https://arxiv.org/abs/2405.09818) §2.2
+- Chameleon 两阶段配比与稳定性处理指向 [arXiv:2405.09818](https://arxiv.org/abs/2405.09818) §2.2 / §2.3
 - DeepStack 注入方式与增益指向 [arXiv:2406.04334](https://arxiv.org/abs/2406.04334)
 - Qwen2-Audio 音频输入与 Whisper-large-v3 初始化指向 [arXiv:2407.10759](https://arxiv.org/abs/2407.10759)
 - AudioPaLM 的离散 audio token 与 embedding 扩展指向 [arXiv:2306.12925](https://arxiv.org/abs/2306.12925)
