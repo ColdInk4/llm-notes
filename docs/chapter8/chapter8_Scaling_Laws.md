@@ -1949,7 +1949,7 @@ Init.Var. 一行：hidden 与 input weights / biases 都是 $1/\mathrm{fan\text{
 > - **Scaling law 是 recipe-dependent lower bound**——scaling law 只对固定训练配置 + 单一数据来源有效；改换 optimizer、warmup、batch schedule 或数据混合会得到另一条 lower bound，不能跨曲线插值。
 >   同一条 curve 上的预测回答的是“沿用这一套 recipe 继续放大能拿到什么”，换 recipe 后预测会移到另一条 curve 上。
 >
-> - **多项式 vs 指数在小窗口难分辨**——只在 1 个数量级以内的 compute 区间观察，外推到 5 个数量级会得到与函数形式无关的伪线性结论；区分幂律与指数趋势通常需要至少 1.5–2 个数量级的 compute 跨度。
+> - **多项式 vs 指数在小窗口难分辨**——只在 1 个数量级以内的 compute 区间观察，外推到 5 个数量级会得到与函数形式无关的伪线性结论。幂律候选要在 log-log 图上跨至少约两个数量级的近似线性区间（[Stumpf & Porter, *Science* 2012](https://people.maths.ox.ac.uk/porterm/papers/critical.pdf)）；compute scaling law 的拟合参数也要到训练末段约 1.5–2.5 个数量级的 compute 区间才收敛（[Schaeffer et al., arXiv:2509.24012](https://arxiv.org/abs/2509.24012)）。
 > - **跨实验设置 transfer 时要核训练口径**——把别处报告的 slope / intercept 直接套到自己的训练上，前提是 optimizer、batch、warmup、数据混合都对齐；否则就是 "我用别人报告的 recipe 直接外推到自己的实验设置" 的拟似预测，曲线看起来科学，背后仍是经验拟合。
 
 ## 8.7 本章总结与下章衔接
@@ -2010,7 +2010,9 @@ Init.Var. 一行：hidden 与 input weights / biases 都是 $1/\mathrm{fan\text{
 [Predictable Scale: Part I — Step Law / Li et al. StepFun, arXiv:2503.04715](https://arxiv.org/abs/2503.04715)；
 [Llama 3 Herd of Models / Grattafiori et al. 2024, arXiv:2407.21783](https://arxiv.org/abs/2407.21783)；
 [Qwen3 Technical Report, arXiv:2505.09388](https://arxiv.org/abs/2505.09388)；[OLMo 3, arXiv:2512.13961](https://arxiv.org/abs/2512.13961)；
-[Mamba-2, arXiv:2405.21060](https://arxiv.org/abs/2405.21060)；[Gated DeltaNet, arXiv:2412.06464](https://arxiv.org/abs/2412.06464)。
+[Mamba-2, arXiv:2405.21060](https://arxiv.org/abs/2405.21060)；[Gated DeltaNet, arXiv:2412.06464](https://arxiv.org/abs/2412.06464)；
+[Stumpf & Porter, Critical Truths About Power Laws, Science 2012](https://people.maths.ox.ac.uk/porterm/papers/critical.pdf)；
+[Schaeffer et al., Pretraining Scaling Laws for Generative Evaluations of Language Models, arXiv:2509.24012](https://arxiv.org/abs/2509.24012)。
 
 模型与平台发布：[DeepSeek-V3.2-Exp（DeepSeek Sparse Attention，2025-09-29）](https://api-docs.deepseek.com/news/news250929)；
 [OLMo 3 模型卡](https://huggingface.co/allenai/OLMo-3-7B-Think)；
@@ -2026,6 +2028,8 @@ Muon 相关（2026-09-05 复核）：Keller Jordan, [`Muon: An optimizer for hid
 
 ### 本节事实声明的来源指向
 
+- §8.6.8 WARNING「多项式 vs 指数」的两条数量级判据见 [Stumpf & Porter 2012：log-log 图跨至少两个数量级](https://people.maths.ox.ac.uk/porterm/papers/critical.pdf)与
+  [Schaeffer et al.：compute law 参数在末段 1.5–2.5 个数量级区间收敛, arXiv:2509.24012](https://arxiv.org/abs/2509.24012)。
 - §8.4.2 Kaplan 拟合 $N_{\mathrm{opt}} \propto C_{\min}^{0.73}$ 、 $D_{\mathrm{opt}} \propto C_{\min}^{0.27}$ 见 [Kaplan et al. 2020 §6.1 + 附录 Table 
   6](https://arxiv.org/abs/2001.08361)。
 - §8.3.3 effective data 公式与 Figure 1 右图 8.67B / 6.34B IsoFLOP 星点、Figure 3 100M unique tokens IsoLoss contours、Figure 4 三档 IsoFLOP 预算（
