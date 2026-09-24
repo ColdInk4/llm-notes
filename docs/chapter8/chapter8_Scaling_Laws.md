@@ -1353,7 +1353,7 @@ WSD 是 warmup-stable-decay。图 8.6-8 的横轴是 optimizer iteration，表�
 
 WSD 先用短 warmup 把 learning rate 拉到目标值，在 stable phase 里保持较高且近似恒定的 learning rate，最后接一段短 decay。
 
-Warmup 通常按固定 step 数定义；stable phase 覆盖大部分训练；decay phase 往往只占总训练长度的 10% 到 20%，并把 learning rate 降到峰值的一小部分。
+Warmup 通常按固定 step 数定义；stable phase 覆盖大部分训练；decay phase 往往只占总训练长度的约 10%，并把 learning rate 降到峰值的一小部分。
 
 把 stable phase 想成一条可复用的训练轨迹会更容易理解。想比较 100B、200B、300B tokens 的 final loss 时，可以在同一条 stable 轨迹上取三个 checkpoint，再分别接短 decay。这样大部分训练成本只付一次，额外成本主要来自几段 re-decay。
 
