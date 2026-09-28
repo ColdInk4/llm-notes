@@ -167,7 +167,7 @@ $$I = \frac{\text{FLOPs}}{\text{bytes}}$$
 它是 roofline 模型的核心变量。当 $I > I_{\text{ridge}} = \text{peak FLOP/s} / \text{peak bandwidth}$ 时，kernel 是 compute-bound， $T_{\text{compute}}$ 主导 wall-clock；
 当 $I < I_{\text{ridge}}$ 时是 memory-bound， $T_{\text{memory}}$ 主导。
 
-按这一判据：逐元素算子通常 $I$ 极低——ReLU、加法每元素约 1 FLOP，对上每元素 4–8 B 的读写， $I$ 只有 0.125–0.25 FLOP/B；GeLU 的 `tanh` 链每元素几十 FLOP， $I$ 也只到个位数 FLOP/B，都容易被 HBM 往返和 kernel launch 限制。
+按这一判据：逐元素算子通常 $I$ 极低——ReLU、加法每元素约 1 FLOP，对上每元素 8–12 B 的读写（ReLU 读 4 B 写 4 B，加法两个输入共读 8 B、再写 4 B）， $I$ 只有 0.08–0.125 FLOP/B；GeLU 的 `tanh` 链每元素几十 FLOP， $I$ 也只到个位数 FLOP/B，都容易被 HBM 往返和 kernel launch 限制。
 matmul 通过 tile 复用可以把 $I$ 提高到与 tile size 相关——tile 越大，每个 HBM 读入的字节服务更多乘加， $I$ 越高，向 compute-bound 边界靠拢。这是为什么 §6.5 的 matmul tiling 直接决定了算子落到 roofline 的哪个象限。
 
 ## 6.2 Benchmark 和 profiler 的工作流
@@ -630,13 +630,14 @@ PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微�
 - [NVIDIA B200 datasheet](https://www.nvidia.com/en-us/data-center/hgx/)（HGX 平台 8 卡合计规格：FP32 600 TFLOPS、总显存 1.4 TB）
 - [Stanford CS336 `triton_gelu-ptx.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/triton_gelu-ptx.txt)
 - 本章以 CUTLASS 3.x 源码、Triton 文档、PTX ISA 与 NVIDIA H100/B200 datasheet 为主。
-- 查阅日期：2026-09-23。
+- 查阅日期：2026-09-28。
 
 ### 本节事实声明的来源指向
 
 - 表 6.3–6.6 的 benchmark / profiler 数字与 kernel 名对应课程实测输出（单卡 B200）
 - 表 6.7 与表 6.8 的 PTX 信号对应 [`triton_gelu-ptx.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/triton_gelu-ptx.txt)
 - 表 6.2 的 HBM bandwidth 取自各代 datasheet 公布值；register、L1/shared 与 L2 三级为数量级估计——NVIDIA datasheet 只公布 HBM 带宽，不公布 cache 级带宽
+- §6.1 末逐元素算术强度的字节账本按读写合计口径：FP32 元素读 4 B + 写 4 B = 8 B（ReLU），加法两个输入读 8 B + 写 4 B = 12 B， $I$ 分别为 0.125 与 0.08 FLOP/B；与 [Triton vector-add 教程](https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html) benchmark 吞吐式 `3 * x.numel() * x.element_size()`（2 读 1 写）一致
 
 ### 来源对齐
 

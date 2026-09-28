@@ -486,7 +486,7 @@ $$
 
 中图扫 parameter count，图的来源是 Kim/Kotha/Liang/Hashimoto（Stanford）的 "Pre-training under infinite compute"，参数 sweep 覆盖 150M–1.4B。
 
-同主题的 Muennighoff 等人 2023（[arXiv:2305.16264](https://arxiv.org/abs/2305.16264) Figure 4）sweep 共训练 400 多个模型，参数量覆盖 $10\mathrm{M}$ 到 $9\mathrm{B}$。
+同主题的 Muennighoff 等人 2023（[arXiv:2305.16264](https://arxiv.org/abs/2305.16264)）整体 sweep 共训练 400 多个模型，参数量覆盖 $10\mathrm{M}$ 到 $9\mathrm{B}$。
 
 该文 Figure 4 的三档 IsoFLOP 预算是 $9.3 \times 10^{20}$ 、 $2.1 \times 10^{21}$ 、 $9.3 \times 10^{21}$ ，单 epoch 下对应的最优模型大小分别是 2.8B、4.2B、8.7B。两篇论文共享同一类 IsoFLOP 思路，但参数覆盖区间不同。
 
@@ -1146,7 +1146,7 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 | LLaMA 65B | 约 22 |
 | Llama 2 70B | 约 29 |
 | Mistral 7B | 官方未披露训练 token 数；UCStrategies 估约 8T（80% 多语种 web + 20% code） |
-| Llama 3 70B | 约 215（约 15T 语料 / 70B） |
+| Llama 3 70B | 约 215（约 15T 语料 / 70B）；按 405B 旗舰的 15.6T 同语料口径为约 223 |
 
 图 8.4-13 给 Mistral 7B 标注 110 tokens/parameter，约合 0.8T token，与 UCStrategies 的 8T 估计相差约一个数量级；Mistral AI 从未公布训练 token 数，这两个数字都是估计值。
 
@@ -1405,11 +1405,11 @@ MiniCPM 论文 §4.5 "Measuring the Scaling Law with WSD LRS" 给出的拟合结
 
 该拟合结果明显高于 Chinchilla 的约 20。
 
-同一曲面对 Llama 2 反推得到 $D_{opt}/N_{opt}\approx 70\text{–}100$（[arXiv:2404.06395](https://arxiv.org/abs/2404.06395)）。
+论文另依据 Llama 2 论文 Figure 18 提取的训练 loss 曲线估计 compute-optimal 配比，得到 $D_{opt}/N_{opt}\approx 70\text{–}100$（[arXiv:2404.06395](https://arxiv.org/abs/2404.06395)），并把这一估计标注为 "only a rough one"。
 
 这个 192 来自拟合函数在整个曲面上的外推，没有对应某一档固定 compute 预算下的直接测量，证据强度弱于直接覆盖多档固定预算的 IsoFLOP sweep。
 
-这个比例绑定拟合函数、评测语料和指定 compute。MiniCPM 的 Method 1 / 3 曲线较平滑，但论文拟合得到的 exponent 与 Chinchilla 并不完全一致；论文对这次远距离外推也保持保留态度。
+这个比例绑定拟合函数、评测语料和指定 compute。MiniCPM 的 Method 1 / 3 曲线较平滑，但论文拟合得到的 exponent 与 Chinchilla 并不完全一致；论文把这一高比例与 §4.3 和 Figure 6 的观察相互印证，Limitations 另说明该 scaling law 未在 LLM 训练上验证。
 
 ![图 8.6-13 MiniCPM real and fitted loss curves](images/8-6-13-minicpm-wsd-downstream-curves.png)
 
@@ -2038,10 +2038,12 @@ Muon 相关（2026-09-05 复核）：Keller Jordan, [`Muon: An optimizer for hid
   见 [Muennighoff et al., arXiv:2305.16264](https://arxiv.org/abs/2305.16264)。
 - §8.3.3 data selection 与 quality-quantity tradeoff（图 8.3-10 DataComp A–F bucket 实验）见 [Goyal et al., arXiv:2404.07177](https://arxiv.org/abs/2404.07177)。
 - §8.4.2 内部 Method 3 underfit 复核（数据 forensics 重拟合）见 [Besiroglu et al., arXiv:2404.10102](https://arxiv.org/abs/2404.10102)。
-- §8.4.3 tokens-per-parameter 表（GPT-3 ≈ 2、Chinchilla ≈ 20、LLaMA 65B ≈ 22、Llama 2 70B ≈ 29、Mistral 7B 官方未披露、Llama 3 70B ≈ 215）按「训练 tokens ÷ 参数量」由 [GPT-3, 
+- §8.4.3 tokens-per-parameter 表（GPT-3 ≈ 2、Chinchilla ≈ 20、LLaMA 65B ≈ 22、Llama 2 70B ≈ 29、Mistral 7B 官方未披露、Llama 3 70B ≈ 215 / 223）按「训练 tokens ÷ 参数量」由 [GPT-3, 
   arXiv:2005.14165](https://arxiv.org/abs/2005.14165)、[Chinchilla, arXiv:2203.15556](https://arxiv.org/abs/2203.15556)、[LLaMA, 
   arXiv:2302.13971](https://arxiv.org/abs/2302.13971)、[Llama 2, arXiv:2307.09288](https://arxiv.org/abs/2307.09288)、[Llama 3 Herd, 
-  arXiv:2407.21783](https://arxiv.org/abs/2407.21783) 各论文官方披露的训练 token 数直接算出；Mistral 7B 训练 token 数官方未公开；
+  arXiv:2407.21783](https://arxiv.org/abs/2407.21783) 各论文官方披露的训练 token 数直接算出；Llama 3 70B 的 215 取官方模型卡 "15T+" 语料口径
+  （[Llama 3.1 MODEL_CARD](https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md) 原文 "Llama 3.1 was pretrained on ~15 trillion tokens"，2026-09-28 查阅），
+  223 取 herd 论文 405B 旗舰披露的 15.6T 同语料口径（15.6T / 70B）；Mistral 7B 训练 token 数官方未公开；
   论文 [arXiv:2310.06825](https://arxiv.org/abs/2310.06825) PDF 全文 abstract 与正文均未披露训练 token 数（仅描述模型架构与 fine-tuning），
   Mistral AI 公告 [blog](https://mistral.ai/news/announcing-mistral-7b/) 全文亦未提及训练 token 数（2023-09-27 发布当日 archive 快照与现行页一致）；
   [UCStrategies Mistral 7B guide](https://ucstrategies.com/news/mistral-7b-guide-specs-benchmarks-edge-ai-deployment-2026/) 估约 8T，

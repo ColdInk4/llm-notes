@@ -103,6 +103,8 @@ class EC_MoE(nn.Module):
 
 # 运行示例（Batch > 1）
 if __name__ == "__main__":
+    # 固定随机种子，保证 router/专家初始化与未处理 token 列表可复现
+    torch.manual_seed(42)
     sentences = ["MoE是很强大的机制！", "专家混合模型非常高效。"]
 
     # byte-tokenize + padding

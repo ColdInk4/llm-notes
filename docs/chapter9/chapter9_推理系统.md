@@ -77,7 +77,7 @@
 
 *图 9.1-1 Inference overview*
 
-图 9.1-1 把一次推理请求抽象成三个方块：model 与 prompt 进入 Inference，产出 response。聊天、代码补全、agent、批处理、evaluation 和 RL rollout 都在反复调用这同一个方块；差别在于哪些 token 会被人读到，哪些 token 只是系统内部为了搜索、验证或打分而产生。
+图 9.1-1 把一次推理请求抽象成四个方块：model 与 prompt 进入 Inference，产出 response。聊天、代码补全、agent、批处理、evaluation 和 RL rollout 都在反复调用这同一个 Inference 方块；差别在于哪些 token 会被人读到，哪些 token 只是系统内部为了搜索、验证或打分而产生。
 推理优化要同时服务交互体验和大规模 token 产出成本。
 
 ### 9.1.1 训练看全序列，推理逐 token 生成
@@ -669,7 +669,8 @@ SSM / Mamba / GatedDeltaNet 这类模型可以被看作更适合流式推理的�
 *图 9.6-5 MiniMax hybrid attention*
 
 MiniMax-01（MiniMax 团队，arXiv [2501.08313](https://arxiv.org/abs/2501.08313)，2025 年 1 月）是这条路线的代表：每 7 个 lightning attention 层接 1 个 softmax attention 层，共 80 层，图 9.6-5 与图 9.6-6 来自该论文。
-图 9.6-5 是它的 hybrid attention 结构动机：标准 softmax attention 擅长精确检索历史 token，但 KV cache 和长上下文成本高；linear attention、SSM 或递推层把历史压成低维状态，流式推理更友好，但可能丢失精确长程检索能力。
+图 9.6-5 展开它的 block 结构：左侧标出 1× 的 Softmax Attention block 与 M× 的 Lightning Attention block（M = 7），每个 block 由 attention 与 MoE FFN 串联，配合残差连接、缩放系数 α 和 RMSNorm，MoE 的 Router 做 top-2 路由；右侧两个面板分别展开 MoE 从 Router 到各 FFN 再加权求和的路径，以及 Lightning Attention 内部 Q / K / V 与门控经 SiLU、Sigmoid 的组合。
+标准 softmax attention 擅长精确检索历史 token，但 KV cache 和长上下文成本高；linear attention、SSM 或递推层把历史压成低维状态，流式推理更友好，但可能丢失精确长程检索能力。
 Hybrid 结构把这些机制放在不同层或不同模块里组合，目标是在保留一部分全局检索能力的同时降低长序列 generation 成本。
 
 ![图 9.6-6 MiniMax inference time](images/9-6-6-minimax-inference-time.png)

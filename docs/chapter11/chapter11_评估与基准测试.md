@@ -262,7 +262,7 @@ $$
 
 ### 11.3.4 历史与演变
 
-Jozefowicz 等人在 [《Exploring the Limits of Language Modeling》](https://arxiv.org/abs/1602.02410) 论文中，用纯 CNN + LSTM 架构，在 十亿（1B） Word Benchmark 上把困惑度从 51.3 降到 30.0。
+Jozefowicz 等人在 [《Exploring the Limits of Language Modeling》](https://arxiv.org/abs/1602.02410) 论文中，用纯 CNN + LSTM 架构，在十亿（1B） Word Benchmark 上把困惑度从 51.3 降到 30.0。
 
 这是工程经验层面的观察，属经验拟合：next-token 概率在更大模型 + 更大数据下确实能拟合得更准，但"扩大到多少就能拟合多准"并无闭式解，靠 scaling law 经验拟合。
 
@@ -542,9 +542,9 @@ WildBench 与 Chatbot Arena 高度相关。论文 §4.2 Table 3 报告的 Pearso
 
 其中 WB-Reward 在 GPT-4-Turbo baseline + $K = 500$ 设置下对 top-ranking 模型达 0.99，三个 baseline 平均 + $K = 500$ 下为 0.98，Claude-3-Haiku baseline + 无阈值下为 0.985。
 
-同表中 WB-Score 0.955，ArenaHard 0.91，AlpacaEval 2.0 length-controlled win rate 0.89——WildBench 的相关系数在各设置下均高于后两者（论文同时报告其他 baseline 与 $K$ 取值的相关系数随设置变化）。
+同表的 P-Cortop 列（top-ranking 子集）中 WB-Score 0.955、Arena-Hard 0.91、AlpacaEval 2.0 length-controlled win rate 0.89；换到 P-Corall、S-Corall 与 K-Corall 列，三者互有高低：Arena-Hard 的 S-Corall 0.965 与 K-Corall 0.890 高于 WB-Score 的 0.943 与 0.846，AlpacaEval2-LC 的 P-Corall 0.951 高于 WB-Score 的 0.940。
 
-这些数值随评测设置而异，但总体说明 WildBench 已成为新基准有效性的”事实上的”检验标准之一。
+表中 Arena-Hard、AlpacaEval、WB-Score、WB-Reward 各行与 Chatbot Arena 的相关系数全部不低于 0.818，WildBench 因此可以作为人类偏好排序的自动代理指标，与 Chatbot Arena 的人工盲测互为对照。
 
 ![图 11.5-4 WildBench 构建流程](images/11-5-4-wildbench-pipeline.png)
 
@@ -1022,7 +1022,7 @@ agentic 基准比纯文本题多一层「环境接口契约」：scoring 不仅�
 - [ARC-AGI-2: A New Challenge for Frontier AI Reasoning Systems, arXiv:2505.11831](https://arxiv.org/abs/2505.11831)（§11.7.1）— 2025-05-14 受测模型 semi-private 得分均低于 5%（o3 3.0%）
 - [Announcing ARC-AGI-2 and ARC Prize 2025](https://arcprize.org/blog/announcing-arc-agi-2-and-arc-prize-2025)（§11.7）— 2025-03-24，发布时纯 LLM 0%、公开推理系统仅个位数
 - [ARC Prize: Google Gemini 3.7 Flash results](https://arcprize.org/results/google-gemini-3-7-flash)（§11.7）— 2026-08-13，ARC-AGI-2 semi-private 84.6%、<span>$</span>0.25/task
-- 查阅日期：2026-05-28 / 2026-09-05 / 2026-09-16 / 2026-09-22 / 2026-09-23。
+- 查阅日期：2026-05-28 / 2026-09-05 / 2026-09-16 / 2026-09-22 / 2026-09-23 / 2026-09-28。
 
 ### 本节事实声明的来源指向
 

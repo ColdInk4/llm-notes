@@ -126,7 +126,7 @@ The Pile 把 Common Crawl、arXiv、GitHub、StackExchange、邮件列表等 22 
 | Nemotron-CC | 6.3T tokens（4.4T 真实去重 + 1.9T 合成；HQ 子集 1.1T） | HTML→text 选用 **jusText**：它抽出的 token 总量与高质量 token 数都高于 trafilatura，而下游精度基本持平 |
 | The Stack v2 | 104.2M GitHub 仓库、3.28B unique files、67.5 TB 未压缩；供 StarCoder2-15B 使用的训练集含 913B+ unique tokens，模型实际训练 4.3T tokens | 代码数据 |
 | CommonPile | 8TB | permissive-licensed only，探讨 license laundering 风险；包含 Comma v0.1-1T / 2T 两个 7B 验证模型 |
-| Llama 3 训练语料 | 15.6T tokens（旗舰 405B；8B / 70B 同语料；[arXiv:2407.21783](https://arxiv.org/abs/2407.21783)） | 与 FineWeb 同量级 |
+| Llama 3 训练语料 | 15.6T tokens（旗舰 405B；8B / 70B 模型卡口径约 15T；[arXiv:2407.21783](https://arxiv.org/abs/2407.21783)） | 与 FineWeb 同量级 |
 | Qwen3 训练语料 | 36T tokens | |
 | DeepSeek V3 训练语料 | 14.8T tokens（V3 paper abstract 与正文报告，multi-stage sampling 后） | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) |
 
@@ -239,7 +239,8 @@ Shadow library 在数据清单中只作为负面参照登记，不进入训练�
 
 **Anthropic 版权诉讼和解（2026 年进展）。** Alsup 法官于 2025 年 12 月退休后案件移交 Araceli Martínez-Olguín 法官承继，案号由 3:24-cv-05417-WHA reassign 为 4:24-cv-05417-AMO。
 （N.D. Cal. 案号的分区前缀与法官姓名首字母后缀都随承办法官变化，案件主体不变。）
-2026 年 5 月 14 日后者举行 75 分钟 fairness hearing，对律师费明细、lead-plaintiff 服务费、开支分摊与未及时 opt-out 通知提出补充材料要求；
+2026 年 5 月 14 日后者举行 73 分钟 fairness hearing（2:00 p.m. 开庭、3:13 p.m. 休庭），当庭追问律师费明细、lead-plaintiff 服务费与开支分摊，
+庭后要求 Anthropic 就未及时 opt-out 应否受理提交不超过 2 页的补充说明、原告方提交实质性回应各项异议的修订版 proposed order；
 
 2026 年 7 月 20 日 Judge Martínez-Olguín 作出 final approval，确认 <span>$</span>1.5B、482,460 部 eligible works（
 filed claims 447,576，claims rate 约 92.77% = 447,576 / 482,460，约 <span>$</span>3,000/部；opt-outs 约 350 位作者、覆盖约 1,802 部作品）的条款公平合理，
@@ -722,7 +723,7 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 - [UniMax, arXiv:2304.09151](https://arxiv.org/abs/2304.09151)
 - [RegMix, arXiv:2407.01492](https://arxiv.org/abs/2407.01492)
 - [Bartz v. Anthropic PBC, Case No. 3:24-cv-05417-WHA（Alsup 法官）→ Case No. 4:24-cv-05417-AMO（Martínez-Olguín 法官，2025 年 12 月 reassign 后） (N.D. Cal.) 公开报道与和解页面](https://www.anthropiccopyrightsettlement.com/)
-- [Bartz v. Anthropic PBC, CourtListener docket, Case No. 4:24-cv-05417-AMO](https://www.courtlistener.com/docket/69058235/bartz-v-anthropic-pbc) — 案件标题 4:24-cv-05417、Assigned To: Araceli Martinez-Olguin（查阅日期 2026-09-23）
+- [Bartz v. Anthropic PBC, CourtListener docket, Case No. 4:24-cv-05417-AMO](https://www.courtlistener.com/docket/69058235/bartz-v-anthropic-pbc) — 案件标题 4:24-cv-05417、Assigned To: Araceli Martinez-Olguin（查阅日期 2026-09-28）
 - [Carlini et al., arXiv:2302.10149](https://arxiv.org/abs/2302.10149)
 - [Wallace et al., arXiv:2010.12563](https://arxiv.org/abs/2010.12563)
 - [毒样本规模无关性论文, arXiv:2510.07192](https://arxiv.org/abs/2510.07192)
@@ -736,7 +737,7 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 - [CommonPile, arXiv:2506.05209](https://arxiv.org/abs/2506.05209)
 - [HF `common-pile/common-pile`](https://huggingface.co/datasets/common-pile/common-pile)
 - [DeepSeek-V3 技术报告, arXiv:2412.19437](https://arxiv.org/abs/2412.19437)
-- 查阅日期：2026-09-22。
+- 查阅日期：2026-09-28。
 
 ### 本节事实声明的来源指向
 

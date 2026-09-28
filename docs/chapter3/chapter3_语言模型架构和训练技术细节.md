@@ -139,8 +139,8 @@ $$
 
 **2. 多头注意力的设计思想**
 
-多头注意力通过将 $d_{\text{model}}$ 维的查询、键、值拆分为 $h$ 个独立的头，每个头在更低维的空间（ $d_k = d_{\text{model}} / h$ ）中并行执行注意力计算，从而使模型能够从多个表示子空间中联合提取信息。每个头都有自己的投影矩阵，可以关注到不同类型的特征，例如（这只是个例子，我们无法确定每个头的分工）
- **有的头可能聚焦局部语法结构，有的头则捕捉远距离语义依赖**。
+多头注意力通过将 $d_{\text{model}}$ 维的查询、键、值拆分为 $h$ 个独立的头，每个头在更低维的空间（ $d_k = d_{\text{model}} / h$ ）中并行执行注意力计算，从而使模型能够从多个表示子空间中联合提取信息。每个头都有自己的投影矩阵，可以关注到不同类型的特征。例如，**有的头可能聚焦局部语法结构，有的头则捕捉远距离语义依赖**；
+头与功能之间没有显式绑定，具体分工在训练中自行形成。
 
 
 **3. 多头注意力的具体计算过程**
@@ -197,7 +197,7 @@ $$
 
 多个 head 可以并行关注不同模式，每个 head 可学习不同 attention pattern：
 
-比如（假设比喻，便于理解，实际上偏向黑箱）：
+比如，按常见观察列出三个头（训练不预设头的职责，具体模式在训练中形成）：
 **Head 1**：关注**语法依赖**（主谓宾关系）
 **Head 2**：关注**共指关系**（代词指代）
 **Head 3**：关注**语义相似**（同义词）
@@ -999,7 +999,7 @@ DeepSeek Sparse Attention（DSA）是一类细粒度动态稀疏注意力方案�
 
 **CSA 的全称是 Compressed Sparse Attention，压缩稀疏注意力，HCA 的全称是 Heavily Compressed Attention，重度压缩注意力**。
 
-相比 DeepSeek-V3.2，这套混合注意力把 DeepSeek-V4 的单 token 推理 FLOPs 降到 27%、KV cache 降到 10%（[DeepSeek-V4 技术报告, arXiv:2606.19348](https://arxiv.org/abs/2606.19348)）。
+相比 DeepSeek-V3.2，这套混合注意力把 DeepSeek-V4-Pro 的单 token 推理 FLOPs 降到 27%、KV cache 降到 10%（[DeepSeek-V4 技术报告, arXiv:2606.19348](https://arxiv.org/abs/2606.19348)）。
 
 ![图 3.2-23 DeepSeek-V4 总体架构](images/3-2-23-deepseek-v4-overview-architecture.png)
 
@@ -1455,11 +1455,11 @@ Continuous Batching 的工程取舍见[第 9 章 §9.5.1 Continuous Batching 与
 - [Hugging Face DeepSeek-V4 文档](https://huggingface.co/docs/transformers/main/en/model_doc/deepseek_v4)
 - [`deepseek-ai/DeepSeek-V4-Pro`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)
 - [`deepseek-ai/DeepSeek-V4-Flash`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/config.json)（`index_topk=512`、`num_hidden_layers=43`、`hidden_size=4096`、`n_routed_experts=256`、`routed_scaling_factor=1.5`、`sliding_window=128`；与 Pro 共用 `index_n_heads=64` / `index_head_dim=128` / `num_experts_per_tok=6`；`compress_ratios` 模式为开头 `0, 0` + 中间 `(4, 128)` 反复 20 对 + 末尾 `4, 0`，列表共 44 项）
-- [DeepSeek-V4 技术报告, arXiv:2606.19348](https://arxiv.org/abs/2606.19348)（2026-04-26 提交；图 3.2-23 取 Figure 2 总体架构、图 3.2-25 取 Figure 3 CSA 核心结构；查阅日期 2026-09-23）
+- [DeepSeek-V4 技术报告, arXiv:2606.19348](https://arxiv.org/abs/2606.19348)（2026-04-26 提交；图 3.2-23 取 Figure 2 总体架构、图 3.2-25 取 Figure 3 CSA 核心结构；查阅日期 2026-09-28）
 - [DeepSeek-V3.2-Exp 技术报告](https://github.com/deepseek-ai/DeepSeek-V3.2/raw/main/DeepSeek_V3_2.pdf)（2025-09-29；图 3.2-21 取其 Figure 1「Attention architecture of DeepSeek-V3.2-Exp, where DSA is instantiated under MLA」；查阅日期 2026-09-23）
-- [`deepseek-ai/DeepSeek-V4-Pro` README](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro)（CSA/HCA 命名与「单 token 推理 FLOPs 27%、KV cache 10%（对比 DeepSeek-V3.2）」数字；查阅日期 2026-09-23）
+- [`deepseek-ai/DeepSeek-V4-Pro` README](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro)（CSA/HCA 命名与「单 token 推理 FLOPs 27%、KV cache 10%（对比 DeepSeek-V3.2）」数字；查阅日期 2026-09-28）
 - [Transformers KV Caching Explained, João Lages, 2023-10-09](https://medium.com/@joaolages/kv-caching-explained-276520203249)（`社区观察`：图 3.2-12 分步动画与 GPT-2 / Tesla T4 开关 cache 计时，查阅日期 2026-09-23）
-- 查阅日期：2026-09-15。
+- 查阅日期：2026-09-28。
 
 ### 本节事实声明的来源指向
 

@@ -801,7 +801,7 @@ FlashAttention 在数学上与标准 attention 完全等价（仅差浮点舍入
 图 5.7-2 左侧给出内存层级的带宽与容量：GPU SRAM 约 19 TB/s、20 MB，GPU HBM 约 1.5 TB/s、40 GB，CPU DRAM 约 12.8 GB/s、超过 1 TB——SRAM 带宽比 HBM 高约一个数量级，容量却小约三个数量级。
 
 右侧是分块数据通路： $Q$ 、 $K^{\mathrm{T}}$ 、 $V$ 逐块 Copy 进 SRAM，计算块在 SRAM 上完成（Compute Block on SRAM），输出写回 HBM（Output to HBM）；
-图中 $QK^{\mathrm{T}}$ 的 $N \times N$ 区域用虚线画出并标注 outer / inner 两层循环，完整中间矩阵不进入 HBM 往返。
+图中 $QK^{\mathrm{T}}$ 的 $N \times N$ 区域用虚线画出并标注 outer / inner 两层循环：外循环遍历 $K^{\mathrm{T}}$ 与 $V$ 块，内循环遍历 $Q$ 块；完整中间矩阵不进入 HBM 往返。
 
 长序列下 attention 的显存占用从 $O(N^2)$ 降到 $O(N \cdot d)$ ，这比节省少量非 matmul FLOPs 更重要。
 
@@ -817,31 +817,28 @@ FlashAttention 在数学上与标准 attention 完全等价（仅差浮点舍入
 *图 5.7-3 FlashAttention 前向传播*
 
 ```text
-// 初始化
-m_i = -inf
-l_i = 0
-O_i = 0
+// 初始化（各 Q 块的统计量与输出驻留 HBM）
 for each Q block i:
-    load Q_i
     m_i = -inf
     l_i = 0
     O_i = 0
 
-    for each K,V block j:
+for each K,V block j:        // 外循环：K_j, V_j 常驻 SRAM
+    load K_j, V_j
+
+    for each Q block i:      // 内循环：依次更新各 Q 块
         if causal and j > i:
             continue
 
-        load K_j, V_j
+        load Q_i, m_i, l_i, O_i
         S_{ij} = Q_i @ K_j^T      // (B_r, B_c)
 
         if causal and i == j:
             apply mask to S_{ij}
 
-        // online softmax 累加（O_i 保持未归一化累积）
+        // online softmax 更新统计量，O_i 每步按新 l_i 归一化
         update m_i, l_i, O_i(online softmax)
-
-    O_i = O_i / l_i    // 内循环结束后统一归一化
-    write O_i to HBM
+        write m_i, l_i, O_i to HBM
 ```
 
 具体举例：
@@ -864,16 +861,18 @@ online softmax 在 FlashAttention V1 中的更新过程可以写成：
 m_{ij} = rowmax(S_{ij})
 m_new = max(m_i, m_{ij})
 
-l_i = exp(m_i - m_new) * l_i
-  + sum(exp(S_ij - m_new), axis=1)
+P_ij = exp(S_{ij} - m_new)
+l_new = exp(m_i - m_new) * l_i
+  + sum(P_ij, axis=1)
 
-O_i = exp(m_i - m_new) * O_i
-  + exp(S_{ij} - m_new) @ V_j
+O_i = (exp(m_i - m_new) * l_i * O_i
+  + P_ij @ V_j) / l_new
 
 m_i = m_new
+l_i = l_new
 ```
 
-内循环只更新未归一化的累积量 $O_i$ 与统计量 $m_i$ 、 $l_i$ ；内循环结束后执行一次 $O_i = O_i / l_i$ 完成归一化，与逐步归一化在数学上等价。
+内循环每一步都把输出 $O_i$ 除以更新后的归一化因子 $l_i$ 再写回 HBM，统计量 $m_i$ 、 $l_i$ 与 $O_i$ 同步推进，循环结束时 $O_i$ 已是最终结果。先累积未归一化量、循环末统一除一次 $l_i$ 的写法与之在数学上等价，FlashAttention-2 采用后一种写法把 rescale 移出内循环（§5.7.3）。
 
 因此，online softmax 是 FlashAttention V1 在不显式构造完整 attention matrix 的情况下仍保持精确 attention 语义的关键组件。
 
@@ -885,10 +884,10 @@ FlashAttention V1 通过分块和在线 softmax 解决了注意力计算的显�
 
 #### FlashAttention V2 的核心改进：序列并行、warp 分工与更少的非矩阵乘开销
 
-在 FlashAttention V1 中，计算采用**外循环遍历 $Q$ 块、内循环遍历 $K, V$ 块**的方式。对于每个 $Q_i$ ，算法依次加载所有 $K_j, V_j$ 块，并通过 online softmax 逐步累积注意力结果。
+在 FlashAttention V1 中，计算采用**外循环遍历 $K, V$ 块、内循环遍历 $Q$ 块**的方式——FlashAttention-1 论文 Algorithm 1 第 5 行是外层 $j$ 循环、第 7 行是内层 $i$ 循环，Figure 1 图注说明外循环遍历 $K$ 、 $V$ 块、内循环遍历 $Q$ 块。外层加载一对 $K_j, V_j$ 块后，内层依次更新各 $Q_i$ 块的统计量与输出，通过 online softmax 逐步累积注意力结果。
 这避免了显式构造完整 attention matrix，也减少了 HBM 访问，但跨 tile 的 max、exp、rescale 会穿插在 matmul 之间，形成较强的数据依赖链。
 
-FlashAttention V2 保留了单个线程块视角下 $Q$ 外层、 $K, V$ 内层的基本数据加载顺序，优化重点在于重构并行策略与归约方式，以缓解上述`数据依赖链`带来的性能问题：
+FlashAttention V2 把循环顺序换成单个线程块视角下 $Q$ 外层、 $K, V$ 内层：一个线程块固定负责一个 $Q$ 行块，在内循环里扫完全部 $K, V$ 块；[FlashAttention-2 论文 §3.2](https://arxiv.org/abs/2307.08691) 注明这次调换与序列维并行都率先由 Phil Tillet 在 Triton 实现中提出。V2 的优化重点在于重构并行策略与归约方式，以缓解上述`数据依赖链`带来的性能问题：
 
 - **序列维并行**：V1 只在 batch 和 head 维度并行，同一序列的 $Q$ 块由单个线程块串行扫描；V2 把序列长度也加入调度，每个线程块只负责一个 $Q$ 行块。
   前向各块之间无需通信，反向对 $dQ$ 的跨块累加用 atomic add 完成（[FlashAttention-2 论文 §3.2](https://arxiv.org/abs/2307.08691)）。
@@ -1026,7 +1025,6 @@ V3 原生支持 FP8 输入，但在注意力计算中必须解决**数值稳定�
 矩阵乘法 $QK^T$ 使用 FP8 执行，充分利用 Tensor Core 的高吞吐；**matmul 累加器**保持在 FP32 精度，避免 FP8 累加时的精度损失。
 **Softmax 中的中间统计量**（ $m_i, l_i$ 与中间指数值）保留在 FP32，保证指数和归一化的数值稳定性（softmax 中的指数和除法极易在低精度下溢出）。
 softmax 在 FP32 下计算完成后， $P$ 需要**按块（per-block）requant 回 FP8**才能进入下一个 WGMMA，因此第二次矩阵乘 $PV$ 仍是 FP8 输入 + FP32 累加；这一 requant 与 softmax 融合在同一 pass 里，避免额外访存。
-最终输出 $O$ 在写回 HBM 时按下一层精度选择 BF16 或 FP8。
 
 此外，V3 实现了 **动态缩放因子** 管理。由于 FP8 的表示范围有限（E4M3 约 -448 到 448，E5M2 约 -57344 到 57344），在计算 $QK^T$ 前需要根据输入范围确定缩放因子，防止溢出。V3 按块（tile）动态计算缩放因子，并在流水线中传递，确保 FP8 计算的精度与 FP16 相当。
 
@@ -1123,6 +1121,7 @@ KV cache 不属于 CUDA kernel 本身的计算优化，但和 GPU 的 HBM 容量
 - §5.6.2 低精度表的「FP8 约 30×」相对值：H100 SXM Tensor Core FP8 dense 1,979 TFLOP/s ÷ H100 SXM FP32 CUDA Core 67 TFLOPs（[NVIDIA H100 datasheet](https://www.nvidia.com/en-sg/data-center/h100/) 规格表 SXM=67、NVL=60）。
 - §5.6.2 OCP MX 与 NVIDIA Blackwell NVFP4 块大小差异：OCP MXFP8 / MXFP4 规范定义 32 元素块 + E8M0 scale；Blackwell NVFP4 在部署中按 16 元素块 + E4M3 microexponent + 每张量 FP32 全局缩放组织，与 OCP MXFP4 的 32 元素块 + E8M0 是两套口径。
 - §5.7-2 图注内存层级（SRAM 19 TB/s 20 MB、HBM 1.5 TB/s 40 GB、DRAM 12.8 GB/s）— [FlashAttention-1 论文](https://arxiv.org/abs/2205.14135) Figure 1。
+- §5.7.1 / §5.7.2 FlashAttention V1 循环顺序（外层 $j$ 遍历 $K, V$ 块、内层 $i$ 遍历 $Q$ 块）与输出逐步归一化写回 — [FlashAttention-1 论文](https://arxiv.org/abs/2205.14135) Algorithm 1 第 5、7、12 行与 Figure 1 图注；V2 换序为 $Q$ 外层与未缩放累积 — [FlashAttention-2 论文](https://arxiv.org/abs/2307.08691) §3.1.1、§3.2。
 - §5.7.3 FlashAttention V2 性能（A100 上 50-73% Tensor Core 利用率、最高约 230 TFLOPs/s、H100 上约 335 TFLOPs/s）：[FlashAttention-2 论文 §4](https://arxiv.org/abs/2307.08691)。
 - §5.7.4 FlashAttention V3 性能（H100 FP16 路径约 75% 利用率 ≈ 740 TFLOPs/s、FP8 路径约 60% 利用率 ≈ 1,200 TFLOPs/s、前向约 1.5-2× 加速、反向约 1.5-1.75× 加速）：[FlashAttention-3 论文](https://arxiv.org/abs/2407.08608) + [Tri Dao 2024-07 FlashAttention-3 blog](https://tridao.me/blog/2024/flash3/)；V2 在 H100 上约 35% 利用率基线（≈ 346 TFLOPS）亦见该 blog。
 - §5.7.4 FlashAttention V3 FP8 attention matmul 累加器保持 FP32（论文原文 "the FP32 accumulator of an FP8 WGMMA"，[FlashAttention-3 论文 §3.3](https://arxiv.org/abs/2407.08608)）；

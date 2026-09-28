@@ -126,16 +126,16 @@ tree / all-to-all 取向则更适合不规则通信，例如 MoE expert parallel
 
 *图 7.1-7 TPU8i/TPU8t networking*
 
-拓扑路线也会随 workload 演进。TPU 路线里 TPU8i 偏 tree-style，更贴近 expert parallel 这类较规则的路由通信；TPU8t 通过 Virgo switched network 支持更大规模和更不规则的通信。
+拓扑路线也会随 workload 演进。TPU 路线里 TPU8i 偏 tree-style，更贴近 expert parallel 这类不规则的路由通信；TPU8t 通过 Virgo switched network 支持更大规模的通信。
 GPU 路线则通过 NVLink、NVSwitch、RoCE 和更大的 NVLink domain 缩短跨设备通信路径。
 
 因此，讨论分布式训练时要同时看 GPU 数量和连接方式：同一节点内是否有 NVLink / NVSwitch，跨节点是 InfiniBand 还是 RoCE，是否存在更大的高速通信域。这些拓扑会直接决定 TP、SP、CP、EP 这类高频通信能不能承受。
 
 如果看 Hopper/H100，每张卡 18 条 NVLink4 link，合计 900 GB/s（[NVIDIA NVLink 规格表](https://www.nvidia.com/en-us/data-center/nvlink/) 第四代 NVLink：每 GPU 18 link / 900 GB/s），折算每 link 50 GB/s。
 
-B200/Blackwell 视角下还会看到**单张 Blackwell GPU HBM 约 8 TB/s**（[GB200 NVL72](https://www.nvidia.com/en-us/data-center/gb200-nvl72/) spec sheet：整机架 72 GPU 合计 13.4 TB HBM3E；
-GB200 superchip 标称的 372 GB、16 TB/s 是一个 Grace CPU 配 2 张 Blackwell GPU 的合计值）
-和更大的 NVLink 域（[HGX B200 数据表](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/hgx/hgx-b200-datasheet.pdf)）。
+B200/Blackwell 视角下还会看到**单张 Blackwell GPU HBM 约 8 TB/s** 和更大的 NVLink 域
+（[GB200 NVL72](https://www.nvidia.com/en-us/data-center/gb200-nvl72/) spec sheet：整机架 72 GPU 合计 13.4 TB HBM3E、72 张 GPU 同属一个 NVLink domain；
+GB200 superchip 标称的 372 GB、16 TB/s 是一个 Grace CPU 配 2 张 Blackwell GPU 的合计值）。
 
 这些数字的意义在于建立量级感：**跨卡通信虽然快了很多，但仍慢于片上 SRAM/L1/L2 访问，因此并行策略必须和拓扑一起设计。**
 
@@ -1348,7 +1348,7 @@ DP 由 32 递减到最大模型的 6；但只要组合得当，模型 FLOPs util
 
 *图 7.10-5 3D 并行的收益*
 
-图 7.10-5 把同一论文的 PTD-P（流水线、张量、数据并行的组合）与纯 ZeRO-3 放在一起比 per-GPU 吞吐：在 global batch 固定、ZeRO-3 不带模型并行的条件下，GPU 数从 768 涨到 1920，ZeRO-3 的每卡吞吐随规模下降，175B 与 530B 两条 PTD-P 曲线则基本持平——GPU 变多换来总吞吐线性增长，单卡利用率不掉。
+图 7.10-5 把同一论文的 PTD-P（流水线、张量、数据并行的组合）与纯 ZeRO-3 放在一起比 per-GPU 吞吐：在 global batch 固定、ZeRO-3 不带模型并行的条件下，GPU 数从 384 扩到 2240，ZeRO-3 的每卡吞吐随规模下降，175B 与 530B 两条 PTD-P 曲线则基本持平——GPU 变多换来总吞吐线性增长，单卡利用率不掉。
 
 ![图 7.10-6 张量并行度 8 的经验最优](images/7-10-6-tensor-parallel-degree-8.png)
 
@@ -1407,7 +1407,7 @@ Mixtral / Gemma 2 / Qwen3 / Nemotron 3 Super 的公开并行度。
   DeepSeek V3 paper §3.2 Training Framework 写到 "thereby enabling us to train DeepSeek-V3 without using costly Tensor Parallelism (TP)"，是把 TP 压到 1 的代表性例证。
 - **EP 可很大但极难调**：MoE 的 all-to-all 通信与 expert imbalance 互相耦合；DeepSeek V3 的 64-way EP（跨 8 个节点）依赖 DualPipe 调度和定制的跨节点 all-to-all kernel。
 - **长上下文阶段会切到大 CP**：Llama 3 paper Table 4 显示标准上下文阶段 CP=1，128K 长上下文阶段 CP=16、DP 相应从 128 降到 8。
-  DeepSeek-V3 走的是另一条路线，用 YaRN 分两阶段把窗口从 4K 扩到 32K 再到 128K，并把 batch size 从 1920 降到 480 来控制 activation（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §4.3）。
+  DeepSeek-V3 走的是另一条路线，用 YaRN 分两阶段把窗口从 4K 扩到 32K 再到 128K，batch size 相应从 1920 降到 480——seq 长度扩到 4 倍、batch 缩到 1/4，每步 token 总量不变（1920×32K = 480×128K，[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §4.3）。
 - **DP 上限由 batch size 和硬件规模共同决定**：GPU 集群上的公开配置多落在 DP≤128（Llama 3 paper Table 4 的 DP=64/128/8）；TPU pod 上的 data 分片可以大得多，Gemma 2 的 27B 用 768-way、9B 用 1,024-way data 分片。
 
 硬件层级方面，NVIDIA **NVL72**（GB200/GB300）把 36 张 Grace CPU + 72 张 Blackwell GPU 放进一个 NVLink domain；
@@ -1462,7 +1462,7 @@ Mixtral / Gemma 2 / Qwen3 / Nemotron 3 Super 的公开并行度。
 - [Narayanan et al., Megatron-LM, arXiv:2104.04473](https://arxiv.org/abs/2104.04473)
 - [Megatron-MoE-ModelZoo](https://github.com/yanring/Megatron-MoE-ModelZoo)（`runtime_configs/benchmarking/runtime.conf`，列头 `TP PP EP CP VPP MBS GBS LAYERS DISPATCHER GROUPED_GEMM NNODES`；Mixtral 8x22B 行为 `2 8 8 1 7` @16 节点，Qwen3-235B-A22B 行为 `2 8 32 1 4` @32 节点）
 - [CS336 `lecture_07_stdout.txt`](https://github.com/stanford-cs336/lectures/blob/main/var/traces/lecture_07_stdout.txt)
-- 查阅日期：2026-09-22。
+- 查阅日期：2026-09-28。
 
 ### 本节事实声明的来源指向
 

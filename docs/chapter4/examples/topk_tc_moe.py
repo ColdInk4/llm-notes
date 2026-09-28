@@ -130,6 +130,8 @@ class TC_MoE(nn.Module):
 
 # 运行示例（Batch >1）
 if __name__ == "__main__":
+    # 固定随机种子，保证 router/专家初始化与专家负载统计可复现
+    torch.manual_seed(42)
     # 定义两个示例句子
     sentences = ["MoE是很强大的机制！", "专家混合模型非常高效。"]
 

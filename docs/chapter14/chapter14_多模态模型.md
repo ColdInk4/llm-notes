@@ -40,7 +40,7 @@ Transformer 的核心抽象是 token 序列，因此每种非文本模态都要�
 本章沿三条主线展开：
 
 - **对齐与理解**：CLIP / SigLIP 用图文对比学习把图像压到文本语义附近（§14.2）。
-- **模板化 VLM**：LLaVA / LLaVA OneVision / Qwen-VL 系列用 vision encoder + projector + LM 模板（§14.3-§14.5）。
+- **模板化 VLM**：LLaVA / LLaVA-OneVision / Qwen-VL 系列用 vision encoder + projector + LM 模板（§14.3-§14.5）。
 - **统一自回归**：Chameleon 把图像变成离散 token，与文本 token 在同一 next-token objective 上预测（§14.6）。
 
 §14.6 以 Chameleon 为例给出 QK norm、z-loss 与 logit drift 的处理，§14.7 把多模态训练收束成检查表（token budget、loss 权衡、位置编码与数据阶段），§14.8 单列音频、视频与 omni 方向作为延伸阅读。理解任务和生成任务在 encoder / decoder / loss / sampling 上的不同取舍，也会贯穿这三类路线。
@@ -68,7 +68,7 @@ CLIP 最大的 Vision Transformer 是 ViT-L/14：基模型用约 4 亿 image-tex
 
 文本编码器是 GPT-2 风格的 12 层 Transformer（约 63M，512 宽、8 头）。
 
-ViT-L/14 在 ImageNet zero-shot 上达到与在 1.28M ImageNet 图像上训练的 ResNet-50 可比 / 略高的精度
+ViT-L/14 在 ImageNet zero-shot 上达到与在 1.28M ImageNet 图像上训练的 ResNet-50 可比的精度
 （论文原文 "matches the performance of the original ResNet-50 despite using none of the 1.28 million crowd-labeled training examples"）。
 
 ![图 14.2-2 CLIP batch 内对比学习伪代码](images/14-2-2-clip-contrastive-code.png)
@@ -96,11 +96,11 @@ SigLIP 保留图文对齐目标，但把 CLIP 的 batch 内 multiclass softmax �
 *图 14.2-5 SigLIP 的并行训练优势*
 
 图 14.2-5 展示 SigLIP 在并行训练上的优势。CLIP 的 softmax 需要跨 batch 比较所有候选，batch 很大时通信成本明显；SigLIP 的 pairwise sigmoid loss 更容易分布式扩展。
-实践上，它能在较小 batch 下保持强表现；LLaVA OneVision 后续选用 SigLIP 作为视觉 encoder（§14.4）。
+实践上，它能在较小 batch 下保持强表现；LLaVA-OneVision 后续选用 SigLIP 作为视觉 encoder（§14.4）。
 
 SigLIP 论文给出 batch 维度的对照：batch 小于 16K 时 sigmoid 损失明显优于 softmax，batch 变大时差距收敛；
 Table 1 的 B/16 行，32 张 TPUv4 + 32K batch 下随机初始化训练 2 天达 72.1%、训练 5 天达 73.4% ImageNet zero-shot（Table 1 caption 写明 "The last two rows show results with randomly initialized models"），
-预训练 init 的单独一行是 71.0%（16k batch / 16 TPUv4 / 3 天，初始权重为公开的 ViT-AugReg-B/16 checkpoint）（[arXiv:2303.15343](https://arxiv.org/abs/2303.15343)）。
+预训练 init 的单独一行是 71.0%（16K batch / 16 TPUv4 / 3 天，初始权重为公开的 ViT-AugReg-B/16 checkpoint）（[arXiv:2303.15343](https://arxiv.org/abs/2303.15343)）。
 
 SigLIP 与 PaLI 的图文预训练都来自 WebLI：约 10B 张图像、12B 条 alt-text、覆盖 109 种语言，清洗时按图文得分保留前 10%（约 1B 对）（[PaLI, arXiv:2209.06794](https://arxiv.org/abs/2209.06794) Appendix B）。
 
@@ -123,7 +123,7 @@ $$
 
 CLIP 和 SigLIP 学到的是视觉表示。语言模型使用这些表示时，还需要将视觉 embedding 接到 LLM 的 token embedding space。开源 VLM 常见模板是：vision encoder 编码图像，projector 或 adaptor 映射维度，LLM 在文本上下文中消费这些视觉 token。
 
-这一节回答“视觉 encoder 的输出怎样进入语言模型”。关键组件是 projector / adaptor：它把视觉特征转换到 LLM 可以消费的 embedding space，承担维度映射。完整视觉系统的训练由 vision encoder 单独负责。
+这一节回答“视觉 encoder 的输出怎样进入语言模型”。关键组件是 projector / adaptor：它把视觉特征转换到 LLM 可以消费的 embedding space，承担维度映射。视觉理解能力由 vision encoder 单独承担。
 
 ![图 14.3-1 LLaVA 的 vision encoder、projector 与 LLM](images/14-3-1-llava-architecture.png)
 
@@ -135,8 +135,8 @@ LLaVA 的 text decoder 是 **Vicuna**（基于 LLaMA-1 在 ShareGPT 上微调）
 指令数据是 LLaVA-Instruct-158K（58K 对话 + 23K 详细描述 + 77K 复杂推理 = 158K），由 language-only GPT-4 以 MS COCO 图像的 captions（MTurk 标注）与 bounding boxes 两个符号化表示为输入生成
 （[LLaVA, arXiv:2304.08485](https://arxiv.org/abs/2304.08485)）。
 
-后续 VLM 沿着更换更强 text decoder 与扩充指令数据的方向演进：LLaVA OneVision 的视觉 encoder 改为 SigLIP 并取其最后 Transformer layer 前后两套 grid features 作为视觉 token，
-text decoder 升级为 Qwen-2（0.5B / 7B / 72B 三档），projector 升级为 2-layer MLP（[LLaVA OneVision, arXiv:2408.03326](https://arxiv.org/abs/2408.03326)）。
+后续 VLM 沿着更换更强 text decoder 与扩充指令数据的方向演进：LLaVA-OneVision 的视觉 encoder 改为 SigLIP 并取其最后 Transformer layer 前后两套 grid features 作为视觉 token，
+text decoder 升级为 Qwen-2（0.5B / 7B / 72B 三档），projector 升级为 2-layer MLP（[LLaVA-OneVision, arXiv:2408.03326](https://arxiv.org/abs/2408.03326)）。
 
 视觉 encoder 与语言侧 LLM 的规模差距很大：现代 VLM 的视觉 encoder 普遍不到 1B 参数（CLIP ViT-L/14、SigLIP2-SO-400M 这一档），
 大于 1B 的例子有 Qwen-VL 采用的 OpenCLIP ViT-bigG-14 与 [InternVL](https://arxiv.org/abs/2312.14238) 采用的 InternViT-6B。
@@ -163,21 +163,21 @@ visual token 在 prefill / KV cache 中的占比由 §14.2 的分辨率与 patch
 图 14.3-3 给出另一种多阶段训练账本。第一阶段用大规模低质量图文数据训练视觉侧和 adaptor；第二阶段提高数据质量和分辨率，训练更多参数；
 第三阶段使用 instruction tuning 数据塑造交互能力。这个顺序和文本模型的 pre-training、mid-training、post-training 相似，但多了视觉 encoder 与语言模型对齐问题。
 
-## 14.4 LLaVA / LLaVA OneVision：数据、AnyRes、多图和视频
+## 14.4 LLaVA / LLaVA-OneVision：数据、AnyRes、多图和视频
 
-早期 VLM 常把图像 resize/crop 到固定分辨率。这个做法适合分类，但会丢失 OCR、图表、GUI 和长文档中的细节。LLaVA OneVision 的问题是：如何让同一模型处理单图、多图和视频，同时控制视觉 token 数。
+早期 VLM 常把图像 resize/crop 到固定分辨率。这个做法适合分类，但会丢失 OCR、图表、GUI 和长文档中的细节。LLaVA-OneVision 的问题是：如何让同一模型处理单图、多图和视频，同时控制视觉 token 数。
 
 这一节关注数据和输入预算。单图需要高分辨率细节，多图需要关系建模，视频需要时间覆盖；统一模型必须同时管理这三类输入的 token 成本。
 
-![图 14.4-1 LLaVA OneVision 总体结构](images/14-4-1-llava-onevision-overview.png)
+![图 14.4-1 LLaVA-OneVision 总体结构](images/14-4-1-llava-onevision-overview.png)
 
-*图 14.4-1 LLaVA OneVision 总体结构*
+*图 14.4-1 LLaVA-OneVision 总体结构*
 
-图 14.4-1 展示 LLaVA OneVision 的系统形态。视觉 encoder 采用 SigLIP，语言模型采用 Qwen2，projector 使用 MLP。模型面向单图、多图和视频输入，训练数据也按这些输入类型组织。
+图 14.4-1 展示 LLaVA-OneVision 的系统形态。视觉 encoder 采用 SigLIP，语言模型采用 Qwen2，projector 使用 MLP。模型面向单图、多图和视频输入，训练数据也按这些输入类型组织。
 
-![图 14.4-2 LLaVA OneVision AnyRes 高分辨率处理](images/14-4-2-llava-onevision-anyres.png)
+![图 14.4-2 LLaVA-OneVision AnyRes 高分辨率处理](images/14-4-2-llava-onevision-anyres.png)
 
-*图 14.4-2 LLaVA OneVision AnyRes 高分辨率处理*
+*图 14.4-2 LLaVA-OneVision AnyRes 高分辨率处理*
 
 AnyRes 的思路是保留高分辨率信息：把原图切成多个符合 vision encoder 输入大小的 tiles，分别编码后拼接视觉 tokens。若原图过大，则用插值或下采样控制 token 数。这个机制提高 OCR 和细节理解能力，但会增加 prefill 长度和 KV cache 压力。
 
@@ -187,37 +187,37 @@ AnyRes 的思路是保留高分辨率信息：把原图切成多个符合 vision
 
 图 14.4-3 把单图、多图和视频放到同一预算里。单图可以使用更高分辨率；多图需要给每张图较少 tokens；视频需要在帧数、分辨率和时间覆盖之间取舍。多模态模型的输入预算同时包含 context length 和每种模态消耗的视觉 tokens。
 
-![图 14.4-4 LLaVA OneVision 数据组成一](images/14-4-4-llava-onevision-data-1.png)
+![图 14.4-4 LLaVA-OneVision 数据组成一](images/14-4-4-llava-onevision-data-1.png)
 
-*图 14.4-4 LLaVA OneVision 数据组成一*
+*图 14.4-4 LLaVA-OneVision 数据组成一*
 
-![图 14.4-5 LLaVA OneVision 数据组成二](images/14-4-5-llava-onevision-data-2.png)
+![图 14.4-5 LLaVA-OneVision 数据组成二](images/14-4-5-llava-onevision-data-2.png)
 
-*图 14.4-5 LLaVA OneVision 数据组成二*
+*图 14.4-5 LLaVA-OneVision 数据组成二*
 
-图 14.4-4 和图 14.4-5 展示 OneVision 的数据侧工作。VLM 的能力很大程度来自数据组织：OCR、图表、文档、多图关系、视频理解和 GUI agent 都需要不同样本形态。只增加 image-text pairs 不足以稳定得到这些交互能力。
+图 14.4-4 和图 14.4-5 展示 LLaVA-OneVision 的数据侧工作。VLM 的能力很大程度来自数据组织：OCR、图表、文档、多图关系、视频理解和 GUI agent 都需要不同样本形态。只增加 image-text pairs 不足以稳定得到这些交互能力。
 
-![图 14.4-6 LLaVA OneVision 训练顺序](images/14-4-6-llava-onevision-training.png)
+![图 14.4-6 LLaVA-OneVision 训练顺序](images/14-4-6-llava-onevision-training.png)
 
-*图 14.4-6 LLaVA OneVision 训练顺序*
+*图 14.4-6 LLaVA-OneVision 训练顺序*
 
 图 14.4-6 把训练顺序写成从容易到困难。先建立基础图文对齐，再加入更复杂的任务、更多模态组合和更长上下文。这个顺序降低训练不稳定性，也让模型先学会读取视觉信息，再学习多步、多图和视频推理。
 
-![图 14.4-7 LLaVA OneVision 单图到多图的迁移](images/14-4-7-llava-onevision-transfer-single-to-multi.png)
+![图 14.4-7 LLaVA-OneVision 单图到多图的迁移](images/14-4-7-llava-onevision-transfer-single-to-multi.png)
 
-*图 14.4-7 LLaVA OneVision 单图到多图的迁移*
+*图 14.4-7 LLaVA-OneVision 单图到多图的迁移*
 
 图 14.4-7 展示 diagram、chart 等单图数据对多图任务的迁移。单图训练先让模型学会读取视觉结构和符号关系；多图任务再要求模型把这种读取能力扩展到多个视觉上下文之间的比较。
 
-![图 14.4-8 LLaVA OneVision OCR 到 GUI agent 的迁移](images/14-4-8-llava-onevision-transfer-ocr-to-agent.png)
+![图 14.4-8 LLaVA-OneVision OCR 到 GUI agent 的迁移](images/14-4-8-llava-onevision-transfer-ocr-to-agent.png)
 
-*图 14.4-8 LLaVA OneVision OCR 到 GUI agent 的迁移*
+*图 14.4-8 LLaVA-OneVision OCR 到 GUI agent 的迁移*
 
 图 14.4-8 连接 OCR、关系理解和 GUI agent。GUI 截图里有文字、控件和空间关系，单图 OCR 数据提供文字读取能力，多图关系数据提供跨区域比较能力，这些能力组合后才更适合 agent 操作场景。
 
-![图 14.4-9 LLaVA OneVision visual prompting 到视频的迁移](images/14-4-9-llava-onevision-transfer-visual-prompting.png)
+![图 14.4-9 LLaVA-OneVision visual prompting 到视频的迁移](images/14-4-9-llava-onevision-transfer-visual-prompting.png)
 
-*图 14.4-9 LLaVA OneVision visual prompting 到视频的迁移*
+*图 14.4-9 LLaVA-OneVision visual prompting 到视频的迁移*
 
 图 14.4-9 展示 visual prompting 从单图迁移到视频的路径。单图中的圈选、箭头或视觉指代让模型学会“看哪里”；视频任务再把这种指代能力放到帧序列中，要求模型同时保留时间顺序和目标位置。
 
@@ -402,7 +402,7 @@ Chameleon 的视觉词表由 VQ-VAE 定义：512×512 图像编码为 1024 个�
 - **真正 omni（任意模态输入输出）**：Chameleon 由 Meta 在 2024 年发布（[arXiv:2405.09818](https://arxiv.org/abs/2405.09818)），论文本身已经把文本 + 图像的统一离散 token 路线做到 vision + text 的端到端训练；
   其训练第一阶段即联合了约 **2.9T 文本 token + 1.5T 文本/图像 token + 400B 文本/图像交错 token**。
   把这一思路扩展到任意模态属于后续研究的方向；vision + text 的统一自回归生成已在 Chameleon 论文中给出端到端结果。
-- **视频原生模型**：当前 LLaVA OneVision / Qwen3-VL 已支持视频，但单帧 encoder + 时间 attention 的拼接仍是主流；端到端 video token 化（如 [VideoPoet](https://arxiv.org/abs/2312.14125)）仍处于早期。
+- **视频原生模型**：当前 LLaVA-OneVision / Qwen3-VL 已支持视频，但单帧 encoder + 时间 attention 的拼接仍是主流；端到端 video token 化（如 [VideoPoet](https://arxiv.org/abs/2312.14125)）仍处于早期。
 
 ## 本章总结与下章衔接
 
@@ -419,7 +419,7 @@ LLaVA / Qwen-VL / Chameleon 用 projector 或离散 token 把视觉 token 接到
 ## 思考
 
 - 给一张 4K 截图和一个 256×256 缩略图，CLIP-style 对比学习的 alignment score 差异主要由分辨率还是 aspect ratio 决定？
-- LLaVA OneVision 的 AnyRes 切 9 tiles 时，视觉 token 数从每图 ~729 涨到 (1+9)×729 = 7290（图 14.4-3），KV cache 与 prefill 延迟按什么比例上升？
+- LLaVA-OneVision 的 AnyRes 切 9 tiles 时，视觉 token 数从每图 ~729 涨到 (1+9)×729 = 7290（图 14.4-3），KV cache 与 prefill 延迟按什么比例上升？
 - Chameleon 用离散图像 token 后，跨模态 QK norm 的阈值在不同模态间是否需要分别调？
 - Qwen3-VL 的 square-root-normalized per-token loss 对视频样本（高 token 数）是否真的能抑制梯度主导？
 
@@ -428,7 +428,7 @@ LLaVA / Qwen-VL / Chameleon 用 projector 或离散 token 把视觉 token 接到
 - [CLIP, arXiv:2103.00020](https://arxiv.org/abs/2103.00020)
 - [SigLIP, arXiv:2303.15343](https://arxiv.org/abs/2303.15343)
 - [LLaVA, arXiv:2304.08485](https://arxiv.org/abs/2304.08485)
-- [LLaVA OneVision, arXiv:2408.03326](https://arxiv.org/abs/2408.03326)
+- [LLaVA-OneVision, arXiv:2408.03326](https://arxiv.org/abs/2408.03326)
 - [Chameleon, arXiv:2405.09818](https://arxiv.org/abs/2405.09818)
 - [Qwen-VL, arXiv:2308.12966](https://arxiv.org/abs/2308.12966)
 - [Qwen2-VL, arXiv:2409.12191](https://arxiv.org/abs/2409.12191)
@@ -445,7 +445,7 @@ LLaVA / Qwen-VL / Chameleon 用 projector 或离散 token 把视觉 token 接到
 - [CLIP](https://arxiv.org/abs/2103.00020)，查阅日期 `2026-09-22`，状态 `论文`。
 - [SigLIP](https://arxiv.org/abs/2303.15343)，查阅日期 `2026-09-22`，状态 `论文`（Table 1 数据从 PDF 复核）。
 - [LLaVA](https://arxiv.org/abs/2304.08485)，查阅日期 `2026-09-22`，状态 `论文`。
-- [LLaVA OneVision](https://arxiv.org/html/2408.03326)，查阅日期 `2026-09-22`，状态 `论文`（729 / 7290 token budget 从 HTML 正文复核）。
+- [LLaVA-OneVision](https://arxiv.org/html/2408.03326)，查阅日期 `2026-09-22`，状态 `论文`（729 / 7290 token budget 从 HTML 正文复核）。
 - [InternVL](https://arxiv.org/abs/2312.14238)，查阅日期 `2026-09-23`，状态 `论文`（InternViT-6B 规模自 HTML 正文复核）。
 - [Qwen-VL](https://arxiv.org/abs/2308.12966)，查阅日期 `2026-09-22`，状态 `论文`；
   上下文长度核自 [config.json](https://huggingface.co/Qwen/Qwen-VL/blob/main/config.json) 的 `max_position_embeddings: 8192`，查阅日期 `2026-09-23`。
@@ -469,7 +469,7 @@ LLaVA / Qwen-VL / Chameleon 用 projector 或离散 token 把视觉 token 接到
 - SigLIP Table 1 的初始化、TPU 与 batch 数字指向 [arXiv:2303.15343](https://arxiv.org/abs/2303.15343) Table 1
 - WebLI 规模与前 10% 过滤指向 [arXiv:2209.06794](https://arxiv.org/abs/2209.06794) Appendix B
 - LLaVA 158K 数据构成与 language-only GPT-4 指向 [arXiv:2304.08485](https://arxiv.org/abs/2304.08485)
-- LLaVA OneVision 729 / 7290 token budget 指向 [arXiv:2408.03326](https://arxiv.org/abs/2408.03326) §3.2 与 Figure 3
+- LLaVA-OneVision 729 / 7290 token budget 指向 [arXiv:2408.03326](https://arxiv.org/abs/2408.03326) §3.2 与 Figure 3
 - Qwen-VL 三阶段与 Table 1 模块参数指向 [arXiv:2308.12966](https://arxiv.org/abs/2308.12966) §3 Training 与 Table 1，视频支持范围指向该文 Conclusion
 - ViT-bigG-14 参数指向 [OpenCLIP model_profile.csv](https://github.com/mlfoundations/open_clip/blob/main/docs/model_profile.csv)
 - Qwen3-VL 的 SigLIP-2 变体与 square-root loss 指向 [arXiv:2511.21631](https://arxiv.org/abs/2511.21631)，MRoPE 频谱结论指向该文 §2.1

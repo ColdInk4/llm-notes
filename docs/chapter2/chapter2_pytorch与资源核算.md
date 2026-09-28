@@ -103,7 +103,7 @@ dense 为一半，约 989.5 teraFLOPS）、HBM 80 GB、3.35 TB/s；NVL 形态把
 
 两个 Tensor Core 行都带 `*`，按 NVIDIA datasheet 惯例表示含 2:4 稀疏，dense Transformer 应按一半重算。
 
-本节后面的例子按 SXM5 规格估算（与 [NVIDIA H100 datasheet](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/H100/H100-datasheet-us-update.pdf) 一致），
+本节后面的例子按 SXM5 规格估算（与 [NVIDIA H100 datasheet](https://resources.nvidia.com/en-us-gpu-resources/h100-datasheet-24306) 一致），
 如换 NVL 或 PCIe 形态需按该形态的峰值重算。
 
 上述 989.5 TFLOP/s 是 H100 的理论峰值，但实际运行模型时，由于各种软硬件开销，你几乎不可能达到 100% **模型算力利用率 (MFU, Model FLOPs Utilization)**，通常按 30%–60% 的利用率估算更现实。这里取 50% 用作后续估计。
@@ -363,7 +363,7 @@ y = x @ w                    # 矩阵乘法
 assert y.size() == torch.Size([4, 8, 16, 2]) # 结果形状
 ```
 
-PyTorch 的矩阵乘法规则是「除最后两维外都按 batch 维广播」：x 的形状是 (4, 8, 16, 32)，最后两维做 $(16, 32) @ (32, 2) = (16, 2)$；前面三个维度 (4, 8, 16) 都作为 batch 维保留。最终结果 y 的形状是 (4, 8, 16, 2)。
+PyTorch 的矩阵乘法规则是「除最后两维外都按 batch 维广播」：x 的形状是 (4, 8, 16, 32)，最后两维做 $(16, 32) @ (32, 2) = (16, 2)$；前面两个维度 (4, 8) 作为 batch 维保留。最终结果 y 的形状是 (4, 8, 16, 2)。
 
 ### 2.2.3 使用 Einops 库对张量操作进行优化
 
@@ -710,7 +710,7 @@ def cuda_if_available(index: int = 0) -> torch.device:
 
 - GPT-4 (2023 年)：据推测训练计算量约 $2 \times 10^{25}$ FLOPs [文章](https://patmcguinness.substack.com/p/gpt-4-details-revealed)
 
-- 政策背景：美国曾有一项行政命令（[EO 14110](https://www.govinfo.gov/content/pkg/FR-2023-11-01/html/2023-24283.htm)），要求任何训练 FLOPs 超过 $1 \times 10^{26}$ 的基础模型必须向政府报告；该命令已于 2025 年 1 月被[总统行动](https://www.whitehouse.gov/presidential-actions/2025/01/removing-barriers-to-american-leadership-in-artificial-intelligence/)撤销
+- 政策背景：美国曾有一项行政命令（[EO 14110](https://www.govinfo.gov/content/pkg/FR-2023-11-01/html/2023-24283.htm)），要求任何训练 FLOPs 超过 $1 \times 10^{26}$ 的基础模型必须向政府报告；该命令已于 2025 年 1 月 20 日被[行政令 14148](https://www.govinfo.gov/content/pkg/FR-2025-01-28/html/2025-01901.htm)撤销
 
 - NVIDIA A100：BF16/FP16 Tensor Core 峰值性能为 312 TFLOP/s（即 $3.12 \times 10^{14}$ FLOP/s）
   [官方手册](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-nvidia-us-2188504-web.pdf)
@@ -1534,7 +1534,7 @@ PyTorch 的 `get_promised_flop_per_sec(dtype)` 把 helper 与资源账本打通�
 - [Nemotron 3 Super, arXiv:2604.12374](https://arxiv.org/abs/2604.12374)：120B（active 12B）hybrid Mamba-Attention MoE，Nemotron 3 家族中首个以 NVFP4 预训练、首个采用 LatentMoE 的模型，预训练 25T token，查阅日期 2026-09-22。
 - [FP8-LM, arXiv:2310.18313](https://arxiv.org/abs/2310.18313)：Microsoft 提出的 FP8 大模型训练框架，查阅日期 2026-09-03。
 - [FP8 Formats for Deep Learning, arXiv:2209.05433](https://arxiv.org/abs/2209.05433)：Micikevicius et al. 2022 NVIDIA FP8 E4M3/E5M2 格式规范，查阅日期 2026-09-03。
-- [Mixed Precision Training, arXiv:1710.03740](https://arxiv.org/abs/1710.03740)：Micikevicius et al. 2017（ICLR 2018）半精度训练策略，查阅日期 2026-09-22。
+- [Mixed Precision Training, arXiv:1710.03740](https://arxiv.org/abs/1710.03740)：Narang et al. 2017（ICLR 2018）半精度训练策略，查阅日期 2026-09-22。
 - [Glorot & Bengio 2010](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf)：式 1 standard initialization 与式 16 normalized（Xavier / Glorot）initialization，查阅日期 2026-09-03。
 - [Goodfellow et al. *Deep Learning* §8.4](https://www.deeplearningbook.org/contents/optimization.html)：参数初始化策略与式 8.23，查阅日期 2026-09-03。
 - [LLaMA, arXiv:2302.13971](https://arxiv.org/abs/2302.13971) Table 1：预训练数据各子集磁盘大小，查阅日期 2026-09-03。

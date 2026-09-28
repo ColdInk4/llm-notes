@@ -272,7 +272,7 @@ TC_MoE(dim=32, num_experts=10, k=2)，输入文本：
 >"MoE是很强大的机制！", "专家混合模型非常高效。"
 
 输出：
->按照字节级切分文本，两句分别是 27、33 个字节，padding 对齐到 33 后共 2 × 33 = 66 个 token 位；专家负载统计从 0 到 9 号专家处理 token 总数依次为 [13, 13, 16, 14, 9, 6, 20, 19, 18, 4]，合计 132 = 66 × k（k = 2）。
+>按照字节级切分文本，两句分别是 27、33 个字节，padding 对齐到 33 后共 2 × 33 = 66 个 token 位；专家负载统计从 0 到 9 号专家处理 token 总数依次为 [6, 14, 4, 26, 14, 29, 13, 5, 7, 14]，合计 132 = 66 × k（k = 2）。
 
 ![图 4.1-4 expert-choice routing](images/4-1-4-expert-choice-routing.png)
 
@@ -371,7 +371,7 @@ EC_MoE(dim=32, num_experts=10, k=2)，输入文本：
 >"MoE是很强大的机制！", "专家混合模型非常高效。"
 
 输出：
->按照字节级切分并 padding 对齐后共 66 个 token 位（两句分别 27、33 字节），每个专家最多挑 k = 2 个 token，因此 0 到 9 号专家处理的 token 数均为 2，只覆盖 20 个 token 位；其余 token 一次都没有被处理，比如：['混'，'合'， '模'， '型'...]。
+>按照字节级切分并 padding 对齐后共 66 个 token 位（两句分别 27、33 字节），每个专家挑 k = 2 个 token，因此 0 到 9 号专家处理的 token 数均为 2，只覆盖 20 个 token 位；其余 46 个 token 位一次都没有被处理，按字符去重后例如 ['混'，'合'，'模'，'型'…]。
 
 
 因此，在每一次前向传播中，模型只会对 top-k routing 机制挑选出的 expert 子集 $T$ 进行计算，从而实现稀疏化推理。routing 机制的核心作用可以概括为：**为每个输入选择少数 experts，并对这些 active experts 的输出按 routing weights 加权融合**。
@@ -419,7 +419,7 @@ Roller et al. 2021 的 [Hash Layers For Large Sparse Models, arXiv:2106.04426](h
 
 训练前就把每个 token 映射到固定 expert（random hash 或 balanced assignment），不引入随机投影，也不通过梯度优化哈希参数；论文 §3.1 明确写明：
 
-”we generally employ pre-computed hash functions, which use a lookup table during learning – precomputed in advance – to map tokens to expert modules”
+“we generally employ pre-computed hash functions, which use a lookup table during learning – precomputed in advance – to map tokens to expert modules”
 
 这与下文示例代码采用的几何 LSH 是不同的非学习式 routing 范式，应分开理解。
 
@@ -718,7 +718,7 @@ upcycling 把已有 dense FFN 权重 $W_{\text{dense}}$ 复制成 $E$ 个 expert
 这条机制同时是经验陈述：目前 OLMoE / Komatsuzaki 的实验都未给出解析的「迁移步长 vs 训练预算」公式，给出的 25% / 120% 数字来自具体实验设置，工程上不能跨设置直接外推。
 
 > [!WARNING]
-> OLMoE 的实验说明，upcycling 不只是把稠密 FFN 复制成多个专家。已有稠密权重可能干扰专家重新分化，随机初始化的 router 也可能“学得太晚”，在学习率衰减后才形成模糊专家分工。
+> OLMoE 的实验说明，upcycling 不只是把稠密 FFN 复制成多个专家：稠密初始化会限制 experts 的再分化空间（[arXiv:2409.02060](https://arxiv.org/abs/2409.02060) §5.3），而路由分工在预训练极早期就已定型——前 1% 训练步（约 20B tokens）内 top-8 路由已有至多约 60% 饱和（§5.1），留给 experts 重新分化的训练窗口很短。
 
 此外，工程实践中也出现了成功的 **upcycling** 案例，例如 Qwen1.5-MoE 通过将已有稠密模型改造为 MoE，在保持或提升性能的同时提高参数效率。upcycling 的关键决策包括专家初始化、共享专家比例、router 初始化和后续训练 token 预算；如果继续训练数据不足，稀疏专家容易在小规模 fine-tuning 中过拟合。
 
@@ -1219,7 +1219,7 @@ DeepSeek-V3 论文在 MoE 之外同时披露了两项独立于 MoE 的核心架�
 
     这条判断来自经验观察——fine-tune 阶段的可训练容量远大于数据能支撑的复杂度；Chinchilla 那类刻画 pre-train 算力分配的 scaling law 不构成对 fine-tune 过拟合的推导。
 
-    公开解法分两条：ST-MoE（Zoph et al., 2022）只 fine-tune 非 MoE 的 MLP 部分、把 routed experts 冻结（MoE 参数约占全模型 ≈80%，可训练参数随之压到约 1/5，ST-MoE §4.2）对冲数据不足；
+    公开解法分两条：ST-MoE（Zoph et al., 2022）把 routed experts 冻结、只 fine-tune 非 MoE 参数（MoE 参数约占全模型 ≈80%，可训练参数随之压到约 1/5；[arXiv:2202.08906](https://arxiv.org/abs/2202.08906) §4.2 同时验证只 fine-tune 非 MoE FFN 的更小子集也有效），对冲数据不足；
 
     DeepSeek 走数据侧，把 SFT 数据扩到百万量级压过拟合。大规模 MoE 后训练按这两条路线之一处理。
 
@@ -1433,7 +1433,7 @@ MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并
 | DeepSeek v1 (DeepSeek-MoE 16B) | 16B | 2.8B | 64 routed + 2 shared / top-6（8/66 ≈ 12.1% 激活） | 共享专家 + fine-grained experts 的早期尝试 | [arXiv:2401.06066](https://arxiv.org/abs/2401.06066) |
 | DeepSeek v2 | 236B | 21B | 160 routed + 2 shared / top-6（8/162 ≈ 4.94% 激活） | device-limited routing（每个 token 的目标 expert 最多分布在 M 个 device 上，M ≥ 3 时质量与无约束 top-K 基本对齐），communication balancing loss | [arXiv:2405.04434](https://arxiv.org/abs/2405.04434) + [DeepSeek-V2 config](https://huggingface.co/deepseek-ai/deepseek-v2) |
 | DeepSeek v3 | 671B | 37B | 256 routed + 1 shared / top-8（9/257 ≈ 3.5% 激活） | sigmoid 打分 + 仅 top-k 归一化；node-limited routing（每 token 最多发到 M=4 个节点，区别于 v2 的 device-limited）；aux-loss-free + seq-wise aux balance | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) + [DeepSeek-V3 config](https://huggingface.co/deepseek-ai/DeepSeek-V3) |
-| DeepSeek V4-Pro | 未公开 | 未公开 | 384 routed + 1 shared / top-6（7/385 ≈ 1.82% 激活） | `topk_method: "noaux_tc"` + `scoring_func: "sqrtsoftplus"`；前 3 层走哈希路由（`num_hash_layers: 3`）；`swiglu_limit: 10.0` 抑制 activation outlier | [DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) |
+| DeepSeek V4-Pro | 1.6T | 49B | 384 routed + 1 shared / top-6（7/385 ≈ 1.82% 激活） | `topk_method: "noaux_tc"` + `scoring_func: "sqrtsoftplus"`；前 3 个 MoE 层走哈希路由（`num_hash_layers: 3`）；`swiglu_limit: 10.0` 抑制 activation outlier | [arXiv:2606.19348](https://arxiv.org/abs/2606.19348) + [DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json) |
 
 > [!TIP]
 > DeepSeek MoE 的「共享专家 + fine-grained experts」组合是 2024-2025 年间公开 MoE 模型最常复用的模板（Qwen 1.5 MoE、Qwen MoE 系列、Llama 4 Maverick 等都用到这一组合或其变体）。
@@ -1495,7 +1495,9 @@ MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并
 
 - [OlMoE config](https://huggingface.co/allenai/OLMoE-1B-7B-0924)
 - [Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct)
+- [Meta Llama 4 官方博客](https://ai.meta.com/blog/llama-4-multimodal-intelligence/)（"MoE layers use 128 routed experts and a shared expert"；Maverick 17B active / 400B total）
 - [DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)（`n_routed_experts: 384`、`n_shared_experts: 1`、`num_experts_per_tok: 6`、`topk_method: "noaux_tc"`、`scoring_func: "sqrtsoftplus"`、`num_hash_layers: 3`、`swiglu_limit: 10.0`）
+- [DeepSeek-V4-Pro README](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro)（模型表：1.6T total / 49B activated / 1M context）
 - [Qwen1.5-MoE-A2.7B config](https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B/blob/main/config.json)
 - [MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k/blob/main/config.json)
 - [MiniMax-M1 论文](https://arxiv.org/abs/2506.13585)（456B / 45.9B 参数口径）
@@ -1504,15 +1506,20 @@ MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并
 - [Upcycled MoE, arXiv:2212.05055](https://arxiv.org/abs/2212.05055)
 - [DeepSeekMoE, arXiv:2401.06066](https://arxiv.org/abs/2401.06066)（§4.4 共享 expert 消融：Pile loss 1.808 / 1.806 / 1.811、1:3 扩展比例）
 - [DeepSeek-V3, arXiv:2412.19437](https://arxiv.org/abs/2412.19437)（Table 1 训练成本、Table 4 MTP 消融）
+- [DeepSeek-V4, arXiv:2606.19348](https://arxiv.org/abs/2606.19348)（DeepSeek-V4-Pro 1.6T / 49B activated，DeepSeek-V4-Flash 284B / 13B，2026-04-26 提交）
 - [Switch Transformer, arXiv:2101.03961](https://arxiv.org/abs/2101.03961)
 - [Kimi K2, arXiv:2507.20534](https://arxiv.org/abs/2507.20534)
-- 查阅日期：2026-09-22。
+- 查阅日期：2026-09-28。
 
 ### 本节事实声明的来源指向
 
 - §4.1.2 router z-loss 与低精度 router 分析（ST-MoE [arXiv:2202.08906](https://arxiv.org/abs/2202.08906) §3.3， $c_z = 0.001$）
 - §4.1.3 从零训练 25% 追赶（OLMoE [arXiv:2409.02060](https://arxiv.org/abs/2409.02060) §4.1.5）与 upcycled 120% 预算（[arXiv:2212.05055](https://arxiv.org/abs/2212.05055) Figure 4）
+- §4.1.3 OLMoE 路由早期饱和（前 1% 训练步内 top-8 路由至多约 60% 饱和）与稠密初始化限制 expert 分化（[arXiv:2409.02060](https://arxiv.org/abs/2409.02060) §5.1、§5.3）
+- §4.3.1 ST-MoE fine-tuning 参数子集（[arXiv:2202.08906](https://arxiv.org/abs/2202.08906) §4.2：MoE 参数约占 ≈80%，更新 Non MoE 参数可训练量约 1/5，只更新非 MoE FFN 子集同样有效）
 - §4.3.1 DeepSeekMoE §4.4 Pile loss 1.808 / 1.806 / 1.811 与 1:3 扩展比例（[arXiv:2401.06066](https://arxiv.org/abs/2401.06066) §4.4）
 - §4.3.2 seq-wise $\alpha = 0.0001$、bias 更新 $\gamma = 0.001$、MTP 深度 $D = 1$ 与 14.8T tokens（[arXiv:2412.19437](https://arxiv.org/abs/2412.19437) §4.2、Table 1、Table 4）
 - §4.5 Switch 表口径（[arXiv:2101.03961](https://arxiv.org/abs/2101.03961) Table 9）
+- §4.5 Llama 4 Maverick 每 token 1 shared + 1 routed、17B active / 400B total（[Meta 官方博客](https://ai.meta.com/blog/llama-4-multimodal-intelligence/)）
+- §4.6 V4-Pro 总参 1.6T / 激活 49B 与哈希路由层（[DeepSeek-V4, arXiv:2606.19348](https://arxiv.org/abs/2606.19348) 摘要、[DeepSeek-V4-Pro README](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro) 模型表与 config）
 - §4.4 Kimi K2 QK-Clip 阈值 $\tau = 100$ 与 15.5T 零 loss spike（[arXiv:2507.20534](https://arxiv.org/abs/2507.20534)）

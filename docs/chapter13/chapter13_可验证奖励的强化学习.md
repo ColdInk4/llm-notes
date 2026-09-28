@@ -1201,7 +1201,7 @@ DeepSeek-R1 报告没有这道 N 次猜测检测，它的数据筛选走拒绝�
 - 对于数学——使用约 800k 条样本训练一个 CoT 奖励模型，专门做答案等价性检查
 
 数学任务需要专门的 reward model，原因是同一个最终答案在数学上有多种等价写法，纯字符串规则会把等价表达判成错误。
-Kimi 为此收集了约 800k 条 CoT 标注样本来微调这个奖励模型（[arXiv:2501.12599](https://arxiv.org/abs/2501.12599) §2.3.5 "Reward Modeling for Math"：
+Kimi 为此收集了约 800k 条 CoT 标注样本来微调这个奖励模型（[arXiv:2501.12599](https://arxiv.org/abs/2501.12599) §2.3.5 "More Details on Training Recipe" 的 "Reward Modeling for Math" 小节：
 "an equally large dataset of about 800k CoT-labeled examples"），规模与不带 CoT 的 Classic RM 相当。
 
 #### Scaling 结果
@@ -1224,7 +1224,7 @@ QwQ 与 o1-mini 只有语言列分数，QVQ 只有视觉列分数，o1 与 Kimi 
 *图 13.4-19 Kimi k1.5 训练准确率与长度变化*
 
 12 幅子图各对应一个评测切面（总分、MATH500、OMNI-MATH500、AIME 与 AIMO 2024、GPQA、理科科目等），
-横轴是训练迭代数，左轴是准确率（蓝色 Performance 曲线），右轴是响应 token 数（橙色 Token Length 曲线），阴影带是波动区间。
+横轴是训练迭代数，左轴是准确率（蓝色 Performance 曲线），右轴是响应 token 数（橙色 Token Length 曲线），阴影带表示响应长度的 95 分位。
 多数切面上准确率与响应 token 数同步上升，部分难评测切面上长度在训练中段趋稳。
 长度与准确率在训练期同向增长；长度奖励留到训练后期启用，避免在能力爬升阶段干扰性能。
 
@@ -1375,7 +1375,7 @@ CLIP / SigLIP 的图像语义对齐、LLaVA / Qwen-VL 系列把视觉 token 接�
 - [Less is More: Improving LLM Alignment via Preference Data Selection, arXiv:2502.14560](https://arxiv.org/abs/2502.14560)（Xun Deng et al., 2025；Bayesian Aggregation 数据选择、UltraFeedback 约 10% 子集、相对完整数据集在 AlpacaEval 2.0 上提升 3-8 个百分点）
 - [Qwen3-Coder-Next 模型卡](https://huggingface.co/Qwen/Qwen3-Coder-Next)（80B 总参 / 3B 激活 / 262,144 原生上下文）
 - [GAIR/LIMO 数据集](https://huggingface.co/datasets/GAIR/LIMO)（817 行，question / solution / answer 三元组）
-- 查阅日期：2026-09-22。
+- 查阅日期：2026-09-28。
 
 ### 本节事实声明的来源指向
 
@@ -1383,7 +1383,7 @@ CLIP / SigLIP 的图像语义对齐、LLaVA / Qwen-VL 系列把视觉 token 接�
 - alpaca_farm PPO trainer — `objective/kl_sum_seq`、`objective/rewards`、`objective/non_score_rewards`、`objective/shaped_rewards` 的定义
 - DeepSeek-R1 Appendix G.2 "Unsuccessful Attempts"（PRM / MCTS 落地难点）；Appendix B.3.2 冷启动数据收集（四步：R1-Zero 多 trajectory → V3 精修 → LLM 风格重写 → 人工验证）；Appendix B.3.3 "800K Supervised Data"（600k + 200k = 800k）；Appendix F "DeepSeek-R1 Distillation"（六个学生基座，只做 SFT）
 - Dr. GRPO §2.2 template 影响；§2.3 "Aha Moment Already Appears in Base Models Including DeepSeek-V3-Base"；§3.1 "GRPO Leads to Biased Optimization"（response-level length bias 与 question-level difficulty bias）；§3.2 Dr. GRPO 与 `masked_mean` 常量分母
-- Kimi k1.5 §2.1 RL Prompt Set Curation（不带 CoT 猜答案、N = 8 easy-to-hack 过滤）；§2.3.3 Length Penalty（λ 线性设计式、先无惩罚再恒定惩罚的启用时机、Figure 5 分数来自内部小尺寸 long-CoT 模型的说明）；§2.3.4 Sampling Strategies（Curriculum Sampling 与 Prioritized Sampling ∝ 1−s 两条独立机制）；§2.3.5 Reward Modeling for Math（约 800k CoT 标注样本）
+- Kimi k1.5 §2.1 RL Prompt Set Curation（不带 CoT 猜答案、N = 8 easy-to-hack 过滤）；§2.3.3 Length Penalty（λ 线性设计式、先无惩罚再恒定惩罚的启用时机、Figure 5 分数来自内部小尺寸 long-CoT 模型的说明）；§2.3.4 Sampling Strategies（Curriculum Sampling 与 Prioritized Sampling ∝ 1−s 两条独立机制）；§2.3.5 More Details on Training Recipe 的 Reward Modeling for Math 小节（约 800k CoT 标注样本）
 - Qwen3 §4.2 Reasoning RL（3,995 query-verifier pairs、170 RL steps、AIME 2024 70.1 → 85.1）；§4.3 Thinking Mode Fusion（`/think` 与 `/no_think` 标记、预算耗尽时插入的停止思考指令）；Table 22（Qwen3-32B 在 Stage 2 / 3 / 4 的评测结果；ThinkFollow 为单一切换得分，Stage 3 = 88.7、Stage 4 = 98.9 +10.2）
 - LIMO §3.1.1（候选筛选路径 tens of millions → baseline 难度过滤 → 32 次采样评估 → 2,125 LIMO-Pool）；§3.1.2（推理链质量分加权 30/20/25/25 → top 800）
 - Deng et al. Introduction 贡献 (2)（原文 "3% to 8% point improvements on the AlpacaEval 2.0 benchmark relative to training on the complete dataset"）

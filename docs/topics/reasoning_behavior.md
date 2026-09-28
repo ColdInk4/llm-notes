@@ -206,7 +206,7 @@ Transformer 中的 FFN 也可以从记忆和特征重组的角度理解。
 Mor Geva 等人在 [2021 年研究](https://aclanthology.org/2021.emnlp-main.446/)中，把 FFN 层神经元视为一种 key-value memory：
 输入上下文先经过 attention 汇聚信息，再激活 FFN 中与当前模式匹配的神经元，这些神经元输出会影响下一 token 的概率分布。
 
-专题图 9 展示了这种 key-value memory 解释。较浅层 FFN 更容易响应固定短语、词形模式和局部上下文；较深层 FFN 更容易响应实体类型、语义关系和抽象语法模式。Attention 更偏向信息路由，FFN 更偏向非线性特征加工；残差连接让浅层表层线索和深层抽象线索逐层叠加。
+专题图 9 展示了这种 key-value memory 解释。较浅层 FFN 更容易响应固定短语、词形模式和局部上下文这类表面模式；较深层 FFN 更容易响应实体类型、语义关系和时间区间这类语义模式。Attention 更偏向信息路由，FFN 更偏向非线性特征加工；残差连接让浅层表层线索和深层抽象线索逐层叠加。
 
 > [!NOTE]
 > 近年的推理模型也让更多人重新关注 MoE 架构，因为 MoE 能在控制每 token 激活 $\mathrm{FLOPs}$ 的同时扩展总参数量。
@@ -409,7 +409,7 @@ Prompt 设计的边界同样重要。高质量 prompt 依赖用户理解任务�
 
 ### 官方来源
 
-- 本专题引用的论文、技术报告、官方文档与 CS336 课程主页链接统一列在[参考资料](#参考资料)；查阅日期 `2026-09-22`，状态：论文 / 官方 / 课程材料。
+- 本专题引用的论文、技术报告、官方文档与 CS336 课程主页链接统一列在[参考资料](#参考资料)；查阅日期 `2026-09-28`，状态：论文 / 官方 / 课程材料。
 - 本专题与第 9 章 serving / inference systems 分工互补；rollout、训练 infra 与 serving 成本等系统侧细节由 [第 9 章 §9.1 Inference Workload：为什么推理不同于训练](../chapter9/chapter9_推理系统.md) 与 [第 9 章 §9.5 Dynamic Serving：Continuous Batching 与 PagedAttention](../chapter9/chapter9_推理系统.md) 承载，本专题直接引用其结论。
 
 ### 本节事实声明的来源指向

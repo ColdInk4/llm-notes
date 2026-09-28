@@ -661,6 +661,7 @@ mode collapse 是另一类副作用。经过强偏好优化后，模型可能减
 - [Cui et al., 2023, *UltraFeedback*, arXiv:2310.01377](https://arxiv.org/abs/2310.01377)
 - [Lambert et al., 2024, *Tulu 3*, arXiv:2411.15124](https://arxiv.org/abs/2411.15124)
 - [Dubois et al., 2023, *AlpacaFarm*, arXiv:2305.14387](https://arxiv.org/abs/2305.14387)
+- [Touvron et al., 2023, *LLaMA*, arXiv:2302.13971](https://arxiv.org/abs/2302.13971)
 - [Touvron et al., 2023, *Llama 2*, arXiv:2307.09288](https://arxiv.org/abs/2307.09288)
 - [Grattafiori et al., 2024, *Llama 3 Herd of Models*, arXiv:2407.21783](https://arxiv.org/abs/2407.21783)
 - [Hu et al., 2024, *MiniCPM*, arXiv:2404.06395](https://arxiv.org/abs/2404.06395)
@@ -670,7 +671,7 @@ mode collapse 是另一类副作用。经过强偏好优化后，模型可能减
   10K+ trees / 161,443 messages / 35 languages / 461,292 quality ratings / 13,500+ volunteers；
   HF viewer 口径 train 84,437 + validation 4,401 = 88,838 行）
 - [teknium/OpenHermes-2.5](https://huggingface.co/datasets/teknium/OpenHermes-2.5)（instruction / SFT 示范数据集，约 1M 行）
-- 查阅日期：2026-09-22。
+- 查阅日期：2026-09-28。
 
 ### 本节事实声明的来源指向
 
