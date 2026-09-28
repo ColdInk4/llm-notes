@@ -1246,7 +1246,7 @@ encoder-decoder 族整体更窄：T5-11B 的 `d_model = 1024` 配 `num_layers = 
 
 宽深比的考量非常重要，它会控制可用并行度。如果采用流水线并行，通常会将不同层切割后分配到不同设备或设备块上；对于特别宽的模型，可以采用张量并行，将矩阵切片分布到多个 GPU 上。不同并行范式会产生不同约束：张量并行需要非常高速的网络，而流水线并行对网络速度或延迟的要求可以稍低。因此网络约束可能反过来影响宽度-深度的决策。
 
-抛开这些限制，宽深比对模型性能仍可通过一组控制实验来观察。Kaplan 等人在固定非嵌入参数量的前提下扫描模型形状（图 5 中分别是 50M 与 25M 两组），横轴是宽深比 $d_{\text{model}}/n_{\text{layer}}$，纵轴是损失相对 $L(N)$ 拟合基线的百分比增幅。结论是形状影响很轻微：
+抛开这些限制，宽深比对模型性能仍可通过一组控制实验来观察。Kaplan 等人在固定非嵌入参数量的前提下扫描模型形状（图 5 宽深比面板分别是 50M / 274M / 1.5B 三组），横轴是宽深比 $d_{\text{model}}/n_{\text{layer}}$，纵轴是损失相对 $L(N)$ 拟合基线的百分比增幅。结论是形状影响很轻微：
 宽深比变化 40 倍时损失只抬高几个百分点， $(n_{\text{layer}}, d_{\text{model}}) = (6, 4288)$ 的损失落在 GPT-2 所用 $(48, 1600)$ 配置的 3% 以内。
 
 ![图 3.3-6 宽深比实验](images/3-3-6-depth-width-experiment.png)
@@ -1303,7 +1303,7 @@ Google 的 Yi Tay 等人研究了深度与宽度在上游和下游任务中的�
 
 ![图 3.4-1 OLMo2 稳定性实验](images/3-4-1-olmo2-stability-experiment.png)
 
-*图 3.4-1 OLMo2 的训练曲线显示，loss 平滑下降时梯度 L2 norm 仍可能出现尖峰*
+*图 3.4-1 OLMo-0424（蓝）的 loss 总体仍下降时梯度 L2 norm 已频繁尖峰，OLMo 2（橙）两条曲线平稳*
 
 OLMo2 论文提供了一个很典型的稳定性案例：仅看 loss 曲线时，训练似乎还能继续；但观察梯度 L2 norm 会发现蓝色曲线出现频繁尖峰，说明模型内部的梯度尺度已经不稳定。
 
@@ -1463,4 +1463,4 @@ Continuous Batching 的工程取舍见[第 9 章 §9.5.1 Continuous Batching 与
 
 ### 本节事实声明的来源指向
 
-- 架构消融与超参数：Narang et al. Table 1（step/s 与 final loss）、Kaplan et al. Figure 5（FFN ratio / aspect ratio / head dim 扫描）、PaLM Table 1 与训练设置、ST-MoE（router z-loss 与 Mesh TensorFlow z-loss 的关系）、OLMo 2 Table 3 稳定性配方、Methods of improving LLM training stability Table 4 困惑度对比、Bhojanapalli et al.（Low-Rank Bottleneck in Multi-head Attention Models）。
+- 架构消融与超参数：Narang et al. Table 1（step/s 与 final loss）、Kaplan et al. Figure 5（FFN ratio / aspect ratio / head dim 扫描）、PaLM Table 1 与训练设置、ST-MoE（router z-loss 与 Mesh TensorFlow z-loss 的关系）、OLMo 2 Table 1 稳定性配方、Methods of improving LLM training stability Table 4 困惑度对比、Bhojanapalli et al.（Low-Rank Bottleneck in Multi-head Attention Models）。
