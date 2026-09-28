@@ -338,7 +338,7 @@ token id 序列是模型接触张量之前的最后一步；进入训练侧后�
 - [Schuster and Nakajima, 2012: Japanese and Korean Voice Search (ICASSP)](https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/37842.pdf)
   （WordPieceModel 算法原文："Choose the new word unit out of all possible ones that increases the likelihood on the training data the most"）
 - [DeepSeek-V3 技术报告 §4.1 Data Construction](https://arxiv.org/html/2412.19437v2)（"The tokenizer for DeepSeek-V3 employs Byte-level BPE with an extended vocabulary of 128K tokens."）
-- [Qwen3 技术报告 §2 Architecture](https://arxiv.org/html/2505.09388v1)（"byte-level byte-pair encoding (BBPE) with a vocabulary size of 151,669"）
+- [Qwen3 技术报告 §2 Architecture](https://arxiv.org/html/2505.09388)（"byte-level byte-pair encoding (BBPE, Brown et al., 2020; Wang et al., 2020; Sennrich et al., 2016) with a vocabulary size of 151,669"）
 - [tiktoken `tiktoken_ext/openai_public.py`](https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py)（`o200k_base` 的 `ENDOFTEXT: 199999` 与 `ENDOFPROMPT: 200018`；
   `o200k_harmony` 的 `<|startoftext|>: 199998`、`<|return|>: 200002`、`<|constrain|>: 200003`、`<|channel|>: 200005`、
   `<|start|>: 200006`、`<|end|>: 200007`、`<|message|>: 200008`、`<|call|>: 200012`，reserved 区间填到 201087）
@@ -357,7 +357,7 @@ token id 序列是模型接触张量之前的最后一步；进入训练侧后�
 - [Hugging Face LLM Course: Tokenizers](https://huggingface.co/learn/llm-course/en/chapter6/1)
 - [Hugging Face Transformers: Tokenization algorithms](https://huggingface.co/docs/transformers/en/tokenizer_summary)
 - [Tiktokenizer DeepSeek-R1 tokenizer view](https://tiktokenizer.vercel.app/?model=deepseek-ai%2FDeepSeek-R1)
-- 查阅日期：2026-09-05。
+- 查阅日期：2026-09-28。
 
 ### 本节事实声明的来源指向
 
