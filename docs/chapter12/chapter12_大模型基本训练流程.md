@@ -387,7 +387,7 @@ RLHF / DPO 数据的质量不止取决于标注一致性，还取决于标注者
   Zephyr（[Tunstall et al., 2023, *Zephyr: Direct Distillation of LM Alignment*, arXiv:2310.16944](https://arxiv.org/abs/2310.16944)）
   把这条路线推到整链无人工标注：dSFT 用 UltraChat，dDPO 用 UltraFeedback 中 GPT-4 打分的 AI feedback。
 
-  多数"开源 DPO 数据集"因此实际是 LLM 蒸馏而非人类偏好，复现与对比时要先看清楚人类占比。
+  这类整链 AI feedback 的开源偏好数据实际是 LLM 蒸馏而非人类偏好，复现与对比时要先看清楚人类占比。
 - **长度攻击的工程经验**：[Singhal et al., 2024, *A Long Way to Go: Investigating Length Correlations in RLHF*, arXiv:2310.03716](https://arxiv.org/abs/2310.03716)
   §3.2 Table 2 把 reward 换成纯长度函数（LPPO），模拟偏好胜率 vs SFT 50% baseline 在 WebGPT 56% / Stack 59% / RLCD 64%；
   标准 PPO 同期是 WebGPT 58% / Stack 58% / RLCD 63%，LPPO 与 PPO 数字接近，论文结论是 RLHF 改进大体可由长度信号解释。
@@ -456,7 +456,7 @@ DPO 的目标是把 pairwise preference data 直接写成监督式损失。
 
 本节回答三个问题：DPO 损失怎么从偏好对直接推导出来、DPO 与 PPO 的工程边界在哪里、SimPO 与 length-normalized DPO 等变体改变了什么。
 
-表 12.5 是 §12.4 PPO 与本节 DPO / SimPO / length-normalized DPO 的工程对照，覆盖数据形式、reward model、参考模型、rollout、长度归一化、主要风险与工程代价七个维度。
+下表是 §12.4 PPO 与本节 DPO / SimPO / length-normalized DPO 的工程对照，覆盖数据形式、reward model、参考模型、rollout、长度归一化、主要风险与工程代价七个维度。
 
 | 维度 | PPO（§12.4） | DPO | SimPO | length-normalized DPO |
 | --- | --- | --- | --- | --- |

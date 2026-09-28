@@ -173,7 +173,7 @@ matmul 通过 tile 复用可以把 $I$ 提高到与 tile size 相关——tile �
 ## 6.2 Benchmark 和 profiler 的工作流
 
 本节走完一次最小排查循环：先写一个可复用的 benchmark 函数测端到端时间，再用 `torch.profiler` 把这段端到端时间拆到具体 CUDA kernel。
-读完应能解释为什么 benchmark 和 profiler 必须成对使用，以及 `cutlass3x_sm100_simt_sgemm_64x64x16` 这类 kernel 名字里每一段分别对应什么信息。
+读完应能解释为什么 benchmark 和 profiler 必须成对使用，以及 `cutlass3x_sm100_simt_sgemm...64x64x16` 这类 kernel 名字里每一段分别对应什么信息。
 
 ### 6.2.1 Benchmark 流程
 
@@ -613,7 +613,7 @@ PTX 还不是硬件行为的全部：warp 调度、具体 SM 分配和许多微�
   [Triton: An Intermediate Language and Compiler for Tiled Neural Network Computations](https://www.eecs.harvard.edu/~htk/publication/2019-mapl-tillet-kung-cox.pdf)，MAPL 2019
 - [Triton 官方文档](https://triton-lang.org/)
 - [PyTorch `torch.compile` 文档](https://pytorch.org/docs/stable/generated/torch.compile.html)
-- [NVIDIA CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/)
+- [NVIDIA CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-programming-guide/)
 - [PTX ISA 文档](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html)
 - [Stanford CS336 Lecture 6 课件与代码](https://github.com/stanford-cs336/lectures)
 

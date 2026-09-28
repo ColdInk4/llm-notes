@@ -163,7 +163,7 @@ token 数与文档数的比值同时给出平均文档长度：DCLM-Baseline 约
 
 *图 10.1-3 OLMo 2 中期训练数据来源*
 
-图 10.1-3 把中期训练拆成两块：Dolmino 高质量子集合计 832.6B tokens，Dolmino 数学子集合计 10.7B tokens。相对预训练的 3.90T tokens，中期训练的总量约为其五分之一，其中数学部分不到千分之三。
+图 10.1-3 把中期训练拆成两块：Dolmino 高质量子集合计 832.6B tokens，Dolmino 数学子集合计 10.7B tokens。相对预训练的 3.90T tokens，中期训练的总量 843B 约为预训练的五分之一；数学子集 10.7B 占中期训练的约 1.3%，相当于预训练规模的千分之二点七。
 
 高质量子集里最大的一条仍是 DCLM-Baseline，但取的是 FastText 打分 top 7% 且 FineWeb 质量分不低于 2 的 752B tokens 子集；
 其余是 FLAN 指令数据 17.0B、peS2o 学术论文 58.6B、Wikipedia & Wikibooks 3.7B 和 Stack Exchange 问答 1.26B。
@@ -227,7 +227,7 @@ Qwen 3 的公开材料也体现了这种阶段分工：预训练覆盖大规模�
 
 **版权与许可。**
 
-**Shadow libraries 是训练数据的另一条来源。** 生态包括 LibGen（2019 约 4M books）、Z-Library、Anna's Archive、Sci-Hub（2022 约 88M papers）等。
+**Shadow libraries 是训练数据的另一条来源。** 生态包括 LibGen（2019 年 7 月约 4.6M books）、Z-Library、Anna's Archive、Sci-Hub（2022 年 2 月约 88M papers）等。
 这些来源在版权合规上普遍不可用于商业训练，但部分研究型项目（CommonPile 等）以 permissive-only 路线探索合法替代。
 Shadow library 在数据清单中只作为负面参照登记，不进入训练来源。
 
@@ -325,10 +325,10 @@ CCNet 是把这三层串起来的早期公开方案，目标是从 Common Crawl 
 
 *图 10.2-1 raw data 与 target data 的过滤框架*
 
-图 10.2-1 给出这个设置的三块区域：最大的椭圆是 raw data $R$ ，右侧独立的小椭圆是 target data $T$ ，落在 $R$ 内部的中等椭圆是筛出的子集 $T'$ 。
+图 10.2-1 给出这个设置的三块区域：最大的椭圆是 raw data $R$ ，右侧独立的椭圆是 target data $T$ ，落在 $R$ 内部、大小与 $T$ 相近的椭圆是筛出的子集 $T'$ 。
 $T$ 画在 $R$ 之外，因为它是另一批数据（例如 Wikipedia、已标注的高质量页面），本身规模有限；有价值的是用 $T$ 定义“好文本”的统计特征后，在 $R$ 里找出与之同分布但内容不同的 $T'$ 。
 
-过滤器要逐条打分跑完整个 $R$ ，计算量随 $R$ 的规模线性增长，这是它必须便宜的原因。图中 $T'$ 的椭圆远大于 $T$ ，因为子集从规模大得多的 $R$ 中筛出，样本数不受 $T$ 自身大小的限制。语言识别、质量过滤、toxicity filtering、数学文本筛选和代码教育价值筛选都可以放进这个框架，区别只在 $T$ 怎么定义。
+过滤器要逐条打分跑完整个 $R$ ，计算量随 $R$ 的规模线性增长，这是它必须便宜的原因。子集 $T'$ 的样本数不受 $T$ 自身大小的限制：它从规模大得多的 $R$ 中筛出，数量可以远多于 $T$ 。语言识别、质量过滤、toxicity filtering、数学文本筛选和代码教育价值筛选都可以放进这个框架，区别只在 $T$ 怎么定义。
 
 ### 10.2.1 数据过滤
 
@@ -756,3 +756,5 @@ surprisal 的选点由一个低容量参考模型给出，论文使用 110M 参�
 - Bartz v. Anthropic PBC — 2025-06-23 fair use summary judgment；2025-08-26 settlement <span>$</span>1.5B；2025-09-25 preliminary approval；
   2025-12 Alsup 退休后 reassign 为 Martínez-Olguín（Case No. 4:24-cv-05417-AMO）；2026-05-14 fairness hearing；2026-07-20 final approval；
   482,460 eligible works / 447,576 filed claims / opt-outs 约 350 位作者覆盖约 1,802 部作品 / claims rate 92.77% / 约 <span>$</span>3,000/部
+- LibGen 2019 年 7 月规模指向 [Wayback Machine 2019-07-16 `libgen.io/stat.php` 快照](https://web.archive.org/web/20191201/https://libgen.io/stat.php) —
+  non-fiction 2,389,634 + foreign fiction 2,177,823 ≈ 4.6M books（scimag 76,182,291；查阅日期 2026-09-28）

@@ -582,7 +582,7 @@ if __name__ == "__main__":
 这种 conditional compute 下的梯度不对称性会导致不同模块在优化过程中依赖于不同的数据分布，从而使优化步调难以协调，增加训练不稳定性。
 
 > [!WARNING]
-> **去掉 load balancing loss 会发生什么**：OlMoE 的消融实验给出过一组反例——拿掉 auxiliary balance loss 之后，训练 loss 显著抬升、验证指标全面恶化。
+> **去掉 load balancing loss 会发生什么**：OLMoE 的消融实验给出过一组反例——拿掉 auxiliary balance loss 之后，训练 loss 显著抬升、验证指标全面恶化。
 >
 > expert 利用率上，几乎所有 token 都被路由到 1~2 个热门 expert，其余 expert 长期处于饥饿状态、几乎不更新。
 >
@@ -1375,7 +1375,7 @@ MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并
 
 ## 4.5 Expert 配置表与代表模型
 
-**本节解决什么前置问题**：把抽象的「专家数 / top-k / 共享 expert / 激活比例」落到一份可对照的公开模型表上。读完本节应能在引用某 MoE 模型时直接读出它的 expert 配置与激活比，并能与 §4.6 的 DeepSeek 三代演进表交叉对应。
+**本节解决什么前置问题**：把抽象的「专家数 / top-k / 共享 expert / 激活比例」落到一份可对照的公开模型表上。读完本节应能在引用某 MoE 模型时直接读出它的 expert 配置与激活比，并能与 §4.6 的 DeepSeek 四代演进表交叉对应。
 
 下表汇总公开 MoE 模型的 expert 配置，每行展示总专家数 / top-k / 共享专家数，以及实际激活 expert 比例。数据取自官方论文、模型卡与 config.json，引用源附在最右列。
 
@@ -1390,7 +1390,7 @@ MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并
 | DeepSeek v1 (DeepSeek-MoE 16B) | 64 routed + 2 shared = 66 | 6 | 2 | (6 routed + 2 shared) / 66 = 8/66 ≈ 12.1% | [arXiv:2401.06066](https://arxiv.org/abs/2401.06066) |
 | Qwen 1.5 MoE | 60 routed + 4 shared = 64 | 4 | 4 | (4 routed + 4 shared) / 64 = 8/64 = 1/8 = 12.5% | [Qwen/Qwen1.5-MoE-A2.7B config](https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B)：`num_experts: 60`、`num_experts_per_tok: 4`；shared expert 计数见下方 NOTE |
 | DeepSeek v3 | 256 routed + 1 shared = 257 | 8 | 1 | (8 routed + 1 shared) / 257 = 9/257 ≈ 3.5% ≈ 1/28.6 | [arXiv:2412.19437](https://arxiv.org/abs/2412.19437) + [DeepSeek-V3 config](https://huggingface.co/deepseek-ai/DeepSeek-V3) |
-| OlMoE | 64 | 8 | 0 | 8/64 = 1/8 | [arXiv:2409.02060](https://arxiv.org/abs/2409.02060) |
+| OLMoE | 64 | 8 | 0 | 8/64 = 1/8 | [arXiv:2409.02060](https://arxiv.org/abs/2409.02060) |
 | Llama 4 Maverick | 128 routed + 1 shared = 129 | 1 | 1 | (1 routed + 1 shared) / 129 = 2/129 ≈ 1.55% | [Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct)：`num_local_experts: 128`、`num_experts_per_tok: 1`；config.json 本身未列 `shared_experts` 字段，按 Meta 官方说明每 token 由 1 个 shared expert + 1 个 routed expert 组成（约 17B active / ~400B total） |
 | MiniMax-M1 | 32 routed + 0 shared = 32 | 2 | 0 | 2/32 = 1/16 = 6.25% | [MiniMax-M1-80k config](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k)：`num_local_experts: 32`、`num_experts_per_tok: 2`、`shared_intermediate_size: 0`（无 shared expert）；[MiniMax-M1 论文](https://arxiv.org/abs/2506.13585) 给出 456B total / 45.9B activated，45.9B / 456B ≈ 10.1% 是折进 attention、embedding 等 dense 部分后的总激活比例，单纯按 MoE expert 计数为 2/32 = 1/16 |
 
@@ -1420,7 +1420,7 @@ MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并
 
 §4.5 与 §4.6 从两个维度组织同一批配置数据：§4.5 横向对照各家族 MoE（激活比从 ~1/1024 到 1/4 量级），§4.6 纵向单看 DeepSeek 一家从 V1 到 V4-Pro 的演进；DeepSeek v1 / v3 两行在两表都出现，前者读激活比的横向可比性，后者读路由与平衡策略的代际差异。
 
-## 4.6 DeepSeek MoE 三代演进
+## 4.6 DeepSeek MoE 四代演进
 
 **本节解决什么前置问题**：在 §4.5 横向罗列各家 MoE 配置之后，本节沿 DeepSeek 一家纵向看 V1 → V2 → V3 → V4 的 MoE 设计演进——
 
@@ -1438,9 +1438,9 @@ MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并
 > [!TIP]
 > DeepSeek MoE 的「共享专家 + fine-grained experts」组合是 2024-2025 年间公开 MoE 模型最常复用的模板（Qwen 1.5 MoE、Qwen MoE 系列、Llama 4 Maverick 等都用到这一组合或其变体）。
 >
-> DeepSeek 与 OlMoE 之间存在一个未解决的开放问题：DeepSeek 的消融显示加上共享 expert 能改善指标，
+> DeepSeek 与 OLMoE 之间存在一个未解决的开放问题：DeepSeek 的消融显示加上共享 expert 能改善指标，
 >
-> 而 OlMoE 的实验显示共享 expert 没有明显收益、收益主要来自细粒度 expert；这组相反结果构成路由设计的开放边界，具体收益仍依赖模型规模、数据和训练设置。
+> 而 OLMoE 的实验显示共享 expert 没有明显收益、收益主要来自细粒度 expert；这组相反结果构成路由设计的开放边界，具体收益仍依赖模型规模、数据和训练设置。
 
 ## 本章总结与下章衔接
 
@@ -1493,7 +1493,7 @@ MoE 基座很大时，全参数 RL 的代价主要由显存和通信决定，并
 
 ### 官方来源
 
-- [OlMoE config](https://huggingface.co/allenai/OLMoE-1B-7B-0924)
+- [OLMoE config](https://huggingface.co/allenai/OLMoE-1B-7B-0924)
 - [Llama-4-Maverick config](https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct)
 - [Meta Llama 4 官方博客](https://ai.meta.com/blog/llama-4-multimodal-intelligence/)（"MoE layers use 128 routed experts and a shared expert"；Maverick 17B active / 400B total）
 - [DeepSeek-V4-Pro config](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json)（`n_routed_experts: 384`、`n_shared_experts: 1`、`num_experts_per_tok: 6`、`topk_method: "noaux_tc"`、`scoring_func: "sqrtsoftplus"`、`num_hash_layers: 3`、`swiglu_limit: 10.0`）

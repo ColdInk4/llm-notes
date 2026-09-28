@@ -365,7 +365,7 @@ GPT-2 的关键观察是：在大规模、多样化训练下，模型对从未�
 
 #### 常识推理任务
 
-[HellaSwag](https://arxiv.org/abs/1905.07830)是一个常识推理任务。通常是给定一个视频片段或一段文字描述（premise），然后给出四个选项（A, B, C, D），要求选出最符合常识、最自然、最可能发生的后续动作。它强调的是日常生活的常识推理（commonsense reasoning）和行为合理性判断。
+[HellaSwag](https://arxiv.org/abs/1905.07830)是一个常识推理任务。通常是给定一段文字形式的事件场景描述（premise），然后给出四个选项（A, B, C, D），要求选出最符合常识、最自然、最可能发生的后续动作。它强调的是日常生活的常识推理（commonsense reasoning）和行为合理性判断。
 
 ![图 11.3-4 HellaSwag 常识推理样例](images/11-3-4-hellaswag-examples.png)
 
@@ -546,9 +546,9 @@ WildBench 与 Chatbot Arena 高度相关。论文 §4.2 Table 3 报告的 Pearso
 
 表中 Arena-Hard、AlpacaEval、WB-Score、WB-Reward 各行与 Chatbot Arena 的相关系数全部不低于 0.818，WildBench 因此可以作为人类偏好排序的自动代理指标，与 Chatbot Arena 的人工盲测互为对照。
 
-![图 11.5-4 WildBench 构建流程](images/11-5-4-wildbench-pipeline.png)
+![图 11.5-4 WildBench 评估流程](images/11-5-4-wildbench-pipeline.png)
 
-*图 11.5-4 WildBench 构建流程*
+*图 11.5-4 WildBench 评估流程*
 
 [HELM 的 WildBench 视图](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/wildbench)可以用来观察不同模型在真实对话样本上的表现。它的价值在于引入更接近真实用户提问分布的样本；某个固定时点的排行榜名次只是快照。
 
@@ -565,7 +565,7 @@ LLM-as-judge 把评估成本压低到可大规模运行的级别，但也把 jud
 - **位置偏差（position bias）**：judge 模型倾向给某一固定位置的回答更高分；同一对回答交换顺序判两次，两次都偏好同一方才计胜负，结果不一致则记为 tie，这样可以分离位置效应（另一种更激进的做法是随机分配位置）([Zheng et al., 2023, arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3.4)。
 - **冗长度偏差（verbosity bias）**：judge 模型倾向给更冗长的回答更高分，无论内容质量是否真的更高；这是 AlpacaEval、AlpacaEval 2.0 等基于 LLM-as-judge 的指标最被反复讨论的问题。
   缓解办法包括按字符 / token / 段落长度归一化分数、报告 length-controlled win rate，或在 prompt 中显式要求 judge 忽略长度。
-- **自我增强偏差（self-enhancement bias）**：judge 模型倾向给同家族模型更高分；常见缓解是引入多 judge 集成或与人类标注的校准。
+- **自我增强偏差（self-enhancement bias）**：judge 模型倾向给自己生成的回答更高分；相对人类裁判，GPT-4 给自己的回答胜率高 10%、Claude-v1 高 25%，但同一 judge 也会偏好其他模型、GPT-3.5 对自己没有偏好，样本差异小，该研究无法判定这一偏差是否成立 ([Zheng et al., 2023, arXiv:2306.05685](https://arxiv.org/abs/2306.05685) §3.3)。
 - **有限推理能力（limited capability in grading math and reasoning questions）**：judge 模型在评分数学与逻辑推理题时能力不足；解决方法是引入更强的 judge 或人工 spot check。
 
 工程做法通常同时叠加：多 judge 投票（pairwise 偏好下用 majority vote）、length-controlled win rate、judge ensemble 与 human spot check。

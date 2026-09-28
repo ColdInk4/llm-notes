@@ -223,7 +223,7 @@ AnyRes 的思路是保留高分辨率信息：把原图切成多个符合 vision
 
 图 14.4-7 到图 14.4-9 共同说明：多模态数据设计需要让 OCR、空间关系、视觉指代和时间线索这些技能在不同 token 预算下复用。训练时要检查样本形态之间是否能互相迁移，以及新增模态能否带来可复用的视觉能力。
 
-## 14.5 Qwen-VL 系列：dynamic resolution、MRoPE 和多阶段训练
+## 14.5 Qwen-VL 系列：dynamic resolution、M-RoPE 和多阶段训练
 
 Qwen-VL 系列展示了 VLM 向更通用多模态模型演进的几个方向：动态分辨率、视频输入、长上下文、多维位置编码，以及更复杂的预训练和后训练阶段。
 
@@ -233,9 +233,9 @@ Qwen-VL 系列展示了 VLM 向更通用多模态模型演进的几个方向：�
 
 | 维度 | Qwen-VL（2023） | Qwen2-VL | Qwen3-VL |
 | --- | --- | --- | --- |
-| 视觉编码器 | OpenCLIP ViT-bigG-14（双塔合计 ≈ 2.54B，Qwen-VL 视觉侧报 1.9B） | 自研更大 ViT（≈ 675M） | SigLIP-2（默认 SO-400M） |
+| 视觉编码器 | OpenCLIP ViT-bigG-14（双塔合计 ≈ 2.54B，Qwen-VL 视觉侧报 1.9B） | 自研更大 ViT（≈ 675M） | SigLIP 2（默认 SO-400M） |
 | 分辨率策略 | 224×224 → 448×448 两阶段 | **Naive Dynamic Resolution**（任意分辨率 → 不同视觉 token 数） | 进一步打磨动态分辨率 + DeepStack 跨层视觉注入 |
-| 位置编码 | 文本 1D RoPE + adaptor 内 2D 位置编码 | **M-RoPE**：1D 文本、2D 视觉、1D 时间，按 `[t t t t h h h h w w w w]` 分块 | **Interleaved M-RoPE**：t / h / w 在 embedding 维度交错 `[t h w t h w ...]` |
+| 位置编码 | 文本 1D RoPE + adaptor 内 2D 位置编码 | **M-RoPE**：1D 文本、2D 视觉、1D 时间，按 `[t t t t h h h h w w w w]` 分块 | **Interleaved MRoPE**：t / h / w 在 embedding 维度交错 `[t h w t h w ...]` |
 | 视频支持 | 原版不支持（Conclusion 把 speech 与 video 列为扩展方向） | 2 帧/秒采样，单视频 token 上限 16384 | 视频帧附带显式文本时间戳 |
 | 上下文长度 | 8K | 32K | **256K** |
 | LM 初始化 | Qwen-7B | Qwen2 | Qwen3 |
@@ -254,13 +254,9 @@ Qwen-VL 系列展示了 VLM 向更通用多模态模型演进的几个方向：�
   (3) 第三阶段 **freeze vision encoder**，训练 adaptor + LM，使用 350K 高质量指令数据
   （[Qwen-VL, arXiv:2308.12966](https://arxiv.org/abs/2308.12966) §3 Training：3.1 Pre-training / 3.2 Multi-task Pre-training / 3.3 Supervised Fine-tuning）。
 - Adaptor：单层 cross-attention + 2D positional encoding，映射到固定长度 256。
-- 特殊 token：`<img>`、`<box>`、`<ref>`，用于视觉指代和定位。
+- 特殊 token：`<<img>>`、`<<box>>`、`<<ref>>`，用于视觉指代和定位。
 - 流程主线：低质量数据对齐 → 高质量任务数据（高分辨率）→ 指令微调。
 - 引用：[arXiv 2308.12966](https://arxiv.org/abs/2308.12966)。
-
-![图 14.5-1 Qwen2-VL 架构](images/14-5-1-qwen2-vl-architecture.png)
-
-*图 14.5-1 Qwen2-VL 架构*
 
 ### 14.5.2 Qwen2-VL
 
@@ -270,35 +266,39 @@ Qwen-VL 系列展示了 VLM 向更通用多模态模型演进的几个方向：�
 - 224×224 图像切成 14×14 patches，经 ViT/14 编码后产生 16×16 = 256 个 patch token；MLP 把相邻 2×2 token 合并为 1 个（256 / 4 = 64），
   再在压缩后的视觉 token 序列前后各加一个特殊 token，进入 LLM 前共 66 个 token。
 - 视频采样 2 帧/秒，单视频 token 上限 16384。
-- 引入 **Multimodal Rotary Position Embedding（MRoPE）**——把 Q/K 的 embedding 拆成三段，分别对时间、高度、宽度施加 rotary：文本三段共享同一位置 ID（退化为 1D RoPE），
+- 引入 **Multimodal Rotary Position Embedding（M-RoPE）**——把 Q/K 的 embedding 拆成三段，分别对时间、高度、宽度施加 rotary：文本三段共享同一位置 ID（退化为 1D RoPE），
   图像三段中时间 ID 保持常量而 h/w 按网格递增，视频在时间 ID 上逐帧递增。
   Qwen2-VL 把三段分别分配到 embedding 维度的连续块，对应 [t t t t h h h h w w w w] 的频段切分。
 - LM 初始化自 Qwen2；视觉编码器初始化自 DFN。
 - 引用：[arXiv 2409.12191](https://arxiv.org/abs/2409.12191)。
 
+![图 14.5-1 Qwen2-VL 架构](images/14-5-1-qwen2-vl-architecture.png)
+
+*图 14.5-1 Qwen2-VL 架构*
+
 图 14.5-1 展示 Qwen2-VL 的架构。它使用更大的 visual encoder，并支持 dynamic resolution：不同尺寸图像根据实际分辨率产生不同数量的视觉 tokens，无需强行缩放到同一固定形状。这样可以保留细节，也需要在 token budget 上做更严格的控制。
 
-![图 14.5-2 Qwen2-VL MRoPE](images/14-5-2-qwen2-vl-mrope.png)
+![图 14.5-2 Qwen2-VL M-RoPE](images/14-5-2-qwen2-vl-mrope.png)
 
-*图 14.5-2 Qwen2-VL MRoPE*
+*图 14.5-2 Qwen2-VL M-RoPE*
 
-MRoPE 把位置信息扩展到多维输入。文本只有一维顺序；图像有高度和宽度；视频还多了时间轴。多模态 rotary position embedding 让模型在同一个 Transformer 中同时理解这些轴，保留视觉 tokens 中的空间和时间结构。
+M-RoPE 把位置信息扩展到多维输入。文本只有一维顺序；图像有高度和宽度；视频还多了时间轴。多模态 rotary position embedding 让模型在同一个 Transformer 中同时理解这些轴，保留视觉 tokens 中的空间和时间结构。
 
 RoPE 的基础定义与频率调度见 [第 3 章 §3.2.4 位置编码](../chapter3/chapter3_语言模型架构和训练技术细节.md)；
-MRoPE 把同一套 $Q/K$ 旋转思路推广到多维输入，与现代 dense decoder 默认骨架共用 GQA，
+M-RoPE 把同一套 $Q/K$ 旋转思路推广到多维输入，与现代 dense decoder 默认骨架共用 GQA，
 见 [第 3 章 §3.2.5 注意力机制的变体](../chapter3/chapter3_语言模型架构和训练技术细节.md)。
 
 ### 14.5.3 Qwen3-VL
 
-Qwen3-VL 的设计起点是 Qwen2-VL 留下的两个瓶颈：(1) MRoPE 在 embedding 维度把 t / h / w 切成连续块，导致低频段与高频段被某一轴独占，长视频频谱分配偏置；(2) 视觉特征仅在 adapter 输出层注入 LLM 一次，深层表示依赖逐层传递的视觉信息。Qwen3-VL 的各项改进对应到这两个瓶颈的工程解。
+Qwen3-VL 的设计起点是 Qwen2-VL 留下的两个瓶颈：(1) M-RoPE 在 embedding 维度把 t / h / w 切成连续块，导致低频段与高频段被某一轴独占，长视频频谱分配偏置；(2) 视觉特征仅在 adapter 输出层注入 LLM 一次，深层表示依赖逐层传递的视觉信息。Qwen3-VL 的各项改进对应到这两个瓶颈的工程解。
 
-- **视觉编码器**：**SigLIP-2**（与 SigLIP 同架构）。Qwen3-VL 论文默认采用 **SigLIP2-SO-400M** 变体，对 2B / 4B 等小尺寸 LM 则改用参数量更低的 **SigLIP2-Large (300M)**；视觉 encoder 从官方预训练 checkpoint 初始化，并按动态输入分辨率继续训练。
+- **视觉编码器**：**SigLIP 2**（与 SigLIP 同架构）。Qwen3-VL 论文默认采用 **SigLIP2-SO-400M** 变体，对 2B / 4B 等小尺寸 LM 则改用参数量更低的 **SigLIP2-Large (300M)**；视觉 encoder 从官方预训练 checkpoint 初始化，并按动态输入分辨率继续训练。
 
 - **Interleaved MRoPE**：把 t / h / w 三个分量在 embedding 维度上交错分配（pattern `[t h w t h w t h w ...]`），让每个轴都同时覆盖低频段与高频段；
-  Qwen2-VL 的 MRoPE 按 `[t t t t h h h h w w w w]` 把三个轴分成三个连续块，论文指出这种切分 "results in an imbalanced frequency spectrum"。
+  Qwen2-VL 的 M-RoPE 按 `[t t t t h h h h w w w w]` 把三个轴分成三个连续块，论文指出这种切分 "results in an imbalanced frequency spectrum"。
   Qwen3-VL 论文 §2.1 报告均衡频谱 "significantly improves long-range positional modeling for video"。「频谱更均衡 → 长视频建模更稳定」属于经验拟合而非第一性原理推导。
 
-- **视频帧附带显式文本时间戳**：与 Qwen2-VL MRoPE 仅把时间信息隐式放在 rotary 频段中不同，Qwen3-VL 把帧的时间写成可读文本字段放进 prompt（论文示例 `<3.0 seconds>`，
+- **视频帧附带显式文本时间戳**：与 Qwen2-VL M-RoPE 仅把时间信息隐式放在 rotary 频段中不同，Qwen3-VL 把帧的时间写成可读文本字段放进 prompt（论文示例 `<3.0 seconds>`，
   训练中同时生成秒与时:分:秒两种格式），让模型直接读到时间，时间信息不再依赖 rotary 频段推断。
   文本时间戳与 Interleaved MRoPE 互补，前者负责可读语义、后者负责位置编码一致性。
 
@@ -324,7 +324,7 @@ Qwen3-VL 的设计起点是 Qwen2-VL 留下的两个瓶颈：(1) MRoPE 在 embed
 
 *图 14.5-3 Qwen3-VL 总览*
 
-Qwen3-VL 换用 SigLIP-2 视觉 encoder，继续扩大 language model 与上下文长度，并引入 interleaved MRoPE、显式 video timestamps 和 DeepStack 这类跨层视觉融合。
+Qwen3-VL 换用 SigLIP 2 视觉 encoder，继续扩大 language model 与上下文长度，并引入 interleaved MRoPE、显式 video timestamps 和 DeepStack 这类跨层视觉融合。
 
 interleaved MRoPE 把时间、高度和宽度轴交错分配到不同频段，显式时间戳让视频帧带上可读的时间信息，DeepStack 则把视觉信息注入多个 Transformer 层。整体方向是让视觉信息在更深层参与语言计算。
 
@@ -472,7 +472,7 @@ LLaVA / Qwen-VL / Chameleon 用 projector 或离散 token 把视觉 token 接到
 - LLaVA-OneVision 729 / 7290 token budget 指向 [arXiv:2408.03326](https://arxiv.org/abs/2408.03326) §3.2 与 Figure 3
 - Qwen-VL 三阶段与 Table 1 模块参数指向 [arXiv:2308.12966](https://arxiv.org/abs/2308.12966) §3 Training 与 Table 1，视频支持范围指向该文 Conclusion
 - ViT-bigG-14 参数指向 [OpenCLIP model_profile.csv](https://github.com/mlfoundations/open_clip/blob/main/docs/model_profile.csv)
-- Qwen3-VL 的 SigLIP-2 变体与 square-root loss 指向 [arXiv:2511.21631](https://arxiv.org/abs/2511.21631)，MRoPE 频谱结论指向该文 §2.1
+- Qwen3-VL 的 SigLIP 2 变体与 square-root loss 指向 [arXiv:2511.21631](https://arxiv.org/abs/2511.21631)，MRoPE 频谱结论指向该文 §2.1
 - Chameleon 两阶段配比与稳定性处理指向 [arXiv:2405.09818](https://arxiv.org/abs/2405.09818) §2.2 / §2.3
 - DeepStack 注入方式与增益指向 [arXiv:2406.04334](https://arxiv.org/abs/2406.04334)
 - Qwen2-Audio 音频输入与 Whisper-large-v3 初始化指向 [arXiv:2407.10759](https://arxiv.org/abs/2407.10759)

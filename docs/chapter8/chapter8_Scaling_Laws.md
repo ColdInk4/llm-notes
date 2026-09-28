@@ -440,7 +440,7 @@ Data repetition 处理的是有限数据集的放大问题。无限新数据的 
 
 为了把这件事写进公式，可以把 repeated tokens 折算成 effective data，也就是“等价新数据量”。它回答的问题是：重复训练这些 token 的效果，大约相当于看到了多少不重复的新 token。
 
-比如有 100B unique tokens，训练 4 个 epoch 时，raw tokens 是 400B。但这 400B 里有很多内容是重复的，效果可能只相当于 250B fresh tokens。这个 250B 就是 effective data 的直觉。
+比如有 100B unique tokens，训练 4 个 epoch（同一份数据重复 3 遍）时，raw tokens 是 400B。重复收益按论文拟合的饱和速度衰减，这 400B 的效果大约相当于 373B fresh tokens。这个 373B 就是 effective data 的直觉。
 
 Raw tokens 会随着 epoch 近似线性增加；effective data 增长更慢，因为重复 token 提供的新信息会递减：
 
@@ -448,7 +448,7 @@ $$
 D' = U_D + U_D R_D^\ast \left(1 - e^{-R_D / R_D^\ast}\right)
 $$
 
-其中 $D'$ 是 effective data， $U_D$ 是 unique tokens， $R_D$ 表示重复强度， $R_D^\ast$ 控制重复收益多快饱和。第一项 $U_D$ 是第一遍独特数据的价值；第二项是重复训练带来的额外价值。
+其中 $D'$ 是 effective data， $U_D$ 是 unique tokens， $R_D$ 表示重复遍数（epoch 数减 1，4 个 epoch 即 $R_D = 3$ ）， $R_D^\ast$ 控制重复收益多快饱和，论文在 Appendix A 拟合得 $R_D^\ast \approx 15.39$ 。第一项 $U_D$ 是第一遍独特数据的价值；第二项是重复训练带来的额外价值；代入上例 $U_D = 100\mathrm{B}$ 与 $R_D = 3$ 得 $D' \approx 373\mathrm{B}$ 。
 
 读这个量时，不必先判断它“比谁大”。它的角色是给重复 token 打折：第一遍 unique tokens 按 $U_D$ 算满；后面重复训练还能加一些等价新数据量，但加得越来越慢。这样算出来的 $D'$ 表示模型实际得到的有效数据信号，raw tokens 表示训练过程实际处理了多少 token。
 
@@ -1146,7 +1146,7 @@ Chinchilla 的 20 tokens per parameter 描述的是训练计算最优附近的�
 | LLaMA 65B | 约 22 |
 | Llama 2 70B | 约 29 |
 | Mistral 7B | 官方未披露训练 token 数；UCStrategies 估约 8T（80% 多语种 web + 20% code） |
-| Llama 3 70B | 约 215（约 15T 语料 / 70B）；按 405B 旗舰的 15.6T 同语料口径为约 223 |
+| Llama 3 70B | 约 215（约 15T 语料 / 70B）；若按 herd 论文对 405B 旗舰披露的 15.6T 全量折算则约 223 |
 
 图 8.4-13 给 Mistral 7B 标注 110 tokens/parameter，约合 0.8T token，与 UCStrategies 的 8T 估计相差约一个数量级；Mistral AI 从未公布训练 token 数，这两个数字都是估计值。
 
@@ -2043,7 +2043,7 @@ Muon 相关（2026-09-05 复核）：Keller Jordan, [`Muon: An optimizer for hid
   arXiv:2302.13971](https://arxiv.org/abs/2302.13971)、[Llama 2, arXiv:2307.09288](https://arxiv.org/abs/2307.09288)、[Llama 3 Herd, 
   arXiv:2407.21783](https://arxiv.org/abs/2407.21783) 各论文官方披露的训练 token 数直接算出；Llama 3 70B 的 215 取官方模型卡 "15T+" 语料口径
   （[Llama 3.1 MODEL_CARD](https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md) 原文 "Llama 3.1 was pretrained on ~15 trillion tokens"，2026-09-28 查阅），
-  223 取 herd 论文 405B 旗舰披露的 15.6T 同语料口径（15.6T / 70B）；Mistral 7B 训练 token 数官方未公开；
+  223 = herd 论文对 405B 旗舰披露的 15.6T tokens ÷ 70B（herd §3.4 对 8B / 70B 只写 "We use similar recipes to pre-train the 8B and 70B models"，未单独披露其训练 token 数，223 是折算值）；Mistral 7B 训练 token 数官方未公开；
   论文 [arXiv:2310.06825](https://arxiv.org/abs/2310.06825) PDF 全文 abstract 与正文均未披露训练 token 数（仅描述模型架构与 fine-tuning），
   Mistral AI 公告 [blog](https://mistral.ai/news/announcing-mistral-7b/) 全文亦未提及训练 token 数（2023-09-27 发布当日 archive 快照与现行页一致）；
   [UCStrategies Mistral 7B guide](https://ucstrategies.com/news/mistral-7b-guide-specs-benchmarks-edge-ai-deployment-2026/) 估约 8T，
